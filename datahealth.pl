@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.88000";
+my $gVersion = "0.89000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -905,7 +905,7 @@ if ($hub_tems_no_tnodesav == 0) {
       if (defined $nx) {
          $poffline = "Online" if $nsave_o4online[$nx] eq "Y";
       }
-      print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline\n";
+      print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i]\n";
    }
    print OH "\n";
 
@@ -2081,3 +2081,4 @@ sub gettime
 # 0.86000  : Check for TNODELIST NODETYPE=V thrunode missing from TNODESAV
 # 0.87000  : Add TOBJACCL, TGROUP. TGROUPI checking first stage
 # 0.88000  : Identify TEMA version < Agent version, adjust impacts, add more missing tests, change some impacts
+# 0.89000  : record TEMS version number
