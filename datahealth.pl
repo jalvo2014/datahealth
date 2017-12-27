@@ -29,7 +29,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.80000";
+my $gVersion = "0.81000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -105,6 +105,7 @@ my @nsave_version = ();
 my @nsave_sysmsl = ();
 my @nsave_ct = ();
 my @nsave_o4online = ();
+my @nsave_temaver = ();
 
 # TNODESAV HOSTADDR duplications
 my $hsx;
@@ -322,7 +323,6 @@ if ($hub_tems_no_tnodesav == 0) {
       next if !defined $tx;
       $hub_tems_ct += 1;
       $tems_ct[$tx] += 1;
-#      print "finished $i $node1 tems[$tems1,$tx] hub_count[$hub_tems_ct] tems_count[$tems_ct[$tx]]\n";
    }
 }
 
@@ -484,6 +484,16 @@ for ($i=0;$i<=$nlisti;$i++) {
    }
 }
 
+##check for TEMA level 6.1
+for ($i=0;$i<=$nsavei;$i++) {
+   next if $nsave_temaver[$i] eq "";
+   next if substr($nsave_temaver[$i],0,5) gt "06.10";
+   $advi++;$advonline[$advi] = "Agent using TEMA at $nsave_temaver[$i] level";
+   $advcode[$advi] = "DATAHEALTH1019W";
+   $advimpact[$advi] = 25;
+   $advsit[$advi] = $nsave[$i];
+}
+
 ## Check for virtual hub table update impact
 my $peak_rate = 0;
 for ($i=0;$i<=$vti;$i++) {
@@ -591,7 +601,7 @@ exit $exit_code;
 # capture node name, product, version, online status
 
 sub new_tnodesav {
-   my ($inode,$iproduct,$iversion,$io4online,$ihostaddr) = @_;
+   my ($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved) = @_;
    $nsx = $nsavex{$inode};
    if (!defined $nsx) {
       $nsavei++;
@@ -603,6 +613,14 @@ sub new_tnodesav {
       $nsave_version[$nsx] = $iversion;
       $nsave_ct[$nsx] = 0;
       $nsave_o4online[$nsx] = $io4online;
+      if ($ireserved eq "") {
+         $nsave_temaver[$nsx] = "";
+      } else {
+         my @words;
+         @words = split(";",$ireserved);
+         @words = split(":",$words[1]);
+         $nsave_temaver[$nsx] = substr($words[0],2,8);
+      }
    }
    $vtx = $vtnodex{$iproduct};
    if (defined $vtx) {
@@ -838,6 +856,7 @@ sub init_txt {
    my $iproduct;
    my $iversion;
    my $ihostaddr;
+   my $ireserved;
 
    open(KSAV, "< $opt_txt_tnodesav") || die("Could not open TNODESAV $opt_txt_tnodesav\n");
    @ksav_data = <KSAV>;
@@ -849,23 +868,24 @@ sub init_txt {
       $ll += 1;
       next if $ll < 5;
       chop $oneline;
+      $oneline .= " " x 340;
       $inode = substr($oneline,0,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
       $io4online = substr($oneline,33,1);
 
       # if offline with no product, ignore - maybe produce advisory later
-      if ($io4online eq "N") {
-         next if length($oneline) < 58;
-      }
       $iproduct = substr($oneline,42,2);
+      $iproduct =~ s/\s+$//;   #trim trailing whitespace
+      if ($io4online eq "N") {
+         next if $iproduct eq "";
+      }
       $iversion = substr($oneline,50,8);
       $iversion =~ s/\s+$//;   #trim trailing whitespace
-      $ihostaddr = "";
-      if (length($oneline) > 59) {
-         $ihostaddr = substr($oneline,59);
-         $ihostaddr =~ s/\s+$//;   #trim trailing whitespace
-      }
-      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr);
+      $ihostaddr = substr($oneline,59,256);
+      $ihostaddr =~ s/\s+$//;   #trim trailing whitespace
+      $ireserved = substr($oneline,315,64);
+      $ireserved =~ s/\s+$//;   #trim trailing whitespace
+      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved);
    }
 
    open(KLST, "<$opt_txt_tnodelst") || die("Could not open TNODELST $opt_txt_tnodelst\n");
@@ -951,6 +971,7 @@ sub init_lst {
    my $iversion;
    my $ihostaddr;
    my $io4online;
+   my $ireserved;
 
    # Parsing the KfwSQLClient output has some challenges. For example
    #      [1]  OGRP_59B815CE8A3F4403  2010  Test Group 1
@@ -981,7 +1002,8 @@ sub init_lst {
       $iproduct =~ s/\s+$//;   #trim trailing whitespace
       $ihostaddr = "";
       $io4online = "Y";
-      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr);
+      $ireserved = "";
+      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved);
    }
 
    open(KLST, "<$opt_lst_tnodelst") || die("Could not open TNODELST $opt_lst_tnodelst\n");
@@ -1288,3 +1310,4 @@ sub gettime
 # 0.80000  : Advisory on virtual hub table update agents
 #          : Add summary line txt file for caller
 #          : Support workpath better
+# 0.81000  : Add advisory on TEMA 6.1 level
