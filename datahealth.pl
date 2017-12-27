@@ -29,7 +29,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.75000";
+my $gVersion = "0.80000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -138,6 +138,26 @@ my @magent_tems_version = ();            # version of managing agent TEMS
 my $test_node;
 my $invalid_node;
 
+my $key;
+my $vtx;                                 # index
+my $vti = -1;                            # count of node types affecting virtual hub table
+my @vtnode = ();                         # virtual hub table agent type
+my %vtnodex = ();                        # virtual hub table agent index
+my @vtnode_rate = ();                    # how many minutes apart
+my @vtnode_tab = ();                     # number of virtual hub tables updated
+my @vtnode_ct = ();                      # count of virtual table hub agents
+my @vtnode_hr = ();                      # virtual hub table updates per hour
+my $vtnode_tot_ct = 0;                   # total count of virtual table hub agents
+my $vtnode_tot_hr = 0;                   # total virtual hub table updates per hour
+my $vtnodes = "";                        # list of node types affecting virtual hub table updates
+
+# initialize above table
+$vti = 0;$key="UX";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=3;$vtnode_tab[$vti]=1;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 1;$key="OQ";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=2;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 2;$key="OR";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=2;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 3;$key="OY";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=2;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 4;$key="Q5";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=1;$vtnode_tab[$vti]=1;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 5;$key="HV";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=1;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
 
 my $snx;
 
@@ -228,15 +248,26 @@ my $opt_v;                      # verbose flag
 my $opt_vt;                     # verbose traffic flag
 my $opt_dpr;                    # dump data structure flag
 my $opt_o;                      # output file
+my $opt_s;                      # write summary line if max impact > 0
 my $opt_workpath;               # Directory to store output files
 my $opt_nohdr = 0;              # skip header to make regression testing easier
-my $opt_subpc_warn;;             # advise when subnode length > 90 of limit on pre ITM 623 FP2
+my $opt_subpc_warn;;            # advise when subnode length > 90 of limit on pre ITM 623 FP2
+my $opt_peak_rate;              # Advise when virtual hub update peak is higher
 
 # do basic initialization from parameters, ini file and standard input
 
 $rc = init($args_start);
 
 $opt_log = $opt_workpath . $opt_log;
+$opt_o = $opt_workpath . $opt_o;
+$opt_s = $opt_workpath . $opt_s;
+$opt_log =~ s/\\\\/\//g;
+$opt_log =~ s/\/\//\//g;
+$opt_o =~ s/\\\\/\//g;
+$opt_o =~ s/\/\//\//g;
+$opt_s =~ s/\\\\/\//g;
+$opt_s =~ s/\/\//\//g;
+
 open FH, ">>$opt_log" or die "can't open $opt_log: $!";
 
 logit(0,"SITAUDIT000I - ITM_Situation_Audit $gVersion $args_start");
@@ -260,6 +291,7 @@ my @advimpact = ();
 my @advcode = ();
 my %advx = ();
 my $hubi;
+my $max_impact = 0;
 
 
 if ($hub_tems_no_tnodesav == 1) {
@@ -290,6 +322,7 @@ if ($hub_tems_no_tnodesav == 0) {
       next if !defined $tx;
       $hub_tems_ct += 1;
       $tems_ct[$tx] += 1;
+#      print "finished $i $node1 tems[$tems1,$tx] hub_count[$hub_tems_ct] tems_count[$tems_ct[$tx]]\n";
    }
 }
 
@@ -400,7 +433,6 @@ for ($i=0;$i<=$nsavei;$i++) {
 for ($i=0;$i<=$hsavei;$i++) {
    next if $hsave_ct[$i] == 1;
    next if !defined $hsave[$i];
-#$DB::single=2   if $hsave[$i] eq "ip.pipe:#10.210.12.141[10055]<NM>ktazp1928</NM>";
 
    my $pi;
    my @hagents = split(" ",$hsave_ndx[$i]);
@@ -452,6 +484,26 @@ for ($i=0;$i<=$nlisti;$i++) {
    }
 }
 
+## Check for virtual hub table update impact
+my $peak_rate = 0;
+for ($i=0;$i<=$vti;$i++) {
+   next if $vtnode_hr[$i] == 0;
+   $peak_rate +=  $vtnode_ct[$i] * $vtnode_tab[$i];
+}
+if ($peak_rate > $opt_peak_rate) {
+   for ($i=0;$i<=$vti;$i++) {
+      next if $vtnode_hr[$i] == 0;
+      $advi++;$advonline[$advi] = "Virtual Hub Table updates $vtnode_hr[$i] per hour $vtnode_ct[$i] agents";
+      $advcode[$advi] = "DATAHEALTH1018W";
+      $advimpact[$advi] = 80;
+      $advsit[$advi] = $vtnode[$i];
+   }
+   $advi++;$advonline[$advi] = "Virtual Hub Table updates peak $peak_rate per second more then nominal $opt_peak_rate,  per hour [$vtnode_tot_hr], total agents $vtnode_tot_ct";
+   $advcode[$advi] = "DATAHEALTH1018W";
+   $advimpact[$advi] = 80;
+   $advsit[$advi] = "total";
+}
+
 for ($i=0;$i<=$mlisti;$i++) {
    next if $mlist_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODELST Type M duplicate NODE/NODELIST";
@@ -480,14 +532,13 @@ if ($hub_tems_no_tnodesav == 0) {
 
    print OH "Hub,$hub_tems,$hub_tems_ct\n";
    for (my $i=0;$i<=$temsi;$i++) {
-      next if $i == $hubi;
       if ($tems_ct[$i] > $remote_limit){
          $advi++;$advonline[$advi] = "TEMS has $tems_ct[$i] managed systems which exceeds limits $remote_limit";
          $advcode[$advi] = "DATAHEALTH1006W";
          $advimpact[$advi] = 75;
          $advsit[$advi] = $tems[$i];
       }
-      print OH "Remote,$tems[$i],$tems_ct[$i]\n";
+      print OH "TEMS,$tems[$i],$tems_ct[$i]\n";
    }
 print OH "\n";
 }
@@ -512,10 +563,28 @@ if ($advi != -1) {
       my $j = $advx{$f};
       my $skipone = $advcode[$j];
       print OH "$advimpact[$j],$advcode[$j],$advsit[$j],$advonline[$j]\n";
-
+      $max_impact = $advimpact[$j] if $advimpact[$j] > $max_impact;
    }
 }
-my $exit_code = ($advi != -1);
+
+if ($opt_s ne "") {
+   if ($max_impact > 0 ) {
+        open SH, ">$opt_s";
+        if (tell(SH) != -1) {
+           $oneline = "REFIC ";
+           $oneline .= $max_impact . " ";
+           $oneline .= $tadvi . " ";
+           $oneline .= "https://ibm.biz/BdFrJL";
+           print SH $oneline . "\n";
+           close SH;
+        }
+   }
+}
+
+my $exit_code = 0;
+if ($advi != -1) {
+   $exit_code = ($max_impact > 0);
+}
 exit $exit_code;
 
 # Record data from the TNODESAV table. This is the disk version of [most of] the INODESTS or node status table.
@@ -535,11 +604,19 @@ sub new_tnodesav {
       $nsave_ct[$nsx] = 0;
       $nsave_o4online[$nsx] = $io4online;
    }
+   $vtx = $vtnodex{$iproduct};
+   if (defined $vtx) {
+      $vtnode_ct[$vtx] += 1;
+      $vtnode_tot_ct += 1;
+      my $node_hr = (60/$vtnode_rate[$vtx])*$vtnode_tab[$vtx];
+      $vtnode_hr[$vtx] += $node_hr;
+      $vtnode_tot_hr += $node_hr;
+   }
    # count number of nodes. If more then one there is a primary key duplication error
    $nsave_ct[$nsx] += 1;
    # track the TEMS and the version
    if ($iproduct eq "EM") {
-      $tx = $temsx{inode};
+      $tx = $temsx{$inode};
       if (!defined $tx) {
          $temsi += 1;
          $tx = $temsi;
@@ -971,6 +1048,10 @@ sub init {
          shift(@ARGV);
          $opt_o = shift(@ARGV);
          die "option -o with no following output file specification\n" if !defined $opt_o;
+      } elsif ( $ARGV[0] eq "-s") {
+         shift(@ARGV);
+         $opt_s = shift(@ARGV);
+         die "option -s with no following output file specification\n" if !defined $opt_s;
       } elsif ( $ARGV[0] eq "-workpath") {
          shift(@ARGV);
          $opt_workpath = shift(@ARGV);
@@ -984,6 +1065,10 @@ sub init {
       } elsif ( $ARGV[0] eq "-lst") {
          shift(@ARGV);
          $opt_lst = 1;
+      } elsif ( $ARGV[0] eq "-s") {
+         shift(@ARGV);
+         $opt_s = shift(@ARGV);
+         die "option -s with no following debuglevel specification\n" if !defined $opt_s;
       } elsif ( $ARGV[0] eq "-subpc") {
          shift(@ARGV);
          $opt_subpc_warn = shift(@ARGV);
@@ -996,18 +1081,10 @@ sub init {
 
    # Following are command line only defaults. All others can be set from the ini file
 
-   if (!defined $opt_ini) {$opt_ini = "sitaudit.ini";}         # default control file if not specified
+   if (!defined $opt_ini) {$opt_ini = "datahealth.ini";}         # default control file if not specified
    if ($opt_h) {&GiveHelp;}  # GiveHelp and exit program
    if (!defined $opt_debuglevel) {$opt_debuglevel=90;}         # debug logging level - low number means fewer messages
    if (!defined $opt_debug) {$opt_debug=0;}                    # debug - turn on rare error cases
-   if (defined $opt_txt) {
-      $opt_txt_tnodelst = "QA1CNODL.DB.TXT";
-      $opt_txt_tnodesav = "QA1DNSAV.DB.TXT";
-   }
-   if (defined $opt_lst) {
-      $opt_lst_tnodesav  = "QA1DNSAV.DB.LST";
-      $opt_lst_tnodelst  = "QA1CNODL.DB.LST";
-   }
 
    # ini control file must be present
 
@@ -1042,10 +1119,12 @@ sub init {
             if ($words[0] eq "log") {$opt_log = $words[1];}
             elsif ($words[0] eq "log") {$opt_log = $words[1];}
             elsif ($words[0] eq "o") {$opt_o = $words[1];}
+            elsif ($words[0] eq "s") {$opt_s = $words[1];}
             elsif ($words[0] eq "workpath") {$opt_workpath = $words[1];}
             elsif ($words[0] eq "subpc") {$opt_subpc_warn = $words[1];}
+            elsif ($words[0] eq "peak_rate") {$opt_peak_rate = $words[1];}
             else {
-               print STDERR "SITAUDIT005E ini file $l - unknown control oneline\n"; # kill process after current phase
+               print STDERR "SITAUDIT005E ini file $l - unknown control $oneline\n"; # kill process after current phase
                $run_status++;
             }
             next;
@@ -1062,15 +1141,25 @@ sub init {
    if (!defined $opt_v) {$opt_v=0;}                            # verbose flag
    if (!defined $opt_vt) {$opt_vt=0;}                          # verbose traffic default off
    if (!defined $opt_dpr) {$opt_dpr=0;}                        # data dump flag
-   if (!defined $opt_o) {$opt_o="datahealth.csv";}               # default output file
+   if (!defined $opt_o) {$opt_o="datahealth.csv";}             # default report file
+   if (!defined $opt_s) {$opt_s="datahealth.txt";}             # default summary line
    if (!defined $opt_workpath) {$opt_workpath="";}             # default is current directory
    if (!defined $opt_txt) {$opt_txt = 0;}                      # default no txt input
    if (!defined $opt_lst) {$opt_lst = 0;}                      # default no lst input
-   if (!defined $opt_subpc_warn) {$opt_subpc_warn=90;}                   # default warn on 90% of maximum subnode list
+   if (!defined $opt_subpc_warn) {$opt_subpc_warn=90;}         # default warn on 90% of maximum subnode list
+   if (!defined $opt_peak_rate) {$opt_peak_rate=32;}            # default warn on 32 virtual hub table updates per second
 
    $opt_workpath =~ s/\\/\//g;                                 # convert to standard perl forward slashes
    if ($opt_workpath ne "") {
       $opt_workpath .= "\/" if substr($opt_workpath,length($opt_workpath)-1,1) ne "\/";
+   }
+   if (defined $opt_txt) {
+      $opt_txt_tnodelst = $opt_workpath . "QA1CNODL.DB.TXT";
+      $opt_txt_tnodesav = $opt_workpath . "QA1DNSAV.DB.TXT";
+   }
+   if (defined $opt_lst) {
+      $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
+      $opt_lst_tnodelst  = $opt_workpath . "QA1CNODL.DB.LST";
    }
 
 
@@ -1196,3 +1285,6 @@ sub gettime
 # 0.72000  : count size of subnode list and advise if TEMS < "06.23.02" and near 32K
 # 0.73000  : Handle duplicate hostaddr with null thrunode better
 # 0.75000  : Advisory on invalid nodes and nodelist names
+# 0.80000  : Advisory on virtual hub table update agents
+#          : Add summary line txt file for caller
+#          : Support workpath better
