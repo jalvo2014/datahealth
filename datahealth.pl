@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.99000";
+my $gVersion = "1.00100";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -559,7 +559,6 @@ if ($hub_tems_no_tnodesav == 0) {
       $hubi = $temsx{$hub_tems};
       for ($i=0; $i<=$nlistvi; $i++) {
          my $node1 = $nlistv[$i];
-#$DB::single=2 if $node1 eq "Primary:ADMINIB-DN65QI8:NT";
          next if $nlistv_tems[$i] eq "";
          my $tems1 = $nlistv_tems[$i];
          my $tx = $temsx{$tems1};
@@ -827,6 +826,13 @@ for ($i=0;$i<=$nsavei;$i++) {
       $advimpact[$advi] = 50;
       $advsit[$advi] = $nsave[$i];
    }
+
+   if (index($nsave[$i]," ") != -1) {
+      $advi++;$advonline[$advi] = "TNODESAV node name with embedded blank";
+      $advcode[$advi] = "DATAHEALTH1049W";
+      $advimpact[$advi] = 25;
+      $advsit[$advi] = $nsave[$i];
+   }
    next if $nsave_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODESAV duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1007E";
@@ -946,6 +952,12 @@ for ($i=0;$i<=$nlistvi;$i++) {
       $advimpact[$advi] = 50;
       $advsit[$advi] = $nlistv[$i];
    }
+   if (index($nlistv[$i]," ") != -1) {
+      $advi++;$advonline[$advi] = "TNODELST TYPE V node name with embedded blank";
+      $advcode[$advi] = "DATAHEALTH1050W";
+      $advimpact[$advi] = 25;
+      $advsit[$advi] = $nlistv[$i];
+   }
    $invalid_node = 0;
    if (index("\.\ \*\#",substr($thru1,0,1)) != -1) {
       $invalid_node = 1;
@@ -958,6 +970,12 @@ for ($i=0;$i<=$nlistvi;$i++) {
       $advi++;$advonline[$advi] = "TNODELST Type V Thrunode $thru1 invalid name";
       $advcode[$advi] = "DATAHEALTH1027E";
       $advimpact[$advi] = 50;
+      $advsit[$advi] = $nlistv[$i];
+   }
+   if (index($thru1," ") != -1) {
+      $advi++;$advonline[$advi] = "TNODELST TYPE V Thrunode [$thru1] with embedded blank";
+      $advcode[$advi] = "DATAHEALTH1051W";
+      $advimpact[$advi] = 25;
       $advsit[$advi] = $nlistv[$i];
    }
 }
@@ -976,6 +994,12 @@ for ($i=0;$i<=$nlisti;$i++) {
       $advi++;$advonline[$advi] = "TNODELIST NODETYPE=M invalid nodelist name";
       $advcode[$advi] = "DATAHEALTH1017E";
       $advimpact[$advi] = 50;
+      $advsit[$advi] = $nlist[$i];
+   }
+   if (index($nlist[$i]," ") != -1) {
+      $advi++;$advonline[$advi] = "TNODELST NODETYPE=M nodelist with embedded blank";
+      $advcode[$advi] = "DATAHEALTH1052W";
+      $advimpact[$advi] = 25;
       $advsit[$advi] = $nlist[$i];
    }
 }
@@ -1992,35 +2016,48 @@ sub init_txt {
 sub parse_lst {
   my ($lcount,$inline) = @_;            # count of desired chunks and the input line
   my @retlist = ();                     # an array of strings to return
-  my $chunk;                            # One chunk
+  my $chunk = "";                       # One chunk
   my $oct = 0;                          # output chunk count
   my $rest;                             # the rest of the line to process
   chop($inline);
   $inline =~ /\]\s*(.*)/;               # skip by [NNN]  field
   $rest = " " . $1 . "        ";
+  my $lenrest = length($rest);          # length of $rest string
   my $restpos = 0;                      # postion studied in the $rest string
+  my $nextpos = 0;                      # floating next position in $rest string
 
   # at each stage we can identify a field with values
   #         <blank>data<blank>
   # and a blank field
   #         <blank><blank>
+  # We allow a single embedded blank as part of the field
+  #         data<blank>data
   # for the last field, we allow imbedded blanks and logic not needed
-  while ($oct < $lcount) {         # stop when output chunk met
-     $oct += 1;
+  while ($restpos < $lenrest) {
      if ($oct < $lcount) {
         if (substr($rest,$restpos,2) eq "  ") {               # null string case
            $chunk = "";
+           push @retlist, $chunk;                 # record null data chunk
            $restpos += 2;
         } else {
-           my $nextpos = index($rest," ",$restpos+1);
-           $chunk = substr($rest,$restpos+1,$nextpos-$restpos -1);
-           $restpos = $nextpos + 1;
+           $nextpos = index($rest," ",$restpos+1);
+           if (substr($rest,$nextpos,2) eq "  ") {
+              $chunk .= substr($rest,$restpos+1,$nextpos-$restpos-1);
+              push @retlist, $chunk;                 # record null data chunk
+              $chunk = "";
+              $oct += 1;
+              $restpos = $nextpos + 1;
+           } else {
+              $chunk .= substr($rest,$restpos+1,$nextpos-$restpos);
+              $restpos = $nextpos;
+           }
         }
      } else {
         $chunk = substr($rest,$restpos+1);
         $chunk =~ s/\s+$//;                    # strip trailing blanks
+        push @retlist, $chunk;                 # record last data chunk
+        last;
      }
-     push @retlist, $chunk;
   }
   return @retlist;
 }
@@ -2420,7 +2457,7 @@ sub init {
    $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
    $opt_miss_fn = $opt_workpath . "MISSING.SQL";
 
- my ($isec,$imin,$ihour,$imday,$imon,$iyear,$iwday,$iyday,$iisdst) = localtime();
+ my ($isec,$imin,$ihour,$imday,$imon,$iyear,$iwday,$iyday,$iisdst) = localtime(time()+86400);
    $clstdate = "1";
    $clstdate .= substr($iyear,-2,2);
    $imon += 1;
@@ -2592,3 +2629,6 @@ sub gettime
 # 0.98000  : Reconcile -lst logic
 #          : Change 1043E warning for cases where agent is release higher then TEMS
 # 0.99000  : Fix deficit% in REFIC line
+# 1.00000  : Parse LST files better
+#          : Add 1049W/1050W/1051W/1052W to warn of node/nodelist names with embedded blanks
+# 1.00100  : better future time check
