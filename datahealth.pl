@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.21000";
+my $gVersion = "1.22000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -68,6 +68,7 @@ sub new_tnodelstv;                       # process the TNODELST NODETYPE=V recor
 sub new_tobjaccl;                        # process the TOBJACCL records
 sub fill_tnodelstv;                      # reprocess new TNODELST NODETYPE=V data
 sub valid_lstdate;                       # validate the LSTDATE
+sub get_epoch;                           # convert from ITM timestamp to epoch seconds
 
 my $sitdata_start_time = gettime();     # formated current time for report
 
@@ -513,6 +514,11 @@ my @tci_calid = ();
 my %eibnodex = ();
 
 my %eventx = ();
+my $eventx_start = -1;
+my $eventx_last = -1;
+my $eventx_dur;
+
+my %epochx;
 
 # option and ini file variables variables
 
@@ -1235,7 +1241,7 @@ for ($i=0;$i<=$nlistvi;$i++) {
    if (!defined $nsx) {
       $advi++;$advonline[$advi] = "TNODELST Type V Thrunode $thru1 missing in Node Status";
       $advcode[$advi] = "DATAHEALTH1025E";
-      $advimpact[$advi] = 100;
+      $advimpact[$advi] = 0;
       $advsit[$advi] = $nlistv[$i];
       if ($opt_miss == 1) {
          my $key = "DATAHEALTH1025E" . " " . $thru1;
@@ -1620,15 +1626,15 @@ print OH "\n" if $top20 > 0;
 
 
 $top20 = 0;
+$eventx_dur = 0;
 print OH "Top 20 Situation Event Report\n";
-print OH "Situation,Count,Open,Close,Nodes,Thrunode,Interval,Atomize\n";
-foreach my $f (sort { $eventx{$b}->{count} cmp $eventx{$a}->{count} ||
+print OH "Situation,Count,Open,Close,Nodes,Interval,Atomize\n";
+foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
                       $a cmp $b
                     } keys %eventx) {
    $top20 += 1;
    last if $top20 > 20;
    $oneline = $eventx{$f}->{sitname} . ",";
-   $oneline .= $eventx{$f}->{atomize} . ",";
    $oneline .=  $eventx{$f}->{count} . ",";
    $oneline .=  $eventx{$f}->{open} . ",";
    $oneline .=  $eventx{$f}->{close} . ",";
@@ -1637,6 +1643,10 @@ foreach my $f (sort { $eventx{$b}->{count} cmp $eventx{$a}->{count} ||
    $oneline .=  $eventx{$f}->{reeval} . ",";
    $oneline .=  $eventx{$f}->{atomize} . ",";
    print OH "$oneline\n";
+}
+if ($top20 != 0) {
+   $eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
+   print OH "Total,$eventx_dur seconds,\n";
 }
 
 print OH "\n";
@@ -2440,6 +2450,16 @@ sub new_tsitstsh {
     if ($igbltmstmp > $sit_ref->{last}) {
        $sit_ref->{last} = $igbltmstmp;
     }
+    if ($eventx_start == -1) {
+       $eventx_start = $igbltmstmp;
+       $eventx_last = $igbltmstmp;
+    }
+    if ($igbltmstmp < $eventx_start) {
+       $eventx_start = $igbltmstmp;
+    }
+    if ($igbltmstmp > $eventx_last) {
+       $eventx_last = $igbltmstmp;
+    }
     my $okey = $ioriginnode . "|" . $inode;
     my $origin_ref =  $sit_ref->{origin}{$okey};
     if (!defined $origin_ref) {
@@ -2965,13 +2985,13 @@ sub init_txt {
       $igbltmstmp =~ s/\s+$//;   #trim trailing whitespace
       $ideltastat = substr($oneline,17,1);
       $ideltastat =~ s/\s+$//;   #trim trailing whitespace
-      $isitname = substr($oneline,27,32);
+      $isitname = substr($oneline,19,32);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
-      $inode = substr($oneline,60,32);
+      $inode = substr($oneline,52,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
-      $ioriginnode = substr($oneline,93,32);
+      $ioriginnode = substr($oneline,85,32);
       $ioriginnode =~ s/\s+$//;   #trim trailing whitespace
-      $iatomize = substr($oneline,126,128);
+      $iatomize = substr($oneline,118,128);
       $iatomize =~ s/\s+$//;   #trim trailing whitespace
       new_tsitstsh($igbltmstmp,$ideltastat,$isitname,$inode,$ioriginnode,$iatomize);
    }
@@ -3714,7 +3734,19 @@ sub GiveHelp
 EndOFHelp
 exit;
 }
-
+sub get_epoch {
+   use POSIX;
+   my $itm_stamp = shift;
+   my $unixtime = $epochx{$itm_stamp};
+   if (!defined $unixtime) {
+     ( my $iyy, my $imo, my $idd, my $ihh, my $imm, my $iss ) =  unpack( "A2 A2 A2 A2 A2 A2", substr( $itm_stamp, 1 ) );
+      my $wday = 0;
+      my $yday = 0;
+      $iyy += 100;
+      $unixtime = mktime ($iss, $imm, $ihh, $idd, $imo, $iyy, $wday, $yday);
+   }
+   return $unixtime;
+}
 
 #------------------------------------------------------------------------------
 # capture log record
@@ -3835,3 +3867,5 @@ sub gettime
 #          : better report on possible duplicate agents, screen TNODELST for just M records
 # 1.20000  : Report on Situation Flippers and Fireflys
 # 1.21000  : Add TEMA APARs from ITM 630 FP6
+# 1.22000  : Reduce some advisory impact levels
+#          : correct some titles and add some event related times
