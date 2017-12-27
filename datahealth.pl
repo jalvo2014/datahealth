@@ -29,7 +29,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.71000";
+my $gVersion = "0.72000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -42,16 +42,9 @@ my $run_status = 0;                    # A count of pending runtime errors - use
 
 # some common variables
 
-#y @list = ();                         # used to get result of good SOAP capture
-#y @alist = ();                        # used to get result of good SOAP capture descending order
-my $rc;
-my $node;
-my $myargs;
-my $survey_sqls = 0;                     # count of SQLs
-my $survey_sql_time = 0;                 # record total elapsed time in SQL processing
+my $rc;                                  # command return code
 my @words = ();
 my $rt;
-my $debugfile;
 my $ll;
 my $pcount;
 my $oneline;
@@ -67,6 +60,9 @@ sub gettime;                             # get time
 sub init_txt;                            # input from txt files
 sub init_lst;                            # input from lst files
 sub parse_lst;                           # parse the KfwSQLClient output
+sub new_tnodesav;                        # process the TNODESAV columns
+sub new_tnodelstv;                       # process the TNODELST NODETYPE=V records
+sub fill_tnodelstv;                      # reprocess new TNODELST NODETYPE=V data
 
 my $sitdata_start_time = gettime();     # formated current time for report
 
@@ -113,6 +109,7 @@ my %hsavex = ();
 my @hsave_sav = ();
 my @hsave_ndx = ();
 my @hsave_ct = ();
+my @hsave_thrundx = ();
 
 my $tx;                                  # TEMS information
 my $temsi = -1;                          # count of TEMS
@@ -123,13 +120,17 @@ my @tems_ct = ();                        # Count of managed systems
 my @tems_version = ();                   # TEMS version number
 my $hub_tems = "";                       # hub TEMS nodeid
 my $hub_tems_no_tnodesav = 0;            # hub TEMS nodeid missingfrom TNODESAV
+my $hub_tems_ct = 0;                     # total agents managed by a hub TEMS
+
+my $mx;                                  # index
+my $magenti = -1;                        # count of managing agents
+my @magent = ();                         # name of managing agent
+my %magentx = ();                        # hash from managing agent name to index
+my @magent_subct = ();                   # count of subnode agents
+my @magent_sublen = ();                  # length of subnode agent list
+my @magent_tems_version = ();            # version of managing agent TEMS
 
 my $snx;
-my $snodei = -1;
-my @snode = ();
-my %snodex = ();
-
-#my $o_file = "datahealth.csv";
 
 
 # Situation Group related data
@@ -217,15 +218,10 @@ my $opt_h;                      # help file
 my $opt_v;                      # verbose flag
 my $opt_vt;                     # verbose traffic flag
 my $opt_dpr;                    # dump data structure flag
-my $opt_std;                    # Credentials from standard input
 my $opt_o;                      # output file
 my $opt_workpath;               # Directory to store output files
-my $opt_runall;                 # check Run at Startup = *OFF situations
-my $user="";
-my $passwd="";
-my $opt_nodist;                 # report on AUTOSTART=*YES but no distribution
 my $opt_nohdr = 0;              # skip header to make regression testing easier
-my $opt_dist;                   # report on distribution
+my $opt_subpc_warn;;             # advise when subnode length > 90 of limit on pre ITM 623 FP2
 
 # do basic initialization from parameters, ini file and standard input
 
@@ -272,6 +268,8 @@ if ($nlistvi == -1) {
    $hub_tems_no_tnodesav = 1;
 }
 
+# following produces a report of how many agents connect to a TEMS.
+
 if ($hub_tems_no_tnodesav == 0) {
    $hubi = $temsx{$hub_tems};
 
@@ -281,8 +279,8 @@ if ($hub_tems_no_tnodesav == 0) {
       my $tems1 = $nlistv_tems[$i];
       my $tx = $temsx{$tems1};
       next if !defined $tx;
+      $hub_tems_ct += 1;
       $tems_ct[$tx] += 1;
-      $tems_ct[$hubi] += 1;
    }
 }
 
@@ -300,11 +298,8 @@ for ($i=0; $i<=$nsavei; $i++) {
 
 for ($i=0; $i<=$nsavei; $i++) {
    my $node1 = $nsave[$i];
-#$DB::single=2 if $i >= 507;
    next if $nsave_product[$i] eq "EM";
    $nsx = $nlistvx{$node1};
-#  $DB::single=2 if ! defined $nsx;
-#$DB::single=2 if $node1 eq "CA_MyEstimates_ser:czztwa04:KYNS";
    if (defined $nsx) {
       my $subn = 0;
       my $thru1 = $nlistv_thrunode[$nsx];
@@ -327,6 +322,17 @@ for ($i=0; $i<=$nsavei; $i++) {
          $advimpact[$advi] = 20;
          $advsit[$advi] = $node1;
       }
+   }
+}
+
+for ($i=0; $i<=$magenti;$i++) {
+   my $onemagent = $magent[$i];
+   next if $magent_tems_version[$i] ge "06.23.02";
+   if ($magent_sublen[$i]*100 > $opt_subpc_warn*32768){
+      $advi++;$advonline[$advi] = "Managing agent subnodelist is $magent_sublen[$i],  more then $opt_subpc_warn% of 32768 bytes";
+      $advcode[$advi] = "DATAHEALTH1015W";
+      $advimpact[$advi] = 80;
+      $advsit[$advi] = $onemagent;
    }
 }
 
@@ -364,7 +370,7 @@ for ($i=0;$i<=$nsavei;$i++) {
    next if $nsave_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODESAV duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1007E";
-   $advimpact[$advi] = 100;
+   $advimpact[$advi] = 105;
    $advsit[$advi] = $nsave[$i];
 }
 
@@ -374,21 +380,16 @@ for ($i=0;$i<=$hsavei;$i++) {
    my $pi;
    my @hagents = split(" ",$hsave_ndx[$i]);
    my $pagents = "";
+   my @tagents = split(" ",$hsave_thrundx[$i]);
    for (my $j=0;$j<=$#hagents;$j++) {
       $pi = $hagents[$j];
       my $oneagent = $nsave[$pi];
-      my $vx = $nlistvx{$oneagent};
-      if (defined $vx) {
-         my $thrunode = $nlistv_thrunode[$vx];
-         my $tx = $temsx{$thrunode};
-         if (defined $tx) {
-            $pagents .= $nsave[$pi] . "[" . $nsave_o4online[$pi] . "] ";
-         }
+      my $onethru = $tagents[$j];
+      my $nx = $nsavex{$oneagent};
+      if (defined $nx) {
+         $pagents .= $nsave[$pi]. "[$onethru][Y] " if $nsave_o4online[$nx] eq "Y";
       } else {
-         my $nx = $nsavex{$oneagent};
-         if (defined $nx) {
-            $pagents .= $nsave[$pi]. "[Y] " if $nsave_o4online[$nx] eq "Y";
-         }
+         $pagents .= $nsave[$pi]. "[][Y] " if $nsave_o4online[$nx] eq "Y";
       }
    }
    next if $pagents eq "";
@@ -402,7 +403,7 @@ for ($i=0;$i<=$nlistvi;$i++) {
    next if $nlistv_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODELST Type V duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1008E";
-   $advimpact[$advi] = 100;
+   $advimpact[$advi] = 105;
    $advsit[$advi] = $nlistv[$i];
 }
 
@@ -410,7 +411,7 @@ for ($i=0;$i<=$mlisti;$i++) {
    next if $mlist_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODELST Type M duplicate NODE/NODELIST";
    $advcode[$advi] = "DATAHEALTH1009E";
-   $advimpact[$advi] = 100;
+   $advimpact[$advi] = 105;
    $advsit[$advi] = $mlist[$i];
 }
 
@@ -424,19 +425,19 @@ if ($hub_tems_no_tnodesav == 0) {
    my $hub_limit = 10000;
    $hub_limit = 20000 if substr($tems_ct[$hubi],0,5) gt "06.23";
 
-   if ($tems_ct[$hubi] > $hub_limit){
-      $advi++;$advonline[$advi] = "Hub TEMS has $tems_ct[$hubi] managed systems which exceeds limits $hub_limit";
+   if ($hub_tems_ct > $hub_limit){
+      $advi++;$advonline[$advi] = "Hub TEMS has $hub_tems_ct managed systems which exceeds limits $hub_limit";
       $advcode[$advi] = "DATAHEALTH1005W";
       $advimpact[$advi] = 75;
       $advsit[$advi] = $hub_tems;
    }
 
 
-   print OH "Hub,$hub_tems,$tems_ct[$hubi]\n";
+   print OH "Hub,$hub_tems,$hub_tems_ct\n";
    for (my $i=0;$i<=$temsi;$i++) {
       next if $i == $hubi;
       if ($tems_ct[$i] > $remote_limit){
-         $advi++;$advonline[$advi] = "Remote TEMS has $tems_ct[$i] managed systems which exceeds limits $remote_limit";
+         $advi++;$advonline[$advi] = "TEMS has $tems_ct[$i] managed systems which exceeds limits $remote_limit";
          $advcode[$advi] = "DATAHEALTH1006W";
          $advimpact[$advi] = 75;
          $advsit[$advi] = $tems[$i];
@@ -472,6 +473,224 @@ if ($advi != -1) {
 my $exit_code = ($advi != -1);
 exit $exit_code;
 
+# Record data from the TNODESAV table. This is the disk version of [most of] the INODESTS or node status table.
+# capture node name, product, version, online status
+
+sub new_tnodesav {
+   my ($inode,$iproduct,$iversion,$io4online,$ihostaddr) = @_;
+   $nsx = $nsavex{$inode};
+   if (!defined $nsx) {
+      $nsavei++;
+      $nsx = $nsavei;
+      $nsave[$nsx] = $inode;
+      $nsavex{$inode} = $nsx;
+      $nsave_sysmsl[$nsx] = 0;
+      $nsave_product[$nsx] = $iproduct;
+      $nsave_version[$nsx] = $iversion;
+      $nsave_ct[$nsx] = 0;
+      $nsave_o4online[$nsx] = $io4online;
+   }
+   # count number of nodes. If more then one there is a primary key duplication error
+   $nsave_ct[$nsx] += 1;
+   # track the TEMS and the version
+   if ($iproduct eq "EM") {
+      $tx = $temsx{inode};
+      if (!defined $tx) {
+         $temsi += 1;
+         $tx = $temsi;
+         $tems[$tx] = $inode;
+         $temsx{$inode} = $tx;
+         $tems_hub[$tx] = 0;
+         $tems_ct[$tx] = 0;
+         $tems_version[$tx] = $iversion;
+      }
+   }
+   # track individual HOSTADDR
+   # duplicates often reflect minor issues
+   if (defined $ihostaddr) {
+      if ($ihostaddr ne "") {
+         $hsx = $hsavex{$ihostaddr};
+         if (!defined $hsx) {
+            $hsavei++;
+            $hsx = $hsavei;
+            $hsave[$hsx] = $ihostaddr;
+            $hsavex{$ihostaddr} = $hsx;
+            $hsave_ndx[$hsx] = "";
+            $hsave_ct[$hsx] = 0;
+            $hsave_thrundx[$hsx] = "";
+         }
+
+         # record the node indexes of each duplicate
+         $hsave_ndx[$hsx] .= $nsx . " ";
+         $hsave_ct[$hsx] += 1;
+      }
+   }
+}
+
+# Record data from the TNODELST NODETYPE=V table. This is the ALIVE data which captures the thrunode
+
+sub new_tnodelstv {
+   my ($inodetype,$inodelist,$inode) = @_;
+   # The $inodelist is the managed system name. Record that data
+   $vlx = $nlistvx{$inodelist};
+   if (!defined $vlx) {
+      $nlistvi++;
+      $vlx = $nlistvi;
+      $nlistv[$vlx] = $inodelist;
+      $nlistvx{$inodelist} = $vlx;
+      $nlistv_thrunode[$vlx] = $inode;
+      $nlistv_tems[$vlx] = "";
+      $nlistv_ct[$vlx] = 0;
+   }
+
+   # The $inode is the thrunode, capture that data.
+   $nlistv_ct[$vlx] += 1;
+   $tx = $temsx{$inode};      # is thrunode a TEMS?
+   # keep track of managing agent - which have subnodes
+   # before ITM 623 FP2 this was limited in size and needs an advisory
+   if (!defined $tx) {        # if not it is a managing agent
+      $mx = $magentx{$inode};
+      if (!defined $mx) {
+         $magenti += 1;
+         $mx = $magenti;
+         $magent[$mx] = $inode;
+         $magentx{$inode} = $mx;
+         $magent_subct[$mx] = 0;
+         $magent_sublen[$mx] = 0;
+         $magent_tems_version[$mx] = "";
+      }
+      $magent_subct[$mx] += 1;
+      # the actual limit is the names in a list with single blank delimiter
+      # If the exceeds 32767 bytes, a TEMS crash or other malfunction can happen.
+      $magent_sublen[$mx] += length($inodelist) + 1;
+   } else {
+     # if directly connected to a TEMS, record the TEMS
+     $nlistv_tems[$vlx] = $tems[$tx];
+   }
+}
+
+# After the TNODELST NODETYPE=V data is captured, correlate data
+
+sub fill_tnodelstv {
+   #Go back and fill in the nlistv_tems
+   # If the node is a managing agent, determine what the TEMS it reports to
+   for ($i=0; $i<=$nlistvi; $i++) {
+       next if $nlistv_tems[$i] ne "";
+       my $subnode = $nlistv_thrunode[$i];
+       $vlx = $nlistvx{$subnode};
+       if (defined $vlx) {
+          $nlistv_tems[$i] = $nlistv_thrunode[$vlx];
+       }
+   }
+
+   #Go back and fill in the $magent_tems_version
+   #if the agent reports to a managing agent, count the instances and also
+   #record the TEMS version the managing agent connects to.
+   for ($i=0; $i<=$nlistvi; $i++) {
+       my $node1 = $nlistv[$i];
+       $mx = $magentx{$node1};
+       next if !defined $mx;
+       my $mnode = $magent[$mx];
+       $vlx = $nlistvx{$mnode};
+       next if !defined $vlx;
+       my $mthrunode = $nlistv_thrunode[$vlx];
+       $tx = $temsx{$mthrunode};
+       next if !defined $tx;
+       $magent_tems_version[$mx] = $tems_version[$tx];
+   }
+
+
+   #Go back and fill in the $hsave_thrundx
+   for ($i=0; $i<=$hsavei; $i++) {
+      my $pi;
+      next if $hsave_ndx[$i] eq "";
+      my @hagents = split(" ",$hsave_ndx[$i]);
+      my $pthrundx = "";
+      for (my $j=0;$j<=$#hagents;$j++) {
+         $pi = $hagents[$j];
+         my $oneagent = $nsave[$pi];
+         my $vx = $nlistvx{$oneagent};
+         if (!defined $vx) {
+            $pthrundx .= ". ";
+            next;
+         }
+         my $onethru = $nlistv_thrunode[$vx];
+         $tx = $temsx{$onethru};
+         if (!defined $tx) {
+            $pthrundx .= ". ";
+            next;
+         }
+         if ($nlistv_thrunode[$vx] ne "") {
+            $pthrundx .= $nlistv_thrunode[$vx] . " ";
+         } else {
+            $pthrundx .= ". ";
+         }
+      }
+      $hsave_thrundx[$i] = $pthrundx;
+   }
+   for ($i=0; $i<=$nlistvi; $i++) {
+       my $node1 = $nlistv[$i];
+       $mx = $magentx{$node1};
+       next if !defined $mx;
+       my $mnode = $magent[$mx];
+       $vlx = $nlistvx{$mnode};
+       next if !defined $vlx;
+       my $mthrunode = $nlistv_thrunode[$vlx];
+       $tx = $temsx{$mthrunode};
+       next if !defined $tx;
+       $magent_tems_version[$mx] = $tems_version[$tx];
+   }
+}
+
+
+# Record data from the TNODELST NODETYPE=M table. This is the MSL
+
+sub new_tnodelstm {
+my ($inodetype,$inodelist,$inode) = @_;
+   return if $inode eq "--EMPTYNODE--";         # ignore empty tables
+   # primary key is node and nodelist. Track and count duplicates for the severe index error
+   $mkey = $inode . "|" . $inodelist;
+   $mlx = $mlistx{$mkey};
+   if (!defined $mlx) {
+      $mlisti += 1;
+      $mlx = $mlisti;
+      $mlist[$mlx] = $mkey;
+      $mlistx{$mkey} = $mlx;
+      $mlist_ct[$mlx] = 0;
+   }
+   $mlist_ct[$mlx] += 1;
+
+   # record the agent oriented data. During processing we will record data about
+   # various missing cases.
+   $mlx = $nlistmx{$inode};
+   if (!defined $mlx) {
+      $nlistmi++;
+      $mlx = $nlistmi;
+      $nlistm[$mlx] = $inode;
+      $nlistmx{$inode} = $mlx;
+      $nlistm_miss[$mlx] = 0;
+      $nlistm_nov[$mlx] = 0;
+   }
+
+   # record data about missing system generated MSLs
+   $nsx = $nsavex{$inode};
+   if (defined $nsx) {
+      $vlx = $nlistvx{$inode};
+      if (defined $vlx) {
+        my $lthrunode = $nlistv_thrunode[$vlx];
+        $tx = $temsx{$lthrunode};
+        if (defined $tx) {
+           $nsave_sysmsl[$nsx] += 1 if substr($inodelist,0,1) eq "*";
+        }
+      } else {
+        $nlistm_nov[$mlx] = 1 if $nsave_product[$nsx] ne "EM";
+      }
+   } else {
+      $nlistm_miss[$mlx] = 1;
+   }
+}
+
+
 # following routine gets data from txt files. tems2sql.pl is an internal only program which can
 # extract data from a TEMS database file.
 
@@ -500,8 +719,6 @@ sub init_txt {
       $ll += 1;
       next if $ll < 5;
       chop $oneline;
-#      my $plen = length($oneline);
-#   print "Working on sav $ll $plen\n";
       $inode = substr($oneline,0,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
       $io4online = substr($oneline,33,1);
@@ -518,47 +735,7 @@ sub init_txt {
          $ihostaddr = substr($oneline,59);
          $ihostaddr =~ s/\s+$//;   #trim trailing whitespace
       }
-      $iversion =~ s/\s+$//;   #trim trailing whitespace
-      $nsx = $nsavex{$inode};
-      if (!defined $nsx) {
-         $nsavei++;
-         $nsx = $nsavei;
-         $nsave[$nsx] = $inode;
-         $nsavex{$inode} = $nsx;
-         $nsave_sysmsl[$nsx] = 0;
-         $nsave_product[$nsx] = $iproduct;
-         $nsave_version[$nsx] = $iversion;
-         $nsave_ct[$nsx] = 0;
-         $nsave_o4online[$nsx] = $io4online;
-      }
-      $nsave_ct[$nsx] += 1;
-      if ($iproduct eq "EM") {
-         $tx = $temsx{inode};
-         if (!defined $tx) {
-            $temsi += 1;
-            $tx = $temsi;
-            $tems[$tx] = $inode;
-            $temsx{$inode} = $tx;
-            $tems_hub[$tx] = 0;
-            $tems_ct[$tx] = 0;
-            $tems_version[$tx] = $iversion;
-         }
-      }
-      if (defined $ihostaddr) {
-         if ($ihostaddr ne "") {
-            $hsx = $hsavex{$ihostaddr};
-            if (!defined $hsx) {
-               $hsavei++;
-               $hsx = $hsavei;
-               $hsave[$nsx] = $ihostaddr;
-               $hsavex{$ihostaddr} = $hsx;
-               $hsave_ndx[$hsx] = "";
-               $hsave_ct[$hsx] = 0;
-            }
-            $hsave_ndx[$hsx] .= $nsx . " ";
-            $hsave_ct[$hsx] += 1;
-         }
-      }
+      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr);
    }
 
    open(KLST, "<$opt_txt_tnodelst") || die("Could not open TNODELST $opt_txt_tnodelst\n");
@@ -577,42 +754,9 @@ sub init_txt {
       $inodelist =~ s/\s+$//;   #trim trailing whitespace
       $inode = substr($oneline,0,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
-      $vlx = $nlistvx{$inodelist};
-      if (!defined $vlx) {
-         $nlistvi++;
-         $vlx = $nlistvi;
-         $nlistv[$vlx] = $inodelist;
-         $nlistvx{$inodelist} = $vlx;
-         $nlistv_thrunode[$vlx] = $inode;
-         $nlistv_tems[$vlx] = "";
-         $nlistv_ct[$vlx] = 0;
-      }
-      $nlistv_ct[$vlx] += 1;
-      $tx = $temsx{$inode};      # is thrunode a TEMS?
-      if (!defined $tx) {
-         $snx = $snodex{$inode};
-         if (!defined $snx) {
-            $snodei += 1;
-            $snx = $snodei;
-            $snode[$snx] = $inode;
-            $snodex{$inode} = $snx;
-         }
-      } else {
-        $nlistv_tems[$vlx] = $tems[$tx];
-      }
+      new_tnodelstv($inodetype,$inodelist,$inode);
    }
-
-   #Go back and fill in the nlistv_tems
-   for ($i=0; $i<=$nlistvi; $i++) {
-       next if $nlistv_tems[$i] ne "";
-       my $subnode = $nlistv_thrunode[$i];
-       $vlx = $nlistvx{$subnode};
-       if (defined $vlx) {
-          $nlistv_tems[$i] = $nlistv_thrunode[$vlx];
-       }
-   }
-
-
+   fill_tnodelstv();
 
 
    # Get data for all TNODELST type M records
@@ -620,7 +764,6 @@ sub init_txt {
    foreach $oneline (@klst_data) {
       $ll += 1;
       next if $ll < 5;
-#      chop $oneline;
       $inodetype = substr($oneline,33,1);
       $inodelist = substr($oneline,42,32);
       $inodelist =~ s/\s+$//;   #trim trailing whitespace
@@ -638,42 +781,7 @@ sub init_txt {
          }
       }
       next if $inodetype ne "M";
-      next if $inode eq "--EMPTYNODE--";
-      $mkey = $inode . "|" . $inodelist;
-      $mlx = $mlistx{$mkey};
-      if (!defined $mlx) {
-         $mlisti += 1;
-         $mlx = $mlisti;
-         $mlist[$mlx] = $mkey;
-         $mlistx{$mkey} = $mlx;
-         $mlist_ct[$mlx] = 0;
-      }
-      $mlist_ct[$mlx] += 1;
-
-      $mlx = $nlistmx{$inode};
-      if (!defined $mlx) {
-         $nlistmi++;
-         $mlx = $nlistmi;
-         $nlistm[$mlx] = $inode;
-         $nlistmx{$inode} = $mlx;
-         $nlistm_miss[$mlx] = 0;
-         $nlistm_nov[$mlx] = 0;
-      }
-      $nsx = $nsavex{$inode};
-      if (defined $nsx) {
-         $vlx = $nlistvx{$inode};
-         if (defined $vlx) {
-           my $lthrunode = $nlistv_thrunode[$vlx];
-           $tx = $temsx{$lthrunode};
-           if (defined $tx) {
-              $nsave_sysmsl[$nsx] += 1 if substr($inodelist,0,1) eq "*";
-           }
-         } else {
-           $nlistm_nov[$mlx] = 1 if $nsave_product[$nsx] ne "EM";
-         }
-      } else {
-         $nlistm_miss[$mlx] = 1;
-      }
+      new_tnodelstm($inodetype,$inodelist,$inode);
    }
 }
 sub parse_lst {
@@ -711,6 +819,8 @@ sub init_lst {
    my @ksav_data;
    my $iproduct;
    my $iversion;
+   my $ihostaddr;
+   my $io4online;
 
    # Parsing the KfwSQLClient output has some challenges. For example
    #      [1]  OGRP_59B815CE8A3F4403  2010  Test Group 1
@@ -739,30 +849,9 @@ sub init_lst {
       $inode =~ s/\s+$//;   #trim trailing whitespace
       $iversion =~ s/\s+$//;   #trim trailing whitespace
       $iproduct =~ s/\s+$//;   #trim trailing whitespace
-      $nsx = $nsavex{$inode};
-      if (!defined $nsx) {
-         $nsavei++;
-         $nsx = $nsavei;
-         $nsave[$nsx] = $inode;
-         $nsavex{$inode} = $nsx;
-         $nsave_sysmsl[$nsx] = 0;
-         $nsave_product[$nsx] = $iproduct;
-         $nsave_version[$nsx] = $iversion;
-         $nsave_ct[$nsx] = 0;
-      }
-      $nsave_ct[$nsx] += 1;
-      if ($iproduct eq "EM") {
-         $tx = $temsx{inode};
-         if (!defined $tx) {
-            $temsi += 1;
-            $tx = $temsi;
-            $tems[$tx] = $inode;
-            $temsx{$inode} = $tx;
-            $tems_hub[$tx] = 0;
-            $tems_ct[$tx] = 0;
-            $tems_version[$tx] = $iversion;
-         }
-      }
+      $ihostaddr = "";
+      $io4online = "Y";
+      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr);
    }
 
    open(KLST, "<$opt_lst_tnodelst") || die("Could not open TNODELST $opt_lst_tnodelst\n");
@@ -777,42 +866,9 @@ sub init_lst {
       chop $oneline;
       ($inode,$inodetype,$inodelist) = parse_lst(3,$oneline);
       next if $inodetype ne "V";
-      $inodelist =~ s/\s+$//;   #trim trailing whitespace
-      $inode =~ s/\s+$//;   #trim trailing whitespace
-      $vlx = $nlistvx{$inodelist};
-      if (!defined $vlx) {
-         $nlistvi++;
-         $vlx = $nlistvi;
-         $nlistv[$vlx] = $inodelist;
-         $nlistvx{$inodelist} = $vlx;
-         $nlistv_thrunode[$vlx] = $inode;
-         $nlistv_tems[$vlx] = "";
-         $nlistv_ct[$vlx] = 0;
-      }
-      $nlistv_ct[$vlx] += 1;
-      $tx = $temsx{$inode};      # is thrunode a TEMS?
-      if (!defined $tx) {
-         $snx = $snodex{$inode};
-         if (!defined $snx) {
-            $snodei += 1;
-            $snx = $snodei;
-            $snode[$snx] = $inode;
-            $snodex{$inode} = $snx;
-         }
-      } else {
-        $nlistv_tems[$vlx] = $tems[$tx];
-      }
+      new_tnodelstv($inodetype,$inodelist,$inode);
    }
-
-   #Go back and fill in the nlistv_tems
-   for ($i=0; $i<=$nlistvi; $i++) {
-       next if $nlistv_tems[$i] ne "";
-       my $subnode = $nlistv_thrunode[$i];
-       $vlx = $nlistvx{$subnode};
-       if (defined $vlx) {
-          $nlistv_tems[$i] = $nlistv_thrunode[$vlx];
-       }
-   }
+   fill_tnodelstv();
 
    # Get data for all TNODELST type M records
    $ll = 0;
@@ -832,81 +888,57 @@ sub init_lst {
          $hub_tems = $inode;
       }
       next if $inodetype ne "M";
-      next if $inode eq "--EMPTYNODE--";
-      $mkey = $inode . "|" . $inodelist;
-      $mlx = $mlistx{$mkey};
-      if (!defined $mlx) {
-         $mlisti += 1;
-         $mlx = $mlisti;
-         $mlist[$mlx] = $mkey;
-         $mlistx{$mkey} = $mlx;
-         $mlist_ct[$mlx] = 0;
-      }
-      $mlist_ct[$mlx] += 1;
-
-      $mlx = $nlistmx{$inode};
-      if (!defined $mlx) {
-         $nlistmi++;
-         $mlx = $nlistmi;
-         $nlistm[$mlx] = $inode;
-         $nlistmx{$inode} = $mlx;
-         $nlistm_miss[$mlx] = 0;
-         $nlistm_nov[$mlx] = 0;
-      }
-      $nsx = $nsavex{$inode};
-      if (defined $nsx) {
-         $vlx = $nlistvx{$inode};
-         if (defined $vlx) {
-           my $lthrunode = $nlistv_thrunode[$vlx];
-           $tx = $temsx{$lthrunode};
-           if (defined $tx) {
-              $nsave_sysmsl[$nsx] += 1 if substr($inodelist,0,1) eq "*";
-           }
-         } else {
-           $nlistm_nov[$mlx] = 1 if $nsave_product[$nsx] ne "EM";
-         }
-      } else {
-         $nlistm_miss[$mlx] = 1;
-      }
+      new_tnodelstm($inodetype,$inodelist,$inode);
    }
 }
 
 
 # Get options from command line - first priority
 sub init {
-   my $myargs_remain;
-   my @myargs_remain_array;
-   use Getopt::Long qw(GetOptionsFromString);
-   $myargs = shift;
-
-   ($rc,$myargs_remain) = GetOptionsFromString($myargs,
-              'log=s' => \ $opt_log,                  # log file
-              'ini=s' => \ $opt_ini,                  # control file
-              'user=s' => \$user,                     # userid
-              'passwd=s' => \$passwd,                 # password
-              'debuglevel=i' => \ $opt_debuglevel,    # log file contents control
-              'debug' => \ $opt_debug,                # log file contents control
-              'h' => \ $opt_h,                        # help
-              'v' => \  $opt_v,                       # verbose - print immediately as well as log
-              'vt' => \  $opt_vt,                     # verbose traffic - print traffic.txt
-              'o=s' => \ $opt_o,                      # output file
-              'workpath=s' => \ $opt_workpath,        # output file
-              'runall' => \$opt_runall,               # analyze Run at Startup = *Off situations
-              'std' => \ $opt_std,                    # credentials from standard input
-              'nodist' => \ $opt_nodist,              # credentials from standard input
-              'dist' => \ $opt_dist,                  # Report on situation distribution
-              'nohdr' => \ $opt_nohdr,                # Skip header for regression test
-              'txt' => \ $opt_txt,                    # txt input
-              'lst' => \ $opt_lst                     # txt input
-             );
-   # if other things found on the command line - complain and quit
-   @myargs_remain_array = @$myargs_remain;
-   if ($#myargs_remain_array != -1) {
-      foreach (@myargs_remain_array) {
-        print STDERR "SITAUDIT001E Unrecognized command line option - $_\n";
+   while (@ARGV) {
+      if ($ARGV[0] eq "-log") {
+         shift(@ARGV);
+         $opt_log = shift(@ARGV);
+         die "option -log with no following log specification\n" if !defined $opt_log;
+      } elsif ( $ARGV[0] eq "-ini") {
+         shift(@ARGV);
+         $opt_ini = shift(@ARGV);
+         die "option -ini with no following ini specification\n" if !defined $opt_ini;
+      } elsif ( $ARGV[0] eq "-debuglevel") {
+         shift(@ARGV);
+         $opt_debuglevel = shift(@ARGV);
+         die "option -debuglevel with no following debuglevel specification\n" if !defined $opt_debuglevel;
+      } elsif ( $ARGV[0] eq "-debug") {
+         shift(@ARGV);
+         $opt_debug = 1;
+      } elsif ( $ARGV[0] eq "-h") {
+         shift(@ARGV);
+         $opt_h = 1;
+      } elsif ( $ARGV[0] eq "-o") {
+         shift(@ARGV);
+         $opt_o = shift(@ARGV);
+         die "option -o with no following output file specification\n" if !defined $opt_o;
+      } elsif ( $ARGV[0] eq "-workpath") {
+         shift(@ARGV);
+         $opt_workpath = shift(@ARGV);
+         die "option -workpath with no following debuglevel specification\n" if !defined $opt_workpath;
+      } elsif ( $ARGV[0] eq "-nohdr") {
+         shift(@ARGV);
+         $opt_nohdr = 1;
+      } elsif ( $ARGV[0] eq "-txt") {
+         shift(@ARGV);
+         $opt_txt = 1;
+      } elsif ( $ARGV[0] eq "-lst") {
+         shift(@ARGV);
+         $opt_lst = 1;
+      } elsif ( $ARGV[0] eq "-subpc") {
+         shift(@ARGV);
+         $opt_subpc_warn = shift(@ARGV);
+         die "option -subpc with no following per cent specification\n" if !defined $opt_subpc_warn;
+      } else {
+         print STDERR "SITAUDIT001E Unrecognized command line option - $ARGV[0]\n";
+         exit 1;
       }
-      print STDERR "SITAUDIT001E exiting after command line errors\n";
-      exit 1;
    }
 
    # Following are command line only defaults. All others can be set from the ini file
@@ -945,10 +977,6 @@ sub init {
           if ($#words == 0) {                         # single word parameters
             if ($words[0] eq "verbose") {$opt_v = 1;}
             elsif ($words[0] eq "traffic") {$opt_vt = 1;}
-            elsif ($words[0] eq "std") {$opt_std = 1;}
-            elsif ($words[0] eq "runall") {$opt_runall = 1;}            # all agents of interest
-            elsif ($words[0] eq "nodist") {$opt_nodist = 1;}            # Report on Run at Startup but nodist
-            elsif ($words[0] eq "dist") {$opt_dist = 1;}                # Report on Situation Distribution
             else {
                print STDERR "SITAUDIT003E Control without needed parameters $words[0] - $opt_ini [$l]\n";
                $run_status++;
@@ -959,11 +987,10 @@ sub init {
          if ($#words == 1) {
             # two word controls - option and value
             if ($words[0] eq "log") {$opt_log = $words[1];}
-            elsif ($words[0] eq "user")  {$user = $words[1];}
-            elsif ($words[0] eq "passwd")  {$passwd = $words[1];}
             elsif ($words[0] eq "log") {$opt_log = $words[1];}
             elsif ($words[0] eq "o") {$opt_o = $words[1];}
             elsif ($words[0] eq "workpath") {$opt_workpath = $words[1];}
+            elsif ($words[0] eq "subpc") {$opt_subpc_warn = $words[1];}
             else {
                print STDERR "SITAUDIT005E ini file $l - unknown control oneline\n"; # kill process after current phase
                $run_status++;
@@ -977,19 +1004,16 @@ sub init {
 
    # defaults for options not set otherwise
 
-   if (!defined $opt_log) {$opt_log = "sitaudit.log";}           # default log file if not specified
+   if (!defined $opt_log) {$opt_log = "datahealth.log";}       # default log file if not specified
    if (!defined $opt_h) {$opt_h=0;}                            # help flag
    if (!defined $opt_v) {$opt_v=0;}                            # verbose flag
    if (!defined $opt_vt) {$opt_vt=0;}                          # verbose traffic default off
    if (!defined $opt_dpr) {$opt_dpr=0;}                        # data dump flag
-   if (!defined $opt_std) {$opt_std=0;}                        # default - no credentials in stdin
    if (!defined $opt_o) {$opt_o="datahealth.csv";}               # default output file
    if (!defined $opt_workpath) {$opt_workpath="";}             # default is current directory
-   if (!defined $opt_runall) {$opt_runall = 0;}                # default no Run at Startup = *YES situations
    if (!defined $opt_txt) {$opt_txt = 0;}                      # default no txt input
    if (!defined $opt_lst) {$opt_lst = 0;}                      # default no lst input
-   if (!defined $opt_nodist) {$opt_nodist=0;}                  # do not advise on *YES and no distribution cases
-   if (!defined $opt_dist) {$opt_dist=0;}                      # default do not report on situation distribution
+   if (!defined $opt_subpc_warn) {$opt_subpc_warn=90;}                   # default warn on 90% of maximum subnode list
 
    $opt_workpath =~ s/\\/\//g;                                 # convert to standard perl forward slashes
    if ($opt_workpath ne "") {
@@ -1005,29 +1029,6 @@ sub init {
 #        $opt_dpr = 0;
 #     }
       $opt_dpr = 0;
-   }
-
-   # if credential as passed in via standard input, then that takes precendence.
-
-   if ($opt_std == 1) {
-      my $stdline = <STDIN>;
-      if (defined $stdline) {
-         my @values = split(" ",$stdline);
-         while (@values) {
-            if ($values[0] eq "-user")  {
-               shift(@values);
-               $user = shift(@values);
-               die "STD option -user with no following value\n" if !defined $user;
-            } elsif ($values[0] eq "-passwd")  {
-               shift(@values);
-               $passwd = shift(@values);
-               die "STD option -passwd with no following value\n" if !defined $passwd;
-            } else {
-               my $rest_stdin = join(" ",@values);
-               die "unknown option(s) in stdin [$rest_stdin]\n" if defined $rest_stdin;
-            }
-         }
-      }
    }
 
    # complain about options which must be present
@@ -1139,3 +1140,4 @@ sub gettime
 # 0.70000  : Advisory when duplicatee HOSTADDR columns
 # 0.71000  : Adapt to regression test process
 #          : low impact advisory on long node names
+# 0.72000  : count size of subnode list and advise if TEMS < "06.23.02" and near 32K
