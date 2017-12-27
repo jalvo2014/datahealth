@@ -29,7 +29,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.8400";
+my $gVersion = "0.8500";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -267,12 +267,13 @@ my %sum_sits = ();
 my $siti = -1;                             # count of situations
 my $curi;                                  # global index for subroutines
 my @sit = ();                              # array of situations
+my %sitx = ();                             # Index from situation name to index
 my @sit_pdt = ();                          # array of predicates or situation formula
+my @sit_ct = ();                           # count of situation references
 my @sit_fullname = ();                     # array of fullname
 my @sit_psit = ();                         # array of printable situaton names
 my @sit_sitinfo = ();                      # array of SITINFO columns
 my @sit_autostart = ();                    # array of AUTOSTART columns
-my %sitx = ();                             # Index from situation name to index
 my @sit_value = ();                        # count of *VALUE
 my @sit_sit = ();                          # count of *SIT
 my @sit_str = ();                          # count of *STR
@@ -321,15 +322,26 @@ my $sit_tems_alert = 0;
 my $sit_tems_alert_run = 0;
 my $sit_tems_alert_dist = 0;
 
+my $nax;
+my $nami = -1;                             # count of fullname indexes
+my @nam = ();                              # array of index
+my %namx = ();                             # Index from index name to index
+my @nam_fullname = ();                     # array of fullnames
+my @nam_ct = ();                           # count of tname references
+
 
 # option and ini file variables variables
 
 my $opt_txt;                    # input from .txt files
 my $opt_txt_tnodelst;           # TNODELIST txt file
 my $opt_txt_tnodesav;           # TNODESAV txt file
+my $opt_txt_tsitdesc;           # TSITDESC txt file
+my $opt_txt_tname;              # TNAME txt file
 my $opt_lst;                    # input from .lst files
 my $opt_lst_tnodesav;           # TNODESAV lst file
 my $opt_lst_tnodelst;           # TNODELST lst file
+my $opt_lst_tsitdesc;           # TSITDESC lst file
+my $opt_lst_tname;              # TNAME lst file
 my $opt_log;                    # name of log file
 my $opt_ini;                    # name of ini file
 my $opt_debuglevel;             # Debug level
@@ -553,6 +565,49 @@ for ($i=0;$i<=$nsavei;$i++) {
    $advsit[$advi] = $nsave[$i];
 }
 
+for ($i=0;$i<=$siti;$i++) {
+   next if $sit_ct[$i] == 1;
+#$DB::single=2;
+   $advi++;$advonline[$advi] = "TSITDESC duplicate nodes";
+   $advcode[$advi] = "DATAHEALTH1021E";
+   $advimpact[$advi] = 105;
+   $advsit[$advi] = $sit[$i];
+}
+
+for ($i=0;$i<=$nami;$i++) {
+   next if $nam_ct[$i] == 1;
+#$DB::single=2;
+   $advi++;$advonline[$advi] = "TNAME duplicate nodes";
+   $advcode[$advi] = "DATAHEALTH1022E";
+   $advimpact[$advi] = 105;
+   $advsit[$advi] = $nam[$i];
+}
+
+for ($i=0;$i<=$nami;$i++) {
+   next if defined $sitx{$nam[$i]};
+   next if substr($nam[$i],0,8) eq "UADVISOR";
+   $advi++;$advonline[$advi] = "TNAME ID index missing in TSITDESC";
+   $advcode[$advi] = "DATAHEALTH1023E";
+   $advimpact[$advi] = 25;
+   $advsit[$advi] = $nam[$i];
+}
+
+for ($i=0;$i<=$siti;$i++) {
+#$DB::single=2;
+   my $pdtone = $sit_pdt[$i];
+   my $mysit;
+   while($pdtone =~ m/.*?\*SIT (\S+) /g) {
+      $mysit = $1;
+      next if defined $sitx{$mysit};
+#$DB::single=2;
+      $advi++;$advonline[$advi] = "Situation Formula *SIT [$mysit] Missing from TSITDESC table";
+      $advcode[$advi] = "DATAHEALTH1024E";
+      $advimpact[$advi] = 90;
+      $advsit[$advi] = $sit[$i];
+   }
+
+}
+
 for ($i=0;$i<=$hsavei;$i++) {
    next if $hsave_ct[$i] == 1;
    next if !defined $hsave[$i];
@@ -754,6 +809,35 @@ exit $exit_code;
 
 # Record data from the TNODESAV table. This is the disk version of [most of] the INODESTS or node status table.
 # capture node name, product, version, online status
+
+sub new_tsitdesc {
+   my ($isitname,$ipdt) = @_;
+   $sx = $sitx{$isitname};
+   if (!defined $sx) {
+      $siti += 1;
+      $sx = $siti;
+      $sit[$siti] = $isitname;
+      $sitx{$isitname} = $siti;
+      $sit_pdt[$siti] = $ipdt;
+      $sit_ct[$siti] = 0;
+   }
+  $sit_ct[$sx] += 1;
+}
+
+sub new_tname {
+   my ($iid,$ifullname) = @_;
+   $nax = $namx{$iid};
+   if (!defined $nax) {
+      $nami += 1;
+      $nax = $nami;
+      $nam[$nami] = $iid;
+      $namx{$iid} = $nami;
+      $nam_fullname[$nami] = $ifullname;
+      $nam_ct[$nami] = 0;
+   }
+   $nam_ct[$nax] += 1;
+}
+
 
 sub new_tnodesav {
    my ($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities) = @_;
@@ -1024,6 +1108,14 @@ sub init_txt {
    my $ithrunode;
    my $iaffinities;
 
+   my @ksit_data;
+   my $isitname;
+   my $ipdt;
+
+   my @knam_data;
+   my $iid;
+   my $ifullname;
+
    open(KSAV, "< $opt_txt_tnodesav") || die("Could not open TNODESAV $opt_txt_tnodesav\n");
    @ksav_data = <KSAV>;
    close(KSAV);
@@ -1103,6 +1195,42 @@ sub init_txt {
       next if $inodetype ne "M";
       new_tnodelstm($inodetype,$inodelist,$inode);
    }
+
+   open(KSIT, "< $opt_txt_tsitdesc") || die("Could not open TSITDESC $opt_txt_tsitdesc\n");
+   @ksit_data = <KSIT>;
+   close(KSIT);
+
+   # Get data for all TSITDESC records
+   $ll = 0;
+   foreach $oneline (@ksit_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $isitname = substr($oneline,0,32);
+      $isitname =~ s/\s+$//;   #trim trailing whitespace
+      $ipdt = substr($oneline,33);
+      $ipdt =~ s/\s+$//;   #trim trailing whitespace
+      new_tsitdesc($isitname,$ipdt);
+   }
+
+   open(KNAM, "< $opt_txt_tname") || die("Could not open TNAME $opt_txt_tname\n");
+   @knam_data = <KNAM>;
+   close(KNAM);
+
+   # Get data for all TNAME records
+   $ll = 0;
+   foreach $oneline (@knam_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $iid  = substr($oneline,0,32);
+      $iid =~ s/\s+$//;   #trim trailing whitespace
+      $ifullname = substr($oneline,33);
+      $ifullname =~ s/\s+$//;   #trim trailing whitespace
+      new_tname($iid,$ifullname);
+   }
 }
 
 # There may be a better way to do this, but this was clear and worked.
@@ -1160,14 +1288,21 @@ sub init_lst {
    my $ithrunode;
    my $iaffinities;
 
+   my @ksit_data;
+   my $isitname;
+   my $ipdt;
+
+   my @knam_data;
+   my $iid;
+   my $ifullname;
+
    # Parsing the KfwSQLClient output has some challenges. For example
    #      [1]  OGRP_59B815CE8A3F4403  2010  Test Group 1
    # Using the blank delimiter is OK for columns that are never blank or have no embedded blanks.
    # In this case the GRPNAME column is "Test Group 1". To manage this the SQL is arranged so
    # that a column with embedded blanks always placed at the end. The one table TSITDESC which has
-   # two such columns is retrieved with two separate SQLs.
+   # two such columns can be retrieved with two separate SQLs.
    #
-
 
    open(KSAV, "< $opt_lst_tnodesav") || die("Could not open TNODESAV $opt_lst_tnodesav\n");
    @ksav_data = <KSAV>;
@@ -1226,6 +1361,40 @@ sub init_lst {
       }
       next if $inodetype ne "M";
       new_tnodelstm($inodetype,$inodelist,$inode);
+   }
+   open(KSIT, "< $opt_lst_tsitdesc") || die("Could not open TSITDESC $opt_lst_tsitdesc\n");
+   @ksit_data = <KSIT>;
+   close(KSIT);
+
+   # Get data for all TSITDESC records
+   $ll = 0;
+   foreach $oneline (@ksav_data) {
+      $ll += 1;
+      next if $ll < 2;
+      ($isitname,$ipdt) = parse_lst(2,$oneline);
+      $isitname = substr($oneline,0,32);
+      $isitname =~ s/\s+$//;   #trim trailing whitespace
+      $ipdt = substr($oneline,33,1);
+      $ipdt =~ s/\s+$//;   #trim trailing whitespace
+      new_tsitdesc($isitname,$ipdt);
+   }
+
+   open(KNAM, "< $opt_lst_tname") || die("Could not open TNAME $opt_lst_tname\n");
+   @knam_data = <KNAM>;
+   close(KNAM);
+
+   # Get data for all TSITDESC records
+   $ll = 0;
+   foreach $oneline (@ksav_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      ($iid,$ifullname) = parse_lst(2,$oneline);
+      $iid  = substr($oneline,0,32);
+      $iid =~ s/\s+$//;   #trim trailing whitespace
+      $ifullname = substr($oneline,33,1);
+      $ifullname =~ s/\s+$//;   #trim trailing whitespace
+      new_tname($iid,$ifullname);
    }
 }
 
@@ -1371,10 +1540,14 @@ sub init {
    if (defined $opt_txt) {
       $opt_txt_tnodelst = $opt_workpath . "QA1CNODL.DB.TXT";
       $opt_txt_tnodesav = $opt_workpath . "QA1DNSAV.DB.TXT";
+      $opt_txt_tsitdesc = $opt_workpath . "QA1CSITF.DB.TXT";
+      $opt_txt_tname    = $opt_workpath . "QA1DNAME.DB.TXT";
    }
    if (defined $opt_lst) {
       $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
       $opt_lst_tnodelst  = $opt_workpath . "QA1CNODL.DB.LST";
+      $opt_lst_tsitdesc  = $opt_workpath . "QA1CSITF.DB.LST";
+      $opt_lst_tname     = $opt_workpath . "QA1DNAME.DB.LST";
    }
    $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.VNDX";
    $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
@@ -1509,6 +1682,7 @@ sub gettime
 # 0.82000  : Alert when FTO and agents connect directly to hub TEMS
 # 0.83000  : Identify valid agent endings
 # 0.84000  : add more known agent MSLs
+# 0.85000  : Add TSITDESC and TNAME checking
 #          : Handle z/OS no extension agents
 #          : Add TNODESAV product to the "might be truncated" messages
 #          : make -lst option work
