@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.03000";
+my $gVersion = "1.04000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -829,7 +829,6 @@ for ($i=0; $i<=$evmapi;$i++) {
    $onemap =~ /\"(\S+)\"/;
    my $onesit = $1;
    if (!defined $onemap){
-     #$DB::single=2;
       $advi++;$advonline[$advi] = "EVNTMAP Situation reference missing";
       $advcode[$advi] = "DATAHEALTH1053E";
       $advimpact[$advi] = 20;
@@ -910,7 +909,6 @@ for ($i=0; $i<=$cali; $i++) {
 for ($i=0; $i<=$tcai; $i++) {
    valid_lstdate("TOVERRIDE",$tca_lstdate[$i],$tca[$i],"ID=$tca[$i]");
    if ($tca_count[$i] > 1) {
-#$DB::single=2;
       $advi++;$advonline[$advi] = "TOVERRIDE duplicate key ID";
       $advcode[$advi] = "DATAHEALTH1059E";
       $advimpact[$advi] = 105;
@@ -918,7 +916,6 @@ for ($i=0; $i<=$tcai; $i++) {
    }
    my $onesit = $tca_sitname[$i];
    if (!defined $sitx{$onesit}){
-#$DB::single=2;
       $advi++;$advonline[$advi] = "TOVERRIDE Unknown Situation [$onesit] in override";
       $advcode[$advi] = "DATAHEALTH1060E";
       $advimpact[$advi] = 20;
@@ -928,10 +925,8 @@ for ($i=0; $i<=$tcai; $i++) {
 
 for ($i=0; $i<=$tcii; $i++) {
    if ($tci_calid[$i] ne "") {
-#$DB::single=2;
       my $onecal = $tci_calid[$i];
       if (!defined $calx{$onecal}){
-#$DB::single=2;
          $advi++;$advonline[$advi] = "TOVERITEM Unknown Calendar ID $onecal";
          $advcode[$advi] = "DATAHEALTH1061E";
          $advimpact[$advi] = 75;
@@ -939,7 +934,6 @@ for ($i=0; $i<=$tcii; $i++) {
       }
       my $oneid = $tci_id[$i];
       if (!defined $tcax{$oneid}){
-#$DB::single=2;
          $advi++;$advonline[$advi] = "TOVERITEM Unknown TOVERRIDE ID $oneid";
          $advcode[$advi] = "DATAHEALTH1062E";
          $advimpact[$advi] = 75;
@@ -1020,21 +1014,33 @@ foreach my $f (sort { $a cmp $b } keys %pcyx) {
    foreach my $g (sort { $a cmp $b } keys %{$pcy_ref->{sit}}) {
       my $onesit = $g;
       if (!defined $sitx{$onesit}) {
-#$DB::single=2;
-         $advi++;$advonline[$advi] = "TPCYDESC Wait on SIT or Sit reset - unknown situation $g";
-         $advcode[$advi] = "DATAHEALTH1056E";
-         $advimpact[$advi] = 100;
-         $advsit[$advi] = $f;
+         if ($pcy_ref->{autostart} eq "*YES") {
+            $advi++;$advonline[$advi] = "TPCYDESC Wait on SIT or Sit reset - unknown situation $g";
+            $advcode[$advi] = "DATAHEALTH1056E";
+            $advimpact[$advi] = 100;
+            $advsit[$advi] = $f;
+         } else {
+            $advi++;$advonline[$advi] = "TPCYDESC Wait on SIT or Sit reset - unknown situation $g but policy not autostarted";
+            $advcode[$advi] = "DATAHEALTH1065W";
+            $advimpact[$advi] = 10;
+            $advsit[$advi] = $f;
+         }
       }
    }
    foreach my $g (sort { $a cmp $b } keys %{$pcy_ref->{eval}}) {
       my $onesit = $g;
       if (!defined $sitx{$onesit}) {
-#$DB::single=2;
-         $advi++;$advonline[$advi] = "TPCYDESC Evaluate Sit Now - unknown situation $g";
-         $advcode[$advi] = "DATAHEALTH1057E";
-         $advimpact[$advi] = 100;
-         $advsit[$advi] = $f;
+         if ($pcy_ref->{autostart} eq "*YES") {
+            $advi++;$advonline[$advi] = "TPCYDESC Evaluate Sit Now - unknown situation $g";
+            $advcode[$advi] = "DATAHEALTH1057E";
+            $advimpact[$advi] = 100;
+            $advsit[$advi] = $f;
+         } else {
+            $advi++;$advonline[$advi] = "TPCYDESC Evaluate Sit Now - unknown situation $g but policy not autostarted";
+            $advcode[$advi] = "DATAHEALTH1066W";
+            $advimpact[$advi] = 10;
+            $advsit[$advi] = $f;
+         }
       }
    }
 }
@@ -1637,7 +1643,7 @@ sub new_tactypcy {
 }
 
 sub new_tpcydesc {
-   my ($ipcyname,$ilstdate) = @_;
+   my ($ipcyname,$ilstdate,$iautostart) = @_;
    my $pcy_ref = $pcyx{$ipcyname};
    if (!defined $pcy_ref) {
       my %pcy_sit = ();
@@ -1647,6 +1653,7 @@ sub new_tpcydesc {
                       lstdate => $ilstdate, # last update date
                       sit  => \%pcy_sit,    # hash of Wait on Sits
                       eval => \%pcy_eval,   # hash of Evaluation Sit
+                      autostart => $iautostart, # is policy operational
                    );
       $pcyx{$ipcyname} = \%pcyref;
       $pcy_ref = \%pcyref;
@@ -1719,31 +1726,26 @@ sub new_tgroupi {
   my $gkey = $igrpclass . "|" . $iid;
   my $group_ref = $group{$gkey};
   if (!defined $group_ref) {
-#$DB::single=2;
      $advi++;$advonline[$advi] = "TGROUPI $key unknown TGROUP ID";
      $advcode[$advi] = "DATAHEALTH1031E";
      $advimpact[$advi] = 50;
      $advsit[$advi] = $iid;
   }
   if ($groupi_detail_ref->{objclass} == 2010) {
-#$DB::single=2;
      my $groupref = $groupi_detail_ref->{objclass};
     $gkey = "2010" . "|" . $iid;
      my $group_ref = $group{$gkey};
      if (!defined $group_ref) {
-#$DB::single=2;
         $advi++;$advonline[$advi] = "TGROUPI $key unknown Group $iobjname";
         $advcode[$advi] = "DATAHEALTH1032E";
         $advimpact[$advi] = 50;
         $advsit[$advi] = $iobjname;
      } else {
-$DB::single=2;
         $group_ref->{indirect} = 1;
      }
   } elsif ($groupi_detail_ref->{objclass} == 5140) {
      my $sit1 = $groupi_detail_ref->{objname};
      if (!defined $sitx{$sit1}) {
-#$DB::single=2;
         $advi++;$advonline[$advi] = "TGROUPI $key unknown Situation $iobjname";
         $advcode[$advi] = "DATAHEALTH1033E";
         $advimpact[$advi] = 50;
@@ -2445,7 +2447,9 @@ sub init_txt {
       $ipcyname =~ s/\s+$//;   #trim trailing whitespace
       $ilstdate = substr($oneline,32,16);
       $ilstdate =~ s/\s+$//;   #trim trailing whitespace
-      new_tpcydesc($ipcyname,$ilstdate);
+      $iautostart = substr($oneline,50,4);
+      $iautostart =~ s/\s+$//;   #trim trailing whitespace
+      new_tpcydesc($ipcyname,$ilstdate,$iautostart);
    }
 
    open(KACTP, "< $opt_txt_tactypcy") || die("Could not open TACTYPCY $opt_txt_tactypcy\n");
@@ -2876,8 +2880,8 @@ sub init_lst {
       chop $oneline;
       $oneline .= " " x 400;
       # KfwSQLClient /e "SELECT PCYNAME,LSTDATE FROM O4SRV.TPCYDESC" >QA1DPCYF.DB.LST
-      ($ipcyname,$ilstdate) = parse_lst(2,$oneline);
-      new_tpcydesc($ipcyname,$ilstdate);
+      ($ipcyname,$ilstdate,$iautostart) = parse_lst(3,$oneline);
+      new_tpcydesc($ipcyname,$ilstdate,$iautostart);
    }
 
    open(KACTP, "< $opt_lst_tactypcy") || die("Could not open TACTYPCY $opt_lst_tactypcy\n");
@@ -3313,3 +3317,4 @@ sub gettime
 #          : Add checking of the rest of the FTO synchronized tables
 # 1.02000  : Long sampling interval
 # 1.03000  : Correct parse_lst issues versus capture SQL TNAME and TPCYDESC issues
+# 1.04000  : Fix Workflow Policy checks to warn on autostart *NO at lower impact
