@@ -8,7 +8,7 @@
 #  perl datahealth.pl
 #
 #  Identify cases where TEMS database is inconsistent
-#   Version 0.870000 checks TNODESAV, TNODELST, TSITDESC, TNAME, TOBJACCL
+#   Version 0.88000 checks TNODESAV, TNODELST, TSITDESC, TNAME, TOBJACCL
 #
 #  john alvord, IBM Corporation, 5 July 2014
 #  jalvord@us.ibm.com
@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.87000";
+my $gVersion = "0.88000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -152,6 +152,16 @@ my %magentx = ();                        # hash from managing agent name to inde
 my @magent_subct = ();                   # count of subnode agents
 my @magent_sublen = ();                  # length of subnode agent list
 my @magent_tems_version = ();            # version of managing agent TEMS
+
+my $advi = -1;
+my @advonline = ();
+my @advsit = ();
+my @advimpact = ();
+my @advcode = ();
+my %advx = ();
+my $hubi;
+my $max_impact = 0;
+my $isFTO = 0;
 
 my $test_node;
 my $invalid_node;
@@ -420,15 +430,6 @@ if ($opt_miss == 1) {
    open MIS, ">$opt_miss_fn" or die "can't open $opt_miss_fn: $!";
 }
 
-my $advi = -1;
-my @advonline = ();
-my @advsit = ();
-my @advimpact = ();
-my @advcode = ();
-my %advx = ();
-my $hubi;
-my $max_impact = 0;
-my $isFTO = 0;
 
 
 if ($hub_tems_no_tnodesav == 1) {
@@ -508,13 +509,13 @@ for ($i=0; $i<=$nsavei; $i++) {
          next if $known_ext == 1;
          $advi++;$advonline[$advi] = "Node Name at 32 characters and might be truncated - product[$product1]";
          $advcode[$advi] = "DATAHEALTH1013W";
-         $advimpact[$advi] = 20;
+         $advimpact[$advi] = 10;
          $advsit[$advi] = $node1;
       } else {
          next if length($node1) < 31;
          $advi++;$advonline[$advi] = "Subnode Name at 31/32 characters and might be truncated - product[$product1]";
          $advcode[$advi] = "DATAHEALTH1014W";
-         $advimpact[$advi] = 20;
+         $advimpact[$advi] = 10;
          $advsit[$advi] = $node1;
       }
    }
@@ -526,7 +527,7 @@ for ($i=0; $i<=$magenti;$i++) {
    if ($magent_sublen[$i]*100 > $opt_subpc_warn*32768){
       $advi++;$advonline[$advi] = "Managing agent subnodelist is $magent_sublen[$i]: more then $opt_subpc_warn% of 32768 bytes";
       $advcode[$advi] = "DATAHEALTH1015W";
-      $advimpact[$advi] = 80;
+      $advimpact[$advi] = 90;
       $advsit[$advi] = $onemagent;
    }
 }
@@ -542,7 +543,7 @@ for ($i=0; $i<=$nsavei; $i++) {
    if (index($node1,":") !=  -1) {
       $advi++;$advonline[$advi] = "Node without a system generated MSL in TNODELIST Type M records";
       $advcode[$advi] = "DATAHEALTH1002E";
-      $advimpact[$advi] = 75;
+      $advimpact[$advi] = 90;
       $advsit[$advi] = $node1;
       next if $opt_mndx == 0;
       print MDX "$node1\n";
@@ -554,7 +555,7 @@ for ($i=0; $i<=$nlistmi; $i++) {
    if ($nlistm_miss[$i] != 0) {
       $advi++;$advonline[$advi] = "Node present in TNODELST Type M records but missing in Node Status";
       $advcode[$advi] = "DATAHEALTH1003I";
-      $advimpact[$advi] = 00;
+      $advimpact[$advi] = 0;
       $advsit[$advi] = $node1;
       if ($opt_miss == 1) {
          my $key = "DATAHEALTH1003I" . " " . $node1;
@@ -564,7 +565,7 @@ for ($i=0; $i<=$nlistmi; $i++) {
    if ($nlistm_nov[$i] != 0) {
       $advi++;$advonline[$advi] = "Node present in TNODELST Type M records but missing TNODELIST Type V records";
       $advcode[$advi] = "DATAHEALTH1004I";
-      $advimpact[$advi] = 00;
+      $advimpact[$advi] = 0;
       $advsit[$advi] = $node1;
    }
 }
@@ -582,9 +583,9 @@ foreach my $f (keys %group) {
          my $gkey = substr($f,5);
          my $ox = $tobjaccl{$gkey};
          if (!defined $ox) {
-            $advi++;$advonline[$advi] = "TGROUP ID $f not distributed in TOBJACCL";
-            $advcode[$advi] = "DATAHEALTH1034E";
-            $advimpact[$advi] = 50;
+            $advi++;$advonline[$advi] = "TGROUP ID $f NAME $group_detail_ref->{grpname} not distributed in TOBJACCL";
+            $advcode[$advi] = "DATAHEALTH1034W";
+            $advimpact[$advi] = 10;
             $advsit[$advi] = $group_detail_ref->{grpname};
          }
       }
@@ -676,7 +677,7 @@ for ($i=0;$i<=$hsavei;$i++) {
    next if $#ragents < 1;
    $advi++;$advonline[$advi] = "TNODESAV duplicate hostaddr in [$pagents]";
    $advcode[$advi] = "DATAHEALTH1010W";
-   $advimpact[$advi] = 10;
+   $advimpact[$advi] = 80;
    $advsit[$advi] = $hsave[$i];
 }
 
@@ -772,42 +773,42 @@ for ($i=0;$i<=$obji;$i++){
       next if $nodist == 1;
       if (substr($nodel1,0,1) eq "*") {
          $advi++;$advonline[$advi] = "TOBJACCL Nodel $nodel1 Apparent MSL but missing from TNODELST";
-         $advcode[$advi] = "DATAHEALTH1029E";
-         $advimpact[$advi] = 50;
+         $advcode[$advi] = "DATAHEALTH1029W";
+         $advimpact[$advi] = 0;
          $advsit[$advi] = $obj[$i];
          if ($opt_miss == 1) {
             my $pick = $obj[$i];
             $pick =~ /.*\|.*\|(.*)/;
-            my $key = "DATAHEALTH1029E" . " " . $1;
+            my $key = "DATAHEALTH1029W" . " " . $1;
             $miss{$key} = 1;
          }
          next;
       }
       $nsx = $nsavex{$nodel1};
       if (!defined $nsx) {
-         $advi++;$advonline[$advi] = "TOBJACCL Node missing in Node Status";
-         $advcode[$advi] = "DATAHEALTH1030E";
-         $advimpact[$advi] = 50;
+         $advi++;$advonline[$advi] = "TOBJACCL Node or MSL [$nodel1] missing from TNODESAV or TNODELST";
+         $advcode[$advi] = "DATAHEALTH1030W";
+         $advimpact[$advi] = 0;
          $advsit[$advi] = $obj[$i];
          if ($opt_miss == 1) {
             my $pick = $obj[$i];
             $pick =~ /.*\|.*\|(.*)/;
-            my $key = "DATAHEALTH1030E" . " " . $1;
+            my $key = "DATAHEALTH1030W" . " " . $1;
             $miss{$key} = 1;
          }
       }
    } elsif ($class1 == 2010) {
       next if defined $groupx{$objname1};       # if item being distributed is known as a situation group, good
       $advi++;$advonline[$advi] = "TOBJACCL Group name missing in Situation Group";
-      $advcode[$advi] = "DATAHEALTH1035E";
-      $advimpact[$advi] = 50;
+      $advcode[$advi] = "DATAHEALTH1035W";
+      $advimpact[$advi] = 0;
       $advsit[$advi] = $nodel1;
 $DB::single=2;
       if ($opt_miss == 1) {
 $DB::single=2;
          my $pick = $nodel1;
          $pick =~ /.*\|.*\|(.*)/;
-         my $key = "DATAHEALTH1035E" . " " . $1;
+         my $key = "DATAHEALTH1035W" . " " . $1;
          $miss{$key} = 1;
       }
    }
@@ -821,6 +822,17 @@ for ($i=0;$i<=$nsavei;$i++) {
    next if substr($nsave_temaver[$i],0,5) gt "06.10";
    $advi++;$advonline[$advi] = "Agent using TEMA at $nsave_temaver[$i] level";
    $advcode[$advi] = "DATAHEALTH1019W";
+   $advimpact[$advi] = 10;
+   $advsit[$advi] = $nsave[$i];
+}
+## Check for TEMA level below Agent version
+for ($i=0;$i<=$nsavei;$i++) {
+   next if $nsave_temaver[$i] eq "";
+   next if substr($nsave_temaver[$i],0,3) ne "06.";
+   next if substr($nsave_temaver[$i],0,2) ne substr($nsave_version[$i],0,2);
+   next if substr($nsave_temaver[$i],0,5) ge substr($nsave_version[$i],0,5);
+   $advi++;$advonline[$advi] = "Agent at version [$nsave_version[$i]] using TEMA at lower release version [$nsave_temaver[$i]]";
+   $advcode[$advi] = "DATAHEALTH1037W";
    $advimpact[$advi] = 25;
    $advsit[$advi] = $nsave[$i];
 }
@@ -836,12 +848,12 @@ if ($peak_rate > $opt_peak_rate) {
       next if $vtnode_hr[$i] == 0;
       $advi++;$advonline[$advi] = "Virtual Hub Table updates $vtnode_hr[$i] per hour $vtnode_ct[$i] agents";
       $advcode[$advi] = "DATAHEALTH1018W";
-      $advimpact[$advi] = 80;
+      $advimpact[$advi] = 90;
       $advsit[$advi] = $vtnode[$i];
    }
    $advi++;$advonline[$advi] = "Virtual Hub Table updates peak $peak_rate per second more then nominal $opt_peak_rate -  per hour [$vtnode_tot_hr] - total agents $vtnode_tot_ct";
    $advcode[$advi] = "DATAHEALTH1018W";
-   $advimpact[$advi] = 80;
+   $advimpact[$advi] = 90;
    $advsit[$advi] = "total";
 }
 
@@ -1129,6 +1141,17 @@ sub new_tnodesav {
       $nsavex{$inode} = $nsx;
       $nsave_sysmsl[$nsx] = 0;
       $nsave_product[$nsx] = $iproduct;
+      if ($iversion ne "") {
+         my $tversion = $iversion;
+         $tversion =~ s/[0-9\.]+//g;
+         if ($tversion ne "") {
+            $advi++;$advonline[$advi] = "Invalid agent version [$iversion] in node $inode tnodesav";
+            $advcode[$advi] = "DATAHEALTH1036E";
+            $advimpact[$advi] = 25;
+            $advsit[$advi] = $inode;
+            $iversion = "00.00.00";
+         }
+      }
       $nsave_version[$nsx] = $iversion;
       $nsave_ct[$nsx] = 0;
       $nsave_o4online[$nsx] = $io4online;
@@ -2057,3 +2080,4 @@ sub gettime
 #          : make -lst option work
 # 0.86000  : Check for TNODELIST NODETYPE=V thrunode missing from TNODESAV
 # 0.87000  : Add TOBJACCL, TGROUP. TGROUPI checking first stage
+# 0.88000  : Identify TEMA version < Agent version, adjust impacts, add more missing tests, change some impacts
