@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.22000";
+my $gVersion = "1.23000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -821,6 +821,7 @@ if ($tems_packages > 510) {
 for ($i=0; $i<=$nsavei; $i++) {
    my $node1 = $nsave[$i];
    next if $nsave_product[$i] eq "EM";
+   next if $nsave_product[$i] eq "CF";      # TEMS Configuration Managed System does not have TEMA - skip most tests
    $nsx = $nlistvx{$node1};
    next if defined $nsx;
    if (index($node1,":") !=  -1) {
@@ -1010,6 +1011,7 @@ for ($i=0; $i<=$tcii; $i++) {
 for ($i=0; $i<=$nsavei; $i++) {
    next if $nsave_sysmsl[$i] == 1;
    next if $nsave_product[$i] eq "EM";
+   next if $nsave_product[$i] eq "CF";      # TEMS Configuration Managed System does not have TEMA - skip most tests
    my $node1 = $nsave[$i];
    $vlx = $nlistvx{$node1};
    if (defined $vlx) {
@@ -1026,6 +1028,9 @@ for ($i=0; $i<=$nsavei; $i++) {
 }
 for ($i=0; $i<=$nlistmi; $i++) {
    my $node1 = $nlistm[$i];
+   my $nnx = $nsavex{$node1};
+   next if !defined $nnx;
+   next if $nsave_product[$nnx] eq "CF";      # TEMS Configuration Managed System does not have TEMA - skip most tests
    if ($nlistm_miss[$i] != 0) {
       $advi++;$advonline[$advi] = "Node present in TNODELST Type M records but missing in Node Status";
       $advcode[$advi] = "DATAHEALTH1003I";
@@ -2981,6 +2986,7 @@ sub init_txt {
       next if $ll < 5;
       chop $oneline;
       $oneline .= " " x 400;
+#$DB::single=2;
       $igbltmstmp = substr($oneline,0,16);
       $igbltmstmp =~ s/\s+$//;   #trim trailing whitespace
       $ideltastat = substr($oneline,17,1);
@@ -2989,7 +2995,7 @@ sub init_txt {
       $isitname =~ s/\s+$//;   #trim trailing whitespace
       $inode = substr($oneline,52,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
-      $ioriginnode = substr($oneline,85,32);
+      $ioriginnode = substr($oneline,75,32);
       $ioriginnode =~ s/\s+$//;   #trim trailing whitespace
       $iatomize = substr($oneline,118,128);
       $iatomize =~ s/\s+$//;   #trim trailing whitespace
@@ -3869,3 +3875,4 @@ sub gettime
 # 1.21000  : Add TEMA APARs from ITM 630 FP6
 # 1.22000  : Reduce some advisory impact levels
 #          : correct some titles and add some event related times
+# 1.23000  : Handle CF/:CONFIG differently since managed system does not use a TEMA
