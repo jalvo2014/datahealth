@@ -29,7 +29,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.81000";
+my $gVersion = "0.82000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -123,7 +123,10 @@ my @tems = ();                           # Array of TEMS names
 my %temsx = ();                          # Hash to TEMS index
 my @tems_hub = ();                       # When 1, is the hub TEMS
 my @tems_ct = ();                        # Count of managed systems
+my @tems_ctnok = ();                     # Count of managed systems excluding OK at FTO hub TEMS
 my @tems_version = ();                   # TEMS version number
+my @tems_thrunode = ();                  # TEMS THRUNODE, when NODE=THRUNODE that is a hub TEMS
+my @tems_affinities = ();                # TEMS AFFINITIES
 my $hub_tems = "";                       # hub TEMS nodeid
 my $hub_tems_no_tnodesav = 0;            # hub TEMS nodeid missingfrom TNODESAV
 my $hub_tems_ct = 0;                     # total agents managed by a hub TEMS
@@ -252,8 +255,10 @@ my $opt_o;                      # output file
 my $opt_s;                      # write summary line if max impact > 0
 my $opt_workpath;               # Directory to store output files
 my $opt_nohdr = 0;              # skip header to make regression testing easier
-my $opt_subpc_warn;;            # advise when subnode length > 90 of limit on pre ITM 623 FP2
+my $opt_subpc_warn;             # advise when subnode length > 90 of limit on pre ITM 623 FP2
 my $opt_peak_rate;              # Advise when virtual hub update peak is higher
+my $opt_vndx;                   # when 1 create a index for missing TNODELST NODETYPE=V records
+my $opt_vndx_fn;                # when opt_vndx - this is filename
 
 # do basic initialization from parameters, ini file and standard input
 
@@ -284,6 +289,9 @@ if ($opt_txt == 1) {                    # text files
 
 open OH, ">$opt_o" or die "can't open $opt_o: $!";
 
+if ($opt_vndx == 1) {
+   open NDX, ">$opt_vndx_fn" or die "can't open $opt_vndx_fn: $!";
+}
 
 my $advi = -1;
 my @advonline = ();
@@ -293,6 +301,7 @@ my @advcode = ();
 my %advx = ();
 my $hubi;
 my $max_impact = 0;
+my $isFTO = 0;
 
 
 if ($hub_tems_no_tnodesav == 1) {
@@ -314,7 +323,6 @@ if ($nlistvi == -1) {
 
 if ($hub_tems_no_tnodesav == 0) {
    $hubi = $temsx{$hub_tems};
-
    for ($i=0; $i<=$nlistvi; $i++) {
       my $node1 = $nlistv[$i];
       next if $nlistv_tems[$i] eq "";
@@ -323,6 +331,11 @@ if ($hub_tems_no_tnodesav == 0) {
       next if !defined $tx;
       $hub_tems_ct += 1;
       $tems_ct[$tx] += 1;
+      my $nx = $nsavex{$node1};
+      next if !defined $nx;
+      if (($nsave_product[$nx] ne "CQ") and ($nsave_product[$nx] ne "HD") and ($nsave_product[$nx] ne "SY")) {
+         $tems_ctnok[$tx] += 1;
+      }
    }
 }
 
@@ -336,6 +349,8 @@ for ($i=0; $i<=$nsavei; $i++) {
    $advcode[$advi] = "DATAHEALTH1001E";
    $advimpact[$advi] = 100;
    $advsit[$advi] = $node1;
+   next if $opt_vndx == 0;
+   print NDX "$node1\n";
 }
 
 for ($i=0; $i<=$nsavei; $i++) {
@@ -371,7 +386,7 @@ for ($i=0; $i<=$magenti;$i++) {
    my $onemagent = $magent[$i];
    next if $magent_tems_version[$i] ge "06.23.02";
    if ($magent_sublen[$i]*100 > $opt_subpc_warn*32768){
-      $advi++;$advonline[$advi] = "Managing agent subnodelist is $magent_sublen[$i],  more then $opt_subpc_warn% of 32768 bytes";
+      $advi++;$advonline[$advi] = "Managing agent subnodelist is $magent_sublen[$i]: more then $opt_subpc_warn% of 32768 bytes";
       $advcode[$advi] = "DATAHEALTH1015W";
       $advimpact[$advi] = 80;
       $advsit[$advi] = $onemagent;
@@ -508,7 +523,7 @@ if ($peak_rate > $opt_peak_rate) {
       $advimpact[$advi] = 80;
       $advsit[$advi] = $vtnode[$i];
    }
-   $advi++;$advonline[$advi] = "Virtual Hub Table updates peak $peak_rate per second more then nominal $opt_peak_rate,  per hour [$vtnode_tot_hr], total agents $vtnode_tot_ct";
+   $advi++;$advonline[$advi] = "Virtual Hub Table updates peak $peak_rate per second more then nominal $opt_peak_rate -  per hour [$vtnode_tot_hr] - total agents $vtnode_tot_ct";
    $advcode[$advi] = "DATAHEALTH1018W";
    $advimpact[$advi] = 80;
    $advsit[$advi] = "total";
@@ -542,15 +557,40 @@ if ($hub_tems_no_tnodesav == 0) {
 
    print OH "Hub,$hub_tems,$hub_tems_ct\n";
    for (my $i=0;$i<=$temsi;$i++) {
+      if ($tems_thrunode[$i] eq $tems[$i]) {
+         # The following test is how a hub TEMS is distinguished from a remote TEMS
+         # This checks an affinity capability flag which indicates the policy microscope
+         # is available. I tried many ways and failed before finding this.
+         if (substr($tems_affinities[$i],40,1) eq "O") {
+            $isFTO += 1;
+         }
+      }
       if ($tems_ct[$i] > $remote_limit){
          $advi++;$advonline[$advi] = "TEMS has $tems_ct[$i] managed systems which exceeds limits $remote_limit";
          $advcode[$advi] = "DATAHEALTH1006W";
          $advimpact[$advi] = 75;
          $advsit[$advi] = $tems[$i];
       }
-      print OH "TEMS,$tems[$i],$tems_ct[$i]\n";
+      my $poffline = "Offline";
+      my $node1 = $tems[$i];
+      my $nx = $nsavex{$node1};
+      if (defined $nx) {
+         $poffline = "Online" if $nsave_o4online[$nx] eq "Y";
+      }
+      print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline\n";
    }
-print OH "\n";
+   print OH "\n";
+
+   # One case had 3 TEMS in FTO mode - so check for 2 or more
+   if ($isFTO >= 2){
+      print OH "Fault Tolerant Option FTO enabled\n\n";
+      if ($tems_ctnok[$hubi] > 0) {
+         $advi++;$advonline[$advi] = "FTO hub TEMS has $tems_ctnok[$hubi] agents configured which is against FTO best practice";
+         $advcode[$advi] = "DATAHEALTH1020W";
+         $advimpact[$advi] = 80;
+         $advsit[$advi] = $hub_tems;
+      }
+   }
 }
 
 my $tadvi = $advi + 1;
@@ -591,6 +631,10 @@ if ($opt_s ne "") {
    }
 }
 
+if ($opt_vndx == 1) {
+   close(NDX);
+}
+
 my $exit_code = 0;
 if ($advi != -1) {
    $exit_code = ($max_impact > 0);
@@ -601,7 +645,7 @@ exit $exit_code;
 # capture node name, product, version, online status
 
 sub new_tnodesav {
-   my ($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved) = @_;
+   my ($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities) = @_;
    $nsx = $nsavex{$inode};
    if (!defined $nsx) {
       $nsavei++;
@@ -618,8 +662,12 @@ sub new_tnodesav {
       } else {
          my @words;
          @words = split(";",$ireserved);
-         @words = split(":",$words[1]);
-         $nsave_temaver[$nsx] = substr($words[0],2,8);
+         $nsave_temaver[$nsx] = "";
+         # found ona agent with RESERVED == A=00:ls3246;;;
+         if ($#words > 0) {
+            @words = split(":",$words[1]);
+            $nsave_temaver[$nsx] = substr($words[0],2,8);
+         }
       }
    }
    $vtx = $vtnodex{$iproduct};
@@ -642,7 +690,10 @@ sub new_tnodesav {
          $temsx{$inode} = $tx;
          $tems_hub[$tx] = 0;
          $tems_ct[$tx] = 0;
+         $tems_ctnok[$tx] = 0;
          $tems_version[$tx] = $iversion;
+         $tems_thrunode[$tx] = $ithrunode;
+         $tems_affinities[$tx] = $iaffinities;
       }
    }
    # track individual HOSTADDR
@@ -857,6 +908,8 @@ sub init_txt {
    my $iversion;
    my $ihostaddr;
    my $ireserved;
+   my $ithrunode;
+   my $iaffinities;
 
    open(KSAV, "< $opt_txt_tnodesav") || die("Could not open TNODESAV $opt_txt_tnodesav\n");
    @ksav_data = <KSAV>;
@@ -868,7 +921,7 @@ sub init_txt {
       $ll += 1;
       next if $ll < 5;
       chop $oneline;
-      $oneline .= " " x 340;
+      $oneline .= " " x 400;
       $inode = substr($oneline,0,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
       $io4online = substr($oneline,33,1);
@@ -885,7 +938,11 @@ sub init_txt {
       $ihostaddr =~ s/\s+$//;   #trim trailing whitespace
       $ireserved = substr($oneline,315,64);
       $ireserved =~ s/\s+$//;   #trim trailing whitespace
-      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved);
+      $ithrunode = substr($oneline,380,32);
+      $ithrunode =~ s/\s+$//;   #trim trailing whitespace
+      $iaffinities = substr($oneline,413,43);
+      $iaffinities =~ s/\s+$//;   #trim trailing whitespace
+      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities);
    }
 
    open(KLST, "<$opt_txt_tnodelst") || die("Could not open TNODELST $opt_txt_tnodelst\n");
@@ -972,6 +1029,8 @@ sub init_lst {
    my $ihostaddr;
    my $io4online;
    my $ireserved;
+   my $ithrunode;
+   my $iaffinities;
 
    # Parsing the KfwSQLClient output has some challenges. For example
    #      [1]  OGRP_59B815CE8A3F4403  2010  Test Group 1
@@ -1003,7 +1062,9 @@ sub init_lst {
       $ihostaddr = "";
       $io4online = "Y";
       $ireserved = "";
-      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved);
+      $ithrunode = "";
+      $iaffinities = "";
+      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities);
    }
 
    open(KLST, "<$opt_lst_tnodelst") || die("Could not open TNODELST $opt_lst_tnodelst\n");
@@ -1095,6 +1156,9 @@ sub init {
          shift(@ARGV);
          $opt_subpc_warn = shift(@ARGV);
          die "option -subpc with no following per cent specification\n" if !defined $opt_subpc_warn;
+      } elsif ( $ARGV[0] eq "-vndx") {
+         shift(@ARGV);
+         $opt_vndx = 1;
       } else {
          print STDERR "SITAUDIT001E Unrecognized command line option - $ARGV[0]\n";
          exit 1;
@@ -1169,7 +1233,8 @@ sub init {
    if (!defined $opt_txt) {$opt_txt = 0;}                      # default no txt input
    if (!defined $opt_lst) {$opt_lst = 0;}                      # default no lst input
    if (!defined $opt_subpc_warn) {$opt_subpc_warn=90;}         # default warn on 90% of maximum subnode list
-   if (!defined $opt_peak_rate) {$opt_peak_rate=32;}            # default warn on 32 virtual hub table updates per second
+   if (!defined $opt_peak_rate) {$opt_peak_rate=32;}           # default warn on 32 virtual hub table updates per second
+   if (!defined $opt_vndx) {$opt_vndx=1;}                      # default vndx off
 
    $opt_workpath =~ s/\\/\//g;                                 # convert to standard perl forward slashes
    if ($opt_workpath ne "") {
@@ -1183,6 +1248,7 @@ sub init {
       $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
       $opt_lst_tnodelst  = $opt_workpath . "QA1CNODL.DB.LST";
    }
+   $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.NDX";
 
 
    if ($opt_dpr == 1) {
@@ -1311,3 +1377,4 @@ sub gettime
 #          : Add summary line txt file for caller
 #          : Support workpath better
 # 0.81000  : Add advisory on TEMA 6.1 level
+# 0.82000  : Alert when FTO and agents connect directly to hub TEMS
