@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.90000";
+my $gVersion = "0.91000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -350,6 +350,10 @@ my %namx = ();                             # Index from index name to index
 my @nam_fullname = ();                     # array of fullnames
 my @nam_ct = ();                           # count of tname references
 
+my $evti = -1;                             # event destination data
+my @evt = ();
+my @evt_lstdate = ();
+my @evt_lstusrprf = ();
 
 # option and ini file variables variables
 
@@ -361,12 +365,16 @@ my $opt_txt_tname;              # TNAME txt file
 my $opt_txt_tobjaccl;           # TOBJACCL txt file
 my $opt_txt_tgroup;             # TGROUP txt file
 my $opt_txt_tgroupi;            # TGROUPI txt file
+my $opt_txt_evntserver;         # EVNTSERVER txt file
 my $opt_lst;                    # input from .lst files
 my $opt_lst_tnodesav;           # TNODESAV lst file
 my $opt_lst_tnodelst;           # TNODELST lst file
 my $opt_lst_tsitdesc;           # TSITDESC lst file
 my $opt_lst_tname;              # TNAME lst file
 my $opt_lst_tobjaccl;           # TOBJACCL lst file
+my $opt_lst_tgroup;             # TGROUP lst file
+my $opt_lst_tgroupi;            # TGROUPI lst file
+my $opt_lst_evntserver;         # EVNTSERVER lst file
 my $opt_log;                    # name of log file
 my $opt_ini;                    # name of ini file
 my $opt_hub;                    # externally supplied nodeid of hub TEMS
@@ -540,6 +548,22 @@ for ($i=0; $i<=$magenti;$i++) {
       $advcode[$advi] = "DATAHEALTH1015W";
       $advimpact[$advi] = 90;
       $advsit[$advi] = $onemagent;
+   }
+}
+
+for ($i=0; $i<=$evti;$i++) {
+   my $oneid = $evt[$i];
+   if ($evt_lstdate[$i] eq "") {
+      $advi++;$advonline[$advi] = "Event Destination LSTDATE is blank and will not synchronize in FTO configuration";
+      $advcode[$advi] = "DATAHEALTH1039E";
+      $advimpact[$advi] = 100;
+      $advsit[$advi] = $oneid;
+   }
+   if ($evt_lstusrprf[$i] eq "") {
+      $advi++;$advonline[$advi] = "Event Destination LSTUSRPRF is blank and will not synchronize in FTO configuration";
+      $advcode[$advi] = "DATAHEALTH1040E";
+      $advimpact[$advi] = 100;
+      $advsit[$advi] = $oneid;
    }
 }
 
@@ -1018,6 +1042,14 @@ if ($advi != -1) {
 }
 exit $exit_code;
 
+sub new_evntserver {
+   my ($iid,$ilstdate,$ilstusrprf) = @_;
+   $evti += 1;
+   $evt[$evti] = $iid;
+   $evt_lstdate[$evti] = $ilstdate;
+   $evt_lstusrprf[$evti] = $ilstusrprf;
+}
+
 sub new_tgroup {
    my ($igrpclass,$iid,$igrpname) = @_;
    my $key = $igrpclass . "|" . $iid;
@@ -1443,6 +1475,10 @@ sub init_txt {
 
    my @kgrpi_data;
 
+   my @kevsr_data;
+   my $ilstdate;
+   my $ilstusrprf;
+
    open(KSAV, "< $opt_txt_tnodesav") || die("Could not open TNODESAV $opt_txt_tnodesav\n");
    @ksav_data = <KSAV>;
    close(KSAV);
@@ -1622,6 +1658,26 @@ sub init_txt {
       new_tgroupi($igrpclass,$iid,$iobjclass,$iobjname);
    }
 
+   open(KEVSR, "< $opt_txt_evntserver") || die("Could not open EVNTSERVER $opt_txt_evntserver\n");
+   @kevsr_data = <KEVSR>;
+   close(KEVSR);
+
+   # Get data for all EVNTSERVER records
+   $ll = 0;
+   foreach $oneline (@kevsr_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $iid = substr($oneline,0,3);
+      $iid =~ s/\s+$//;   #trim trailing whitespace
+      $ilstdate = substr($oneline,3,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $ilstusrprf = substr($oneline,20,10);
+      $ilstusrprf =~ s/\s+$//;   #trim trailing whitespace
+      new_evntserver($iid,$ilstdate,$ilstusrprf);
+   }
+
 }
 
 # There may be a better way to do this, but this was clear and worked.
@@ -1686,6 +1742,10 @@ sub init_lst {
    my @knam_data;
    my $iid;
    my $ifullname;
+
+   my @kevsr_data;
+   my $ilstdate;
+   my $ilstusrprf;
 
    # Parsing the KfwSQLClient output has some challenges. For example
    #      [1]  OGRP_59B815CE8A3F4403  2010  Test Group 1
@@ -1774,18 +1834,28 @@ sub init_lst {
    @knam_data = <KNAM>;
    close(KNAM);
 
-   # Get data for all TSITDESC records
+   # Get data for all TNAME
    $ll = 0;
    foreach $oneline (@ksav_data) {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
       ($iid,$ifullname) = parse_lst(2,$oneline);
-      $iid  = substr($oneline,0,32);
-      $iid =~ s/\s+$//;   #trim trailing whitespace
-      $ifullname = substr($oneline,33,1);
-      $ifullname =~ s/\s+$//;   #trim trailing whitespace
       new_tname($iid,$ifullname);
+   }
+
+   open(KEVSR, "< $opt_lst_evntserver") || die("Could not open EVNTSERVER $opt_lst_evntserver\n");
+   @kevsr_data = <KEVSR>;
+   close(KEVSR);
+
+   # Get data for all EVNTSERVER records
+   $ll = 0;
+   foreach $oneline (@kevsr_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      ($iid,$ilstdate,$ilstusrprf) = parse_lst(2,$oneline);
+      new_evntserver($iid,$ilstdate,$ilstusrprf);
    }
 }
 
@@ -1951,6 +2021,7 @@ sub init {
       $opt_txt_tobjaccl = $opt_workpath . "QA1DOBJA.DB.TXT";
       $opt_txt_tgroup   = $opt_workpath . "QA1DGRPA.DB.TXT";
       $opt_txt_tgroupi  = $opt_workpath . "QA1DGRPI.DB.TXT";
+      $opt_txt_evntserver = $opt_workpath . "QA1DEVSR.DB.TXT";
    }
    if (defined $opt_lst) {
       $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
@@ -1958,6 +2029,9 @@ sub init {
       $opt_lst_tsitdesc  = $opt_workpath . "QA1CSITF.DB.LST";
       $opt_lst_tname     = $opt_workpath . "QA1DNAME.DB.LST";
       $opt_lst_tobjaccl  = $opt_workpath . "QA1DOBJA.DB.LST";
+      $opt_lst_tgroup   = $opt_workpath . "QA1DGRPA.DB.LST";
+      $opt_lst_tgroupi  = $opt_workpath . "QA1DGRPI.DB.LST";
+      $opt_lst_evntserver = $opt_workpath . "QA1DEVSR.DB.LST";
    }
    $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.VNDX";
    $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
@@ -2102,3 +2176,4 @@ sub gettime
 # 0.88000  : Identify TEMA version < Agent version, adjust impacts, add more missing tests, change some impacts
 # 0.89000  : record TEMS version number
 # 0.90000  : detect case where *HUB is missing from TNODELST NODETYPE=M records
+# 0.91000  : Check EVNTSERVR for blank LSTDATE and LSTUSRPRF
