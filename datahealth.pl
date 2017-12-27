@@ -22,7 +22,7 @@
 ## todos
 #  QA1DAPPL     TAPPLPROPS  ??
 #  QA1CSPRD     TUSER       ??
-#
+#  QA1CEIBL   check for duplicate inserts - high rate
 #
 
 #use warnings::unused; # debug used to check for unused variables
@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.12000";
+my $gVersion = "1.13000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -495,6 +495,7 @@ my @tci_lstdate = ();
 my @tci_id = ();
 my @tci_calid = ();
 
+my %eibnodex = ();
 
 # option and ini file variables variables
 
@@ -515,6 +516,7 @@ my $opt_txt_tactypcy;           # TACTYPCY txt file
 my $opt_txt_tcalendar;          # TCALENDAR txt file
 my $opt_txt_toverride;          # TOVERRIDE txt file
 my $opt_txt_toveritem;          # TOVERITEM txt file
+my $opt_txt_teiblogt;           # TOVERITEM txt file
 my $opt_lst;                    # input from .lst files
 my $opt_lst_tnodesav;           # TNODESAV lst file
 my $opt_lst_tnodelst;           # TNODELST lst file
@@ -531,6 +533,7 @@ my $opt_lst_tactypcy;           # TACTYPCY lst file
 my $opt_lst_tcalendar;          # TCALENDAR lst file
 my $opt_lst_toverride;          # TOVERRIDE lst file
 my $opt_lst_toveritem;          # TOVERITEM lst file
+my $opt_lst_teiblogt;           # TOVERITEM lst file
 my $opt_log;                    # name of log file
 my $opt_ini;                    # name of ini file
 my $opt_hub;                    # externally supplied nodeid of hub TEMS
@@ -1507,6 +1510,46 @@ foreach my $f ( sort { $sit_lstdate[$sitx{$b}] cmp $sit_lstdate[$sitx{$a}]} keys
 }
 print OH "\n";
 
+# Calculate for same agent inserted into TNODELST multiple times minimum count seen
+my $online_min_count = 99999;
+foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} } keys %eibnodex) {
+   next if $eibnodex{$f}->{count} > $online_min_count;
+   $online_min_count = $eibnodex{$f}->{count};
+}
+
+# Calculate for same agent inserted into TNODELST multiple times more then minimum
+# This is an important clue signal about identically named agents on different systems.
+$top20 = 0;
+foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
+                      $a cmp $b
+                    } keys %eibnodex) {
+   last if $eibnodex{$f}->{count} == $online_min_count;
+   if ($top20 == 0) {
+      print OH "Maximum Top 20 agents showing online status more than $online_min_count times\n";
+      print OH "OnlineCount,Node,ThrunodeCount,Thrunodes\n";
+   }
+   $top20 += 1;
+   $oneline = $eibnodex{$f}->{count} . ",";
+   $oneline .= $f . ",";
+   my $pthrunode = "";
+   my $pthruct = 0;
+   foreach my $g (keys  %{$eibnodex{$f}->{thrunode}}) {
+      $pthruct += 1;
+      $pthrunode .= ":" if $pthrunode ne "";
+      $pthrunode .= $g;
+   }
+   $oneline .= $pthruct . "," . $pthrunode . ",";
+   print OH "$oneline\n";
+   if ($top20 == 1) {
+      $advi++;$advonline[$advi] = "Agent registering $eibnodex{$f}->{count} times: possible duplicate agent names";
+      $advcode[$advi] = "DATAHEALTH1068E";
+      $advimpact[$advi] = 90;
+      $advsit[$advi] = $f;
+   }
+   last if $top20 > 19;
+}
+print OH "\n" if $top20 > 0;
+
 my $tadvi = $advi + 1;
 print OH "Advisory messages,$tadvi\n";
 
@@ -2131,6 +2174,47 @@ my ($inodetype,$inodelist,$inode,$ilstdate) = @_;
 }
 
 
+# Record data from the TEIBLOGT table.
+
+sub new_teiblogt {
+my ($igbltmstmp,$iobjname,$operation,$itable) = @_;
+   my $inode = substr($iobjname,0,32);
+   $inode =~ s/\s+$//;   #trim trailing whitespace
+   my $ithrunode = substr($iobjname,32,32);
+   $ithrunode =~ s/\s+$//;   #trim trailing whitespace
+
+   # Insertions can be into V type records - alive which contain current thrunode
+   # Insertions can also be into M type records, containing system generated MSL entries
+   # Multiple of either is a good indication of problems
+   if ($ithrunode ne "") {
+       my $nx = $nsavex{$inode};
+       if (!defined $nx) {
+          ($inode,$ithrunode) = ($ithrunode,$inode);
+       }
+   }
+   my $node_ref = $eibnodex{$inode};
+   if (!defined $node_ref) {
+      my %thrunoderef = ();
+      my %noderef = ( count => 0,
+                      thrunode => \%thrunoderef,
+                    );
+      $node_ref = \%noderef;
+      $eibnodex{$inode} = \%noderef;
+   }
+   $eibnodex{$inode}->{count} += 1;
+   my $thrunode_ref = $eibnodex{$inode}->{thrunode}{$ithrunode};
+   if (!defined $thrunode_ref) {
+      my %thrunoderef = ( count => 0,
+                          gbltmstmp => [],
+                        );
+      $thrunode_ref = \%thrunoderef;
+      $eibnodex{$inode}->{thrunode}{$ithrunode} = \%thrunoderef;
+   }
+   $eibnodex{$inode}->{thrunode}{$ithrunode}->{count} += 1;
+   push (@{$eibnodex{$inode}->{thrunode}{$ithrunode}->{gbltmstmp}},$igbltmstmp);
+}
+
+
 # following routine gets data from txt files. tems2sql.pl is an internal only program which can
 # extract data from a TEMS database file.
 
@@ -2202,6 +2286,11 @@ sub init_txt {
    my @kovri_data;
    my $iitemid;
    my $icalid;
+
+   my @keibl_data;
+   my $igbltmstmp;
+   my $ioperation;
+   my $itable;
 
    open(KSAV, "< $opt_txt_tnodesav") || die("Could not open TNODESAV $opt_txt_tnodesav\n");
    @ksav_data = <KSAV>;
@@ -2578,6 +2667,29 @@ sub init_txt {
       new_toveritem($iid,$ilstdate,$iitemid,$icalid);
    }
 
+   open(KEIBL, "< $opt_txt_teiblogt") || die("Could not open TEIBLOGT $opt_txt_teiblogt\n");
+   @keibl_data = <KEIBL>;
+   close(KEIBL);
+   # Get data for all TEIBLOGT records
+   $ll = 0;
+   foreach $oneline (@keibl_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $igbltmstmp = substr($oneline,0,16);
+      $igbltmstmp =~ s/\s+$//;   #trim trailing whitespace
+      $iobjname = substr($oneline,17,160);
+      $iobjname =~ s/\s+$//;   #trim trailing whitespace
+      $ioperation = substr($oneline,178,1);
+      $ioperation =~ s/\s+$//;   #trim trailing whitespace
+      $itable = substr($oneline,188,4);
+      $itable =~ s/\s+$//;   #trim trailing whitespace
+      next if $ioperation ne "I";
+      next if $itable != 5529;
+      new_teiblogt($igbltmstmp,$iobjname,$ioperation,$itable);
+   }
+
 }
 
 # There may be a better way to do this, but this was clear and worked.
@@ -2696,6 +2808,11 @@ sub init_lst {
    my @kovri_data;
    my $iitemid;
    my $icalid;
+
+   my @keibl_data;
+   my $igbltmstmp;
+   my $ioperation;
+   my $itable;
 
    # Parsing the KfwSQLClient output has some challenges. For example
    #      [1]  OGRP_59B815CE8A3F4403  2010  Test Group 1
@@ -2988,7 +3105,24 @@ sub init_lst {
       chop $oneline;
       $oneline .= " " x 400;
       # KfwSQLClient /e "SELECT ID,LSTDATE,ITEMID,CALID FROM O4SRV.TOVERITEM" >QA1DOVRI.DB.LST
+      ($iid,$ilstdate,$iitemid,$icalid) = parse_lst(4,$oneline);
       new_toveritem($iid,$ilstdate,$iitemid,$icalid);
+   }
+
+   open(KEIBL, "< $opt_lst_teiblogt") || die("Could not open TEIBLOGT $opt_lst_teiblogt\n");
+   @keibl_data = <KEIBL>;
+   close(KEIBL);
+   # Get data for all TEIBLOGT records
+   $ll = 0;
+   foreach $oneline (@keibl_data) {
+      $ll += 1;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
+      chop $oneline;
+      $oneline .= " " x 400;
+      ($igbltmstmp,$iobjname,$ioperation,$itable) = parse_lst(4,$oneline);
+      next if $ioperation ne "I";
+      next if $itable != 5529;
+      new_teiblogt($igbltmstmp,$iobjname,$ioperation,$itable);
    }
 
 }
@@ -3164,6 +3298,7 @@ sub init {
       $opt_txt_tcalendar = $opt_workpath . "QA1DCALE.DB.TXT";
       $opt_txt_toverride = $opt_workpath . "QA1DOVRD.DB.TXT";
       $opt_txt_toveritem = $opt_workpath . "QA1DOVRI.DB.TXT";
+      $opt_txt_teiblogt = $opt_workpath . "QA1CEIBL.DB.TXT";
    }
    if (defined $opt_lst) {
       $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
@@ -3181,6 +3316,7 @@ sub init {
       $opt_lst_tcalendar = $opt_workpath . "QA1DCALE.DB.LST";
       $opt_lst_toverride = $opt_workpath . "QA1DOVRD.DB.LST";
       $opt_lst_toveritem = $opt_workpath . "QA1DOVRI.DB.LST";
+      $opt_lst_teiblogt = $opt_workpath . "QA1CEIBL.DB.LST";
    }
    $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.VNDX";
    $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
@@ -3374,3 +3510,4 @@ sub gettime
 # 1.10000  : Handle divide by zero case when no agents backlevel
 # 1.11000  : Add ITM 630 FP5 APARs for TEMA deficit report
 # 1.12000  : Add top 10 changed situations
+# 1.13000  : record mulitple TEIBLOGT inserts of same object, same day?
