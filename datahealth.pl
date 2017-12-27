@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.11000";
+my $gVersion = "1.12000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -1457,7 +1457,7 @@ my $pfraction;
 
 if ($tema_total_count > 0 ){
    print OH "\n";
-   print OH "TEMA Deficit Report Summary - 122 TEMA APARs to latest maintenance\n";
+   print OH "TEMA Deficit Report Summary - 126 TEMA APARs to latest maintenance\n";
    $oneline = $tema_total_count . ",Agents with TEMA,";
    print OH "$oneline\n";
    $oneline = $tema_total_good_count . ",Agents with TEMA version same as TEMS version,";
@@ -1496,6 +1496,16 @@ if ($tema_total_count > 0 ){
    print OH "\n";
 }
 
+print OH "Top 20 most recently added or changed Situations\n";
+print OH "LSTDATE,Situation,Formula\n";
+my $top20 = 0;
+foreach my $f ( sort { $sit_lstdate[$sitx{$b}] cmp $sit_lstdate[$sitx{$a}]} keys %sitx) {
+   $top20 += 1;
+   my $j = $sitx{$f};
+   print OH "$sit_lstdate[$j],$sit_psit[$j],$sit_pdt[$j],\n";
+   last if $top20 >= 20;
+}
+print OH "\n";
 
 my $tadvi = $advi + 1;
 print OH "Advisory messages,$tadvi\n";
@@ -1812,6 +1822,8 @@ sub new_tsitdesc {
       $sit_ct[$siti] = 0;
       $sit_lstdate[$siti] = $ilstdate;
       $sit_reeval[$siti] = 1;
+      $sit_fullname[$siti] = "";
+      $sit_psit[$siti] = $isitname;
       if ((length($ireev_days) >= 1) and (length($ireev_days) <= 3) ) {
          if ((length($ireev_time) >= 1) and (length($ireev_time) <= 6)) {
             $ireev_days += 0;
@@ -1843,6 +1855,11 @@ sub new_tname {
       $nam_lstdate[$nami] = $ilstdate;
    }
    $nam_ct[$nax] += 1;
+   $sx = $sitx{$iid};
+   if (defined $sx) {
+      $sit_fullname[$sx] = $ifullname;
+      $sit_psit[$sx] = $ifullname;
+   }
 }
 
 # Record data from the TNODESAV table. This is the disk version of [most of] the INODESTS or node status table.
@@ -3356,3 +3373,4 @@ sub gettime
 # 1.09000  : Dislay Days/APAR in deficit calculations
 # 1.10000  : Handle divide by zero case when no agents backlevel
 # 1.11000  : Add ITM 630 FP5 APARs for TEMA deficit report
+# 1.12000  : Add top 10 changed situations
