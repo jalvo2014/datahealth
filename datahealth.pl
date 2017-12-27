@@ -16,10 +16,13 @@
 # tested on Windows Activestate 5.16.2
 # Should work on Linux/Unix but not yet tested
 #
+#    # remember debug breakpoint
 # $DB::single=2;   # remember debug breakpoint
 
 ## todos
-#  for 1040E, skip advisory if at ITM 630 FP3 or later.
+#  QA1DAPPL     TAPPLPROPS  ??
+#  QA1CSPRD     TUSER       ??
+#
 #
 
 #use warnings::unused; # debug used to check for unused variables
@@ -28,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.00100";
+my $gVersion = "1.01000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -49,7 +52,7 @@ my $pcount;
 my $oneline;
 my $sx;
 my $i;
-my $clstdate;
+my $tlstdate;                            # tomorrow date expressed in ITM Stamp
 
 # forward declarations of subroutines
 
@@ -64,6 +67,7 @@ sub new_tnodesav;                        # process the TNODESAV columns
 sub new_tnodelstv;                       # process the TNODELST NODETYPE=V records
 sub new_tobjaccl;                        # process the TOBJACCL records
 sub fill_tnodelstv;                      # reprocess new TNODELST NODETYPE=V data
+sub valid_lstdate;                       # validate the LSTDATE
 
 my $sitdata_start_time = gettime();     # formated current time for report
 
@@ -78,6 +82,7 @@ my %nlistvx = ();                       # hash from name to index
 my @nlistv_thrunode = ();               # agent thrunode
 my @nlistv_tems = ();                   # TEMS if thrunode is agent
 my @nlistv_ct = ();                     # count of agents
+my @nlistv_lstdate = ();                # last update date
 
 # TNODELST type M record data           Managed Systemlists
 my $mlx;
@@ -91,7 +96,10 @@ my $mkey;
 my $mlisti = -1;
 my @mlist = ();
 my %mlistx = ();
-my @mlist_ct;
+my @mlist_ct = ();
+my @mlist_nodelist = ();
+my @mlist_node = ();
+my @mlist_lstdate = ();
 
 my $nlx;
 my $nlisti = -1;
@@ -131,6 +139,7 @@ my @obj_objclass = ();
 my @obj_objname = ();
 my @obj_nodel = ();
 my @obj_ct = ();
+my @obj_lstdate = ();
 
 
 my $tx;                                  # TEMS information
@@ -358,6 +367,8 @@ my $tems_packages = 0;
 my $tems_packages_nominal = 500;
 
 
+
+
 # Situation Group related data
 my %group = ();                            # situation group base data, hash of hashes
 my %groupi = ();                           # situation group item data, hash of hashes
@@ -419,6 +430,7 @@ my @sit_history_collect  = ();             # If History collection file, where c
 my @sit_history_interval = ();             # If History collection file, how often collected in seconds
 my @sit_history_export   = ();             # If History collection file, how many collections before export
 my $sit_distribution = 0;                  # when 1, distributions are present
+my @sit_lstdate = ();
 
 my $sit_tems_alert = 0;
 my $sit_tems_alert_run = 0;
@@ -430,11 +442,47 @@ my @nam = ();                              # array of index
 my %namx = ();                             # Index from index name to index
 my @nam_fullname = ();                     # array of fullnames
 my @nam_ct = ();                           # count of tname references
+my @nam_lstdate = ();                      # last update times
 
 my $evti = -1;                             # event destination data
 my @evt = ();
 my @evt_lstdate = ();
 my @evt_lstusrprf = ();
+
+my $ccti = -1;
+my @cct = ();
+my @cct_lstdate = ();
+my @cct_name = ();
+
+my $evmapi = -1;
+my @evmap = ();
+my @evmap_lstdate = ();
+my @evmap_map  = ();
+
+my %pcyx = ();
+
+my $cali = -1;
+my @cal = ();
+my %calx = ();
+my @cal_count = ();
+my @cal_lstdate = ();
+my @cal_name = ();
+
+my $tcai = -1;
+my @tca = ();
+my %tcax = ();
+my @tca_count = ();
+my @tca_lstdate = ();
+my @tca_sitname = ();
+
+my $tcii = -1;
+my @tci = ();
+my %tcix = ();
+my @tci_count = ();
+my @tci_lstdate = ();
+my @tci_id = ();
+my @tci_calid = ();
+
 
 # option and ini file variables variables
 
@@ -448,6 +496,13 @@ my $opt_txt_tgroup;             # TGROUP txt file
 my $opt_txt_tgroupi;            # TGROUPI txt file
 my $opt_txt_evntserver;         # EVNTSERVER txt file
 my $opt_txt_package;            # PACKAGE txt file
+my $opt_txt_cct;                # CCT txt file
+my $opt_txt_evntmap;            # EVNTMAP txt file
+my $opt_txt_tpcydesc;           # TPCYDESC txt file
+my $opt_txt_tactypcy;           # TACTYPCY txt file
+my $opt_txt_tcalendar;          # TCALENDAR txt file
+my $opt_txt_toverride;          # TOVERRIDE txt file
+my $opt_txt_toveritem;          # TOVERITEM txt file
 my $opt_lst;                    # input from .lst files
 my $opt_lst_tnodesav;           # TNODESAV lst file
 my $opt_lst_tnodelst;           # TNODELST lst file
@@ -457,6 +512,13 @@ my $opt_lst_tobjaccl;           # TOBJACCL lst file
 my $opt_lst_tgroup;             # TGROUP lst file
 my $opt_lst_tgroupi;            # TGROUPI lst file
 my $opt_lst_evntserver;         # EVNTSERVER lst file
+my $opt_lst_cct;                # CCT lst file
+my $opt_lst_evntmap;            # EVNTMAP lst file
+my $opt_lst_tpcydesc;           # TPCYDESC lst file
+my $opt_lst_tactypcy;           # TACTYPCY lst file
+my $opt_lst_tcalendar;          # TCALENDAR lst file
+my $opt_lst_toverride;          # TOVERRIDE lst file
+my $opt_lst_toveritem;          # TOVERITEM lst file
 my $opt_log;                    # name of log file
 my $opt_ini;                    # name of ini file
 my $opt_hub;                    # externally supplied nodeid of hub TEMS
@@ -664,6 +726,17 @@ if ($hub_tems_no_tnodesav == 0) {
    }
 }
 
+for (my $i=0;$i<=$temsi;$i++) {
+   if ($tems_thrunode[$i] eq $tems[$i]) {
+      # The following test is how a hub TEMS is distinguished from a remote TEMS
+      # This checks an affinity capability flag which indicates the policy microscope
+      # is available. I tried many ways and failed before finding this.
+      if (substr($tems_affinities[$i],40,1) eq "O") {
+         $isFTO += 1;
+      }
+   }
+}
+
 if ($tems_packages > $tems_packages_nominal) {
    $advi++;$advonline[$advi] = "Total TEMS Packages [.cat files] count [$tems_packages] exceeds nominal [$tems_packages_nominal]";
    $advcode[$advi] = "DATAHEALTH1046W";
@@ -743,12 +816,133 @@ for ($i=0; $i<=$magenti;$i++) {
 }
 
 for ($i=0; $i<=$evti;$i++) {
+   valid_lstdate("EVNSERVER",$evt_lstdate[$i],$evt[$i],"ID=$evt[$i]");
    my $oneid = $evt[$i];
-   if ($evt_lstdate[$i] eq "") {
-      $advi++;$advonline[$advi] = "Event Destination LSTDATE is blank and will not synchronize in FTO configuration";
-      $advcode[$advi] = "DATAHEALTH1039E";
-      $advimpact[$advi] = 100;
-      $advsit[$advi] = $oneid;
+}
+
+for ($i=0; $i<=$evmapi;$i++) {
+   valid_lstdate("EVNTMAP",$evmap_lstdate[$i],$evmap[$i],"ID=$evmap[$i]");
+   my $onemap = $evmap_map[$i];
+   #<situation name="kph_actvmem_xuxc_epf" mapAllAttributes="Y" ><class name="ITM_Unix_Memory" /></situation>
+   $onemap =~ /\"(\S+)\"/;
+   my $onesit = $1;
+   if (!defined $onemap){
+     #$DB::single=2;
+      $advi++;$advonline[$advi] = "EVNTMAP Situation reference missing";
+      $advcode[$advi] = "DATAHEALTH1053E";
+      $advimpact[$advi] = 20;
+      $advsit[$advi] = $evmap[$i];
+   } else {
+      $onesit =~ s/\s+$//;   #trim trailing whitespace
+      if (!defined $sitx{$onesit}){
+         $advi++;$advonline[$advi] = "EVNTMAP ID[$evmap[$i]] Unknown Situation in mapping";
+         $advcode[$advi] = "DATAHEALTH1047E";
+         $advimpact[$advi] = 20;
+         $advsit[$advi] = $evmap[$i];
+      }
+   }
+
+}
+
+for ($i=0; $i<=$ccti;$i++) {
+   valid_lstdate("CCT",$cct_lstdate[$i],$cct[$i],"ID=$cct[$i]");
+}
+
+# Following logic cross checks the LSTDATE field. There is a big distinction between FTO mode and not.
+# In FTO mode condition cause actual problems while otherwise they are potential problems. That is why
+# there are 4 advisories.
+#
+# LSTDATE blank - causes a failure to FTO synchronize. If not FTO - a potential problem for the future.
+# LSTDATE in future - cause breakage to FTO synchronize process. If not FTO - a potential problem for the future.
+# LSTDATE in future and ITM 630 FP3 or later, no problem because of TEMS logic change
+# LSTDATE in future and before ITM 630 FP3, causes invalid "high water mark" at backup hub TEMS and thus update to be ignored.
+
+sub valid_lstdate {
+   my ($itable,$ilstdate,$iname,$icomment) = @_;
+   if ($isFTO >= 2){
+      if ($ilstdate eq "") {
+         $advi++;$advonline[$advi] = "$itable LSTDATE is blank and will not synchronize in FTO configuration";
+         $advcode[$advi] = "DATAHEALTH1039E";
+         $advimpact[$advi] = 100;
+         $advsit[$advi] = $iname;
+      } elsif ($ilstdate gt $tlstdate) {
+         if (defined $hubi) {
+            if ($tems_version[$hubi]  lt "06.30.03") {
+               $advi++;$advonline[$advi] = "LSTDATE for [$icomment] value in the future $ilstdate";
+               $advcode[$advi] = "DATAHEALTH1040E";
+               $advimpact[$advi] = 100;
+               $advsit[$advi] = "$itable";
+            }
+         }
+      }
+   } else {
+      if ($ilstdate eq "") {
+         $advi++;$advonline[$advi] = "$itable LSTDATE is blank and will not synchronize in FTO configuration";
+         $advcode[$advi] = "DATAHEALTH1063W";
+         $advimpact[$advi] = 10;
+         $advsit[$advi] = $iname;
+      } elsif ($ilstdate gt $tlstdate) {
+         if (defined $hubi) {
+            if ($tems_version[$hubi]  lt "06.30.03") {
+               $advi++;$advonline[$advi] = "LSTDATE for [$icomment] value in the future $ilstdate";
+               $advcode[$advi] = "DATAHEALTH1041W";
+               $advimpact[$advi] = 10;
+               $advsit[$advi] = "$itable";
+            }
+         }
+      }
+   }
+}
+
+
+for ($i=0; $i<=$cali; $i++) {
+   valid_lstdate("TCALENDAR",$cal_lstdate[$i],$cal_name[$i],"NAME=$cal_name[$i]");
+   if ($cal_count[$i] > 1) {
+      $advi++;$advonline[$advi] = "TCALENDAR duplicate key ID";
+      $advcode[$advi] = "DATAHEALTH1058E";
+      $advimpact[$advi] = 105;
+      $advsit[$advi] = $cal[$i];
+   }
+}
+
+for ($i=0; $i<=$tcai; $i++) {
+   valid_lstdate("TOVERRIDE",$tca_lstdate[$i],$tca[$i],"ID=$tca[$i]");
+   if ($tca_count[$i] > 1) {
+#$DB::single=2;
+      $advi++;$advonline[$advi] = "TOVERRIDE duplicate key ID";
+      $advcode[$advi] = "DATAHEALTH1059E";
+      $advimpact[$advi] = 105;
+      $advsit[$advi] = $tca[$i];
+   }
+   my $onesit = $tca_sitname[$i];
+   if (!defined $sitx{$onesit}){
+#$DB::single=2;
+      $advi++;$advonline[$advi] = "TOVERRIDE Unknown Situation [$onesit] in override";
+      $advcode[$advi] = "DATAHEALTH1060E";
+      $advimpact[$advi] = 20;
+      $advsit[$advi] = $tca[$i];
+   }
+}
+
+for ($i=0; $i<=$tcii; $i++) {
+   if ($tci_calid[$i] ne "") {
+#$DB::single=2;
+      my $onecal = $tci_calid[$i];
+      if (!defined $calx{$onecal}){
+#$DB::single=2;
+         $advi++;$advonline[$advi] = "TOVERITEM Unknown Calendar ID $onecal";
+         $advcode[$advi] = "DATAHEALTH1061E";
+         $advimpact[$advi] = 75;
+         $advsit[$advi] = $tci[$i];
+      }
+      my $oneid = $tci_id[$i];
+      if (!defined $tcax{$oneid}){
+#$DB::single=2;
+         $advi++;$advonline[$advi] = "TOVERITEM Unknown TOVERRIDE ID $oneid";
+         $advcode[$advi] = "DATAHEALTH1062E";
+         $advimpact[$advi] = 75;
+         $advsit[$advi] = $tci[$i];
+      }
    }
 }
 
@@ -791,6 +985,7 @@ for ($i=0; $i<=$nlistmi; $i++) {
 
 foreach my $f (keys %group) {
    my $group_detail_ref = $group{$f};
+   valid_lstdate("TGROUP",$group_detail_ref->{lstdate},$f,"KEY=$f");
    if ($group_detail_ref->{indirect} == 0) {
       my $nodist = 0;
       if ($opt_nodist ne "") {
@@ -810,6 +1005,39 @@ foreach my $f (keys %group) {
       }
    }
 }
+
+foreach my $f (sort { $a cmp $b } keys %pcyx) {
+   my $pcy_ref = $pcyx{$f};
+   valid_lstdate("TPCYDESCR",$pcy_ref->{lstdate},$f,"PCYNAME=$f");
+   if ($pcy_ref->{count} > 1) {
+      $advi++;$advonline[$advi] = "TPCYDESC duplicate key PCYNAME";
+      $advcode[$advi] = "DATAHEALTH1054E";
+      $advimpact[$advi] = 105;
+      $advsit[$advi] = $f;
+   }
+   foreach my $g (sort { $a cmp $b } keys %{$pcy_ref->{sit}}) {
+      my $onesit = $g;
+      if (!defined $sitx{$onesit}) {
+#$DB::single=2;
+         $advi++;$advonline[$advi] = "TPCYDESC Wait on SIT or Sit reset - unknown situation $g";
+         $advcode[$advi] = "DATAHEALTH1056E";
+         $advimpact[$advi] = 100;
+         $advsit[$advi] = $f;
+      }
+   }
+   foreach my $g (sort { $a cmp $b } keys %{$pcy_ref->{eval}}) {
+      my $onesit = $g;
+      if (!defined $sitx{$onesit}) {
+#$DB::single=2;
+         $advi++;$advonline[$advi] = "TPCYDESC Evaluate Sit Now - unknown situation $g";
+         $advcode[$advi] = "DATAHEALTH1057E";
+         $advimpact[$advi] = 100;
+         $advsit[$advi] = $f;
+      }
+   }
+}
+
+
 
 for ($i=0;$i<=$nsavei;$i++) {
    $invalid_node = 0;
@@ -869,6 +1097,7 @@ for ($i=0;$i<=$nami;$i++) {
 }
 
 for ($i=0;$i<=$nami;$i++) {
+   valid_lstdate("TNAME",$nam_lstdate[$i],$nam[$i],"ID=$nam[$i]");
    next if defined $sitx{$nam[$i]};
    next if substr($nam[$i],0,8) eq "UADVISOR";
    $advi++;$advonline[$advi] = "TNAME ID index missing in TSITDESC";
@@ -878,6 +1107,7 @@ for ($i=0;$i<=$nami;$i++) {
 }
 
 for ($i=0;$i<=$siti;$i++) {
+   valid_lstdate("TSITDESC",$sit_lstdate[$i],$sit[$i],"SITNAME=$sit[$i]");
    my $pdtone = $sit_pdt[$i];
    my $mysit;
    while($pdtone =~ m/.*?\*SIT (\S+) /g) {
@@ -920,6 +1150,7 @@ for ($i=0;$i<=$hsavei;$i++) {
 }
 
 for ($i=0;$i<=$nlistvi;$i++) {
+   valid_lstdate("TNODELIST",$nlistv_lstdate[$i],$nlistv[$i],"V NODE=$nlistv[$i] THRUNODE=$nlistv_thrunode[$i]");
    if ($nlistv_ct[$i] > 1) {
       $advi++;$advonline[$advi] = "TNODELST Type V duplicate nodes";
       $advcode[$advi] = "DATAHEALTH1008E";
@@ -1006,6 +1237,7 @@ for ($i=0;$i<=$nlisti;$i++) {
 
 # check TOBJACCL validity
 for ($i=0;$i<=$obji;$i++){
+   valid_lstdate("TOBJACCL",$obj_lstdate[$i],$obj_objname[$i],"NODEL=$obj_nodel[$i] OBJCLASS=$obj_objclass[$i] OBJNAME=$obj_objname[$i]");
    if ($obj_ct[$i] > 1) {
       $advi++;$advonline[$advi] = "TOBJACCL duplicate nodes";
       $advcode[$advi] = "DATAHEALTH1028E";
@@ -1131,6 +1363,7 @@ if ($peak_rate > $opt_peak_rate) {
 }
 
 for ($i=0;$i<=$mlisti;$i++) {
+   valid_lstdate("TNODELIST",$mlist_lstdate[$i],$mlist_node[$i],"M NODE=$mlist_node[$i] NODELIST=$mlist_nodelist[$i]");
    next if $mlist_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODELST Type M duplicate NODE/NODELIST";
    $advcode[$advi] = "DATAHEALTH1009E";
@@ -1160,14 +1393,6 @@ if ($hub_tems_no_tnodesav == 0) {
 
    print OH "Hub,$hub_tems,$hub_tems_ct\n";
    for (my $i=0;$i<=$temsi;$i++) {
-      if ($tems_thrunode[$i] eq $tems[$i]) {
-         # The following test is how a hub TEMS is distinguished from a remote TEMS
-         # This checks an affinity capability flag which indicates the policy microscope
-         # is available. I tried many ways and failed before finding this.
-         if (substr($tems_affinities[$i],40,1) eq "O") {
-            $isFTO += 1;
-         }
-      }
       if ($tems_ct[$i] > $remote_limit){
          $advi++;$advonline[$advi] = "TEMS has $tems_ct[$i] managed systems which exceeds limits $remote_limit";
          $advcode[$advi] = "DATAHEALTH1006W";
@@ -1345,6 +1570,121 @@ if ($advi != -1) {
 }
 exit $exit_code;
 
+# TOVERITEM - Specifics of Situation Override detals
+# Capture 4 columns from the Situation Overide Item table and store for later analysis
+#  The error cases are
+#    1) CALID is not blank and does not reference a known TCALENDAR ID column
+#    2) ID does not reference a known TOVERRIDE ID column
+#  It is normal to have multiple ID fields, so that is not checked
+#  The LSTDATE is essentially unused... TOVERITEM is treated with TOVERRIDE in FTO
+#  so the TOVERRIDE LSTDATE is the field to check.
+
+sub new_toveritem {
+   my ($iid,$ilstdate,$iitemid,$icalid) = @_;
+   my $tcx = $tcix{$iitemid};
+   if (!defined $tcx) {
+      $tcii += 1;
+      $tcx = $tcii;
+      $tci[$tcx] = $iitemid;
+      $tcix{$iitemid} = $tcx;
+      $tci_count[$tcx] = 0;
+      $tci_lstdate[$tcx] = $ilstdate;
+      $tci_id[$tcx] = $iid;
+      $tci_calid[$tcx] = $icalid;
+   }
+   $tci_count[$tcx] += 1;
+}
+# TOVERRIDE - Situation Override definition
+# Capture 3 columns from the Situation Overide table and store for later analysis
+#  The error cases are
+#    1) LSTDATE is blank and cannot be FTO synchronized
+#    2) LSTDATE is in future and will sabotage FTO synchronization before ITM 630 FP3
+#    3) SITNAME does not reference a known TSITDESC SITNAME column
+#    4) ID field is present more then once - duplicate keys
+
+sub new_toverride {
+   my ($iid,$ilstdate,$isitname) = @_;
+   my $tcx = $calx{$iid};
+   if (!defined $tcx) {
+      $tcai += 1;
+      $tcx = $tcai;
+      $tca[$tcx] = $iid;
+      $tcax{$iid} = $tcx;
+      $tca_count[$tcx] = 0;
+      $tca_lstdate[$tcx] = $ilstdate;
+      $tca_sitname[$tcx] = $isitname;
+   }
+   $tca_count[$tcx] += 1;
+}
+
+sub new_tcalendar {
+   my ($iid,$ilstdate,$iname) = @_;
+   my $tcx = $calx{$iid};
+   if (!defined $tcx) {
+      $cali += 1;
+      $tcx = $cali;
+      $cal[$tcx] = $iid;
+      $calx{$iid} = $tcx;
+      $cal_count[$tcx] = 0;
+      $cal_lstdate[$tcx] = $ilstdate;
+      $cal_name[$tcx] = $iname;
+   }
+   $cal_count[$tcx] += 1;
+}
+
+sub new_tactypcy {
+   my ($iactname,$ipcyname,$ilstdate,$itypestr,$iactinfo) = @_;
+   my $pcy_ref = $pcyx{$ipcyname};
+   if (!defined $pcy_ref) {
+      $advi++;$advonline[$advi] = "Policy Activity [ACTNAME=$iactname] Unknown policy name";
+      $advcode[$advi] = "DATAHEALTH1055E";
+      $advimpact[$advi] = 10;
+      $advsit[$advi] = $ipcyname;
+   } else {
+      if ($itypestr eq "*WAIT_ON_SITUATION") {
+         $pcyx{$ipcyname}->{sit}{$iactinfo} = 1;
+      } elsif ($itypestr eq "Evaluate_Situation") {
+         $pcyx{$ipcyname}->{eval}{$iactinfo} = 1;
+      } elsif ($itypestr eq "Wait_For_Sit_Reset") {
+         $pcyx{$ipcyname}->{sit}{$iactinfo} = 1;
+      }
+   }
+}
+
+sub new_tpcydesc {
+   my ($ipcyname,$ilstdate) = @_;
+   my $pcy_ref = $pcyx{$ipcyname};
+   if (!defined $pcy_ref) {
+      my %pcy_sit = ();
+      my %pcy_eval = ();
+      my %pcyref = (
+                      count => 0,           # count of PCYNAMEs - looking for duplicates
+                      lstdate => $ilstdate, # last update date
+                      sit  => \%pcy_sit,    # hash of Wait on Sits
+                      eval => \%pcy_eval,   # hash of Evaluation Sit
+                   );
+      $pcyx{$ipcyname} = \%pcyref;
+      $pcy_ref = \%pcyref;
+   }
+   $pcy_ref->{count} += 1;
+}
+
+sub new_evntmap {
+   my ($iid,$ilstdate,$imap) = @_;
+   $evmapi += 1;
+   $evmap[$evmapi] = $iid;
+   $evmap_lstdate[$evmapi] = $ilstdate;
+   $evmap_map[$evmapi] = $imap;
+}
+
+sub new_cct {
+   my ($ikey,$ilstdate,$iname) = @_;
+   $ccti += 1;
+   $cct[$ccti] = $ikey;
+   $cct_lstdate[$ccti] = $ilstdate;
+   $cct_name[$ccti] = $iname;
+}
+
 sub new_evntserver {
    my ($iid,$ilstdate,$ilstusrprf) = @_;
    $evti += 1;
@@ -1354,7 +1694,7 @@ sub new_evntserver {
 }
 
 sub new_tgroup {
-   my ($igrpclass,$iid,$igrpname) = @_;
+   my ($igrpclass,$iid,$ilstdate,$igrpname) = @_;
    my $key = $igrpclass . "|" . $iid;
    my $group_detail_ref = $group{$key};
 
@@ -1365,6 +1705,7 @@ sub new_tgroup {
                       grpname => $igrpname,        # GRPNAME is external user name
                       indirect => 0,               # when 1, included in a TGROUPI and so no distribution expected
                       count => 0,
+                      lstdate => $ilstdate,
                    );
       $group_detail_ref = \%igroup;
       $group{$key} = \%igroup;
@@ -1374,7 +1715,13 @@ sub new_tgroup {
 }
 
 sub new_tgroupi {
-   my ($igrpclass,$iid,$iobjclass,$iobjname) = @_;
+   my ($igrpclass,$iid,$ilstdate,$iobjclass,$iobjname) = @_;
+   if ($ilstdate gt $tlstdate) {
+      $advi++;$advonline[$advi] = "LSTDATE for [ID=$iid] value in the future $ilstdate";
+      $advcode[$advi] = "DATAHEALTH1040E";
+      $advimpact[$advi] = 100;
+      $advsit[$advi] = "TGROUPI";
+   }
    my $key = $igrpclass . "|" . $iid . "|" . $iobjclass . "|" . $iobjname;
    my $groupi_detail_ref = $groupi{$key};
    if (!defined $groupi_detail_ref) {
@@ -1384,6 +1731,7 @@ sub new_tgroupi {
                       objclass => $iobjclass,
                       objname => $iobjname,
                       count => 0,
+                      lstdate => $ilstdate,
                    );
       $groupi_detail_ref = \%igroupi;
       $groupi{$key} = \%igroupi;
@@ -1429,7 +1777,7 @@ $DB::single=2;
 }
 
 sub new_tobjaccl {
-   my ($iobjclass,$iobjname,$inodel) = @_;
+   my ($iobjclass,$iobjname,$inodel,$ilstdate) = @_;
    my $key = $inodel . "|". $iobjclass . "|" . $iobjname;
    my $ox = $objx{$key};
    if (!defined $ox) {
@@ -1442,6 +1790,7 @@ sub new_tobjaccl {
       $obj_objname[$obji] = $iobjname;
       $obj_nodel[$obji] = $inodel;
       $obj_ct[$obji] = 0;
+      $obj_lstdate[$obji] = $ilstdate;
    }
   $obj_ct[$ox] += 1;
   $tobjaccl{$iobjname} = 1;
@@ -1458,18 +1807,13 @@ sub new_tsitdesc {
       $sit_autostart[$siti] = $iautostart;
       $sit_pdt[$siti] = $ipdt;
       $sit_ct[$siti] = 0;
+      $sit_lstdate[$siti] = $ilstdate;
    }
   $sit_ct[$sx] += 1;
-  if ($ilstdate gt $clstdate) {
-     $advi++;$advonline[$advi] = "TSITDESC LSTDATE value in the future $ilstdate";
-     $advcode[$advi] = "DATAHEALTH1040E";
-     $advimpact[$advi] = 100;
-     $advsit[$advi] = $isitname;
-  }
 }
 
 sub new_tname {
-   my ($iid,$ifullname) = @_;
+   my ($iid,$ilstdate,$ifullname) = @_;
    $nax = $namx{$iid};
    if (!defined $nax) {
       $nami += 1;
@@ -1478,6 +1822,7 @@ sub new_tname {
       $namx{$iid} = $nami;
       $nam_fullname[$nami] = $ifullname;
       $nam_ct[$nami] = 0;
+      $nam_lstdate[$nami] = $ilstdate;
    }
    $nam_ct[$nax] += 1;
 }
@@ -1574,7 +1919,7 @@ sub new_tnodesav {
 # Record data from the TNODELST NODETYPE=V table. This is the ALIVE data which captures the thrunode
 
 sub new_tnodelstv {
-   my ($inodetype,$inodelist,$inode) = @_;
+   my ($inodetype,$inodelist,$inode,$ilstdate) = @_;
    # The $inodelist is the managed system name. Record that data
    $vlx = $nlistvx{$inodelist};
    if (!defined $vlx) {
@@ -1585,6 +1930,7 @@ sub new_tnodelstv {
       $nlistv_thrunode[$vlx] = $inode;
       $nlistv_tems[$vlx] = "";
       $nlistv_ct[$vlx] = 0;
+      $nlistv_lstdate[$vlx] = $ilstdate;
    }
 
    # The $inode is the thrunode, capture that data.
@@ -1690,7 +2036,7 @@ sub fill_tnodelstv {
 # Record data from the TNODELST NODETYPE=M table. This is the MSL
 
 sub new_tnodelstm {
-my ($inodetype,$inodelist,$inode) = @_;
+my ($inodetype,$inodelist,$inode,$ilstdate) = @_;
    return if $inode eq "--EMPTYNODE--";         # ignore empty tables
    # primary key is node and nodelist. Track and count duplicates for the severe index error
    $mkey = $inode . "|" . $inodelist;
@@ -1701,6 +2047,9 @@ my ($inodetype,$inodelist,$inode) = @_;
       $mlist[$mlx] = $mkey;
       $mlistx{$mkey} = $mlx;
       $mlist_ct[$mlx] = 0;
+      $mlist_lstdate[$mlx] = $ilstdate;
+      $mlist_nodelist[$mlx] = $inodelist;
+      $mlist_node[$mlx] = $inode;
    }
    $mlist_ct[$mlx] += 1;
 
@@ -1790,6 +2139,29 @@ sub init_txt {
 
    my @kdsca_data;
 
+   my @kcct_data;
+   my $ikey;
+   my $iname;
+
+   my @kevmp_data;
+   my $imap;
+
+   my @kpcyf_data;
+   my $ipcyname;
+
+   my @kactp_data;
+   my $itypestr;
+   my $iactname;
+   my $iactinfo;
+
+   my @kcale_data;
+
+   my @kovrd_data;
+
+   my @kovri_data;
+   my $iitemid;
+   my $icalid;
+
    open(KSAV, "< $opt_txt_tnodesav") || die("Could not open TNODESAV $opt_txt_tnodesav\n");
    @ksav_data = <KSAV>;
    close(KSAV);
@@ -1840,7 +2212,9 @@ sub init_txt {
       $inodelist =~ s/\s+$//;   #trim trailing whitespace
       $inode = substr($oneline,0,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
-      new_tnodelstv($inodetype,$inodelist,$inode);
+      $ilstdate = substr($oneline,75,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      new_tnodelstv($inodetype,$inodelist,$inode,$ilstdate);
    }
    fill_tnodelstv();
 
@@ -1855,6 +2229,8 @@ sub init_txt {
       $inodelist =~ s/\s+$//;   #trim trailing whitespace
       $inode = substr($oneline,0,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
+      $ilstdate = substr($oneline,75,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
       if (($inodetype eq " ") and ($inodelist eq "*HUB")) {    # *HUB has blank NODETYPE. Set to M for this calculation
          $inodetype = "M";
          $tx = $temsx{$inode};
@@ -1868,8 +2244,7 @@ sub init_txt {
             $hub_tems_version = "";
          }
       }
-     #next if $inodetype ne "M";
-      new_tnodelstm($inodetype,$inodelist,$inode);
+      new_tnodelstm($inodetype,$inodelist,$inode,$ilstdate);
    }
 
    open(KSIT, "< $opt_txt_tsitdesc") || die("Could not open TSITDESC $opt_txt_tsitdesc\n");
@@ -1907,9 +2282,11 @@ sub init_txt {
       $oneline .= " " x 400;
       $iid  = substr($oneline,0,32);
       $iid =~ s/\s+$//;   #trim trailing whitespace
-      $ifullname = substr($oneline,33);
+      $ilstdate = substr($oneline,33,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $ifullname = substr($oneline,50);
       $ifullname =~ s/\s+$//;   #trim trailing whitespace
-      new_tname($iid,$ifullname);
+      new_tname($iid,$ilstdate,$ifullname);
    }
 
    open(KOBJ, "< $opt_txt_tobjaccl") || die("Could not open TOBJACCL $opt_txt_tobjaccl\n");
@@ -1929,8 +2306,10 @@ sub init_txt {
       $iobjname =~ s/\s+$//;   #trim trailing whitespace
       $inodel = substr($oneline,42,32);
       $inodel =~ s/\s+$//;   #trim trailing whitespace
+      $ilstdate = substr($oneline,75,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
       next if ($iobjclass != 5140) and ($iobjclass != 2010);
-      new_tobjaccl($iobjclass,$iobjname,$inodel);
+      new_tobjaccl($iobjclass,$iobjname,$inodel,$ilstdate);
    }
 
    open(KGRP, "< $opt_txt_tgroup") || die("Could not open TGROUP $opt_txt_tgroup\n");
@@ -1948,9 +2327,11 @@ sub init_txt {
       $igrpclass =~ s/\s+$//;   #trim trailing whitespace
       $iid  = substr($oneline,9,32);
       $iid =~ s/\s+$//;   #trim trailing whitespace
-      $igrpname = substr($oneline,42,32);
+      $ilstdate  = substr($oneline,42,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $igrpname = substr($oneline,59);
       $igrpname =~ s/\s+$//;   #trim trailing whitespace
-      new_tgroup($igrpclass,$iid,$igrpname);
+      new_tgroup($igrpclass,$iid,$ilstdate,$igrpname);
    }
 
    open(KGRPI, "< $opt_txt_tgroupi") || die("Could not open TGROUPI $opt_txt_tgroupi\n");
@@ -1968,11 +2349,13 @@ sub init_txt {
       $igrpclass =~ s/\s+$//;   #trim trailing whitespace
       $iid  = substr($oneline,9,32);
       $iid =~ s/\s+$//;   #trim trailing whitespace
-      $iobjclass = substr($oneline,42,4);
+      $ilstdate  = substr($oneline,42,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $iobjclass = substr($oneline,59,4);
       $iobjclass =~ s/\s+$//;   #trim trailing whitespace
-      $iobjname = substr($oneline,51,32);
+      $iobjname = substr($oneline,68,32);
       $iobjname =~ s/\s+$//;   #trim trailing whitespace
-      new_tgroupi($igrpclass,$iid,$iobjclass,$iobjname);
+      new_tgroupi($igrpclass,$iid,$ilstdate,$iobjclass,$iobjname);
    }
 
    open(KEVSR, "< $opt_txt_evntserver") || die("Could not open EVNTSERVER $opt_txt_evntserver\n");
@@ -2005,6 +2388,147 @@ sub init_txt {
       $ll += 1;
       next if $ll < 5;
       $tems_packages += 1;
+   }
+
+   open(KCCT, "< $opt_txt_cct") || die("Could not open CCT $opt_txt_cct\n");
+   @kcct_data = <KCCT>;
+   close(KCCT);
+
+   # Get data for all CCT records
+   $ll = 0;
+   foreach $oneline (@kcct_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $ikey = substr($oneline,0,32);
+      $ikey =~ s/\s+$//;   #trim trailing whitespace
+      $ilstdate = substr($oneline,32,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $iname = substr($oneline,50,128);
+      $iname =~ s/\s+$//;   #trim trailing whitespace
+      new_cct($ikey,$ilstdate,$iname);
+   }
+
+   open(KEVMP, "< $opt_txt_evntmap") || die("Could not open EVNTMAP $opt_txt_evntmap\n");
+   @kevmp_data = <KEVMP>;
+   close(KEVMP);
+
+   # Get data for all EVNTMAP records
+   $ll = 0;
+   foreach $oneline (@kevmp_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $iid = substr($oneline,0,32);
+      $iid =~ s/\s+$//;   #trim trailing whitespace
+      $ilstdate = substr($oneline,32,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $imap = substr($oneline,50,128);
+      $imap =~ s/\s+$//;   #trim trailing whitespace
+      new_evntmap($iid,$ilstdate,$imap);
+   }
+
+   open(KPCYF, "< $opt_txt_tpcydesc") || die("Could not open TPCYDESC $opt_txt_tpcydesc\n");
+   @kpcyf_data = <KPCYF>;
+   close(KPCYF);
+
+   # Get data for all TPCYDESC records
+   $ll = 0;
+   foreach $oneline (@kpcyf_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $ipcyname = substr($oneline,0,32);
+      $ipcyname =~ s/\s+$//;   #trim trailing whitespace
+      $ilstdate = substr($oneline,32,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      new_tpcydesc($ipcyname,$ilstdate);
+   }
+
+   open(KACTP, "< $opt_txt_tactypcy") || die("Could not open TACTYPCY $opt_txt_tactypcy\n");
+   @kactp_data = <KACTP>;
+   close(KACTP);
+
+   # Get data for all TACTYPCY records
+   $ll = 0;
+   foreach $oneline (@kactp_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $iactname = substr($oneline,0,32);
+      $iactname =~ s/\s+$//;   #trim trailing whitespace
+      $ipcyname = substr($oneline,33,32);
+      $ipcyname =~ s/\s+$//;   #trim trailing whitespace
+      $ilstdate = substr($oneline,66,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $itypestr = substr($oneline,83,32);
+      $itypestr =~ s/\s+$//;   #trim trailing whitespace
+      $iactinfo = substr($oneline,116,252);
+      $iactinfo =~ s/\s+$//;   #trim trailing whitespace
+      new_tactypcy($iactname,$ipcyname,$ilstdate,$itypestr,$iactinfo);
+   }
+
+   open(KCALE, "< $opt_txt_tcalendar") || die("Could not open TCALENDAR $opt_txt_tcalendar\n");
+   @kcale_data = <KCALE>;
+   close(KCALE);
+   # Get data for all TCALENDAR records
+   $ll = 0;
+   foreach $oneline (@kcale_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $iid = substr($oneline,0,32);
+      $iid =~ s/\s+$//;   #trim trailing whitespace
+      $ilstdate = substr($oneline,33,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $iname = substr($oneline,50,256);
+      $iname =~ s/\s+$//;   #trim trailing whitespace
+      new_tcalendar($iid,$ilstdate,$iname);
+   }
+
+   open(KOVRD, "< $opt_txt_toverride") || die("Could not open TOVERRIDE $opt_txt_toverride\n");
+   @kovrd_data = <KOVRD>;
+   close(KOVRD);
+   # Get data for all TOVERRIDE records
+   $ll = 0;
+   foreach $oneline (@kovrd_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $iid = substr($oneline,0,32);
+      $iid =~ s/\s+$//;   #trim trailing whitespace
+      $ilstdate = substr($oneline,33,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $isitname = substr($oneline,50,32);
+      $isitname =~ s/\s+$//;   #trim trailing whitespace
+      new_toverride($iid,$ilstdate,$isitname);
+   }
+
+   open(KOVRI, "< $opt_txt_toveritem") || die("Could not open TOVERITEM $opt_txt_toveritem\n");
+   @kovri_data = <KOVRI>;
+   close(KOVRI);
+   # Get data for all TOVERITEM records
+   $ll = 0;
+   foreach $oneline (@kovri_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $iid = substr($oneline,0,32);
+      $iid =~ s/\s+$//;   #trim trailing whitespace
+      $ilstdate = substr($oneline,33,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $iitemid = substr($oneline,50,32);
+      $iitemid =~ s/\s+$//;   #trim trailing whitespace
+      $icalid  = substr($oneline,83,32);
+      $icalid  =~ s/\s+$//;   #trim trailing whitespace
+      new_toveritem($iid,$ilstdate,$iitemid,$icalid);
    }
 
 }
@@ -2100,6 +2624,29 @@ sub init_lst {
    my @kevsr_data;
    my $ilstdate;
    my $ilstusrprf;
+
+   my @kcct_data;
+   my $ikey;
+   my $iname;
+
+   my @kevmp_data;
+   my $imap;
+
+   my @kpcyf_data;
+   my $ipcyname;
+
+   my @kactp_data;
+   my $itypestr;
+   my $iactname;
+   my $iactinfo;
+
+   my @kcale_data;
+
+   my @kovrd_data;
+
+   my @kovri_data;
+   my $iitemid;
+   my $icalid;
 
    # Parsing the KfwSQLClient output has some challenges. For example
    #      [1]  OGRP_59B815CE8A3F4403  2010  Test Group 1
@@ -2276,6 +2823,104 @@ sub init_lst {
 #     $tems_packages += 1;
 #  }
 
+   open(KCCT, "< $opt_lst_cct") || die("Could not open CCT $opt_lst_cct\n");
+   @kcct_data = <KCCT>;
+   close(KCCT);
+
+   $ll = 0;
+   foreach $oneline (@kcct_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      ($ikey,$ilstdate,$iname) = parse_lst(3,$oneline);
+      new_cct($ikey,$ilstdate,$iname);
+   }
+
+   open(KEVMP, "< $opt_lst_evntmap") || die("Could not open EVNTMAP $opt_lst_evntmap\n");
+   @kevmp_data = <KEVMP>;
+   close(KEVMP);
+
+   # Get data for all EVNTMAP records
+   $ll = 0;
+   foreach $oneline (@kevmp_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      ($iid,$ilstdate,$imap) = parse_lst(3,$oneline);
+      new_evntmap($iid,$ilstdate,$imap);
+   }
+
+   open(KPCYF, "< $opt_lst_tpcydesc") || die("Could not open TPCYDESC $opt_lst_tpcydesc\n");
+   @kpcyf_data = <KPCYF>;
+   close(KPCYF);
+
+   # Get data for all TPCYDESC records
+   $ll = 0;
+   foreach $oneline (@kpcyf_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      $oneline .= " " x 400;
+      ($ilstdate,$ipcyname) = parse_lst(2,$oneline);
+      new_tpcydesc($ipcyname,$ilstdate);
+   }
+
+   open(KACTP, "< $opt_lst_tactypcy") || die("Could not open TACTYPCY $opt_lst_tactypcy\n");
+   @kactp_data = <KACTP>;
+   close(KACTP);
+
+   # Get data for all TACTYPCY records
+   $ll = 0;
+   foreach $oneline (@kactp_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      $oneline .= " " x 400;
+      ($iactname,$ipcyname,$ilstdate,$itypestr,$iactinfo) = parse_lst(5,$oneline);
+      new_tactypcy($iactname,$ipcyname,$ilstdate,$itypestr,$iactinfo);
+   }
+
+   open(KCALE, "< $opt_lst_tcalendar") || die("Could not open TCALENDAR $opt_lst_tcalendar\n");
+   @kcale_data = <KCALE>;
+   close(KCALE);
+   # Get data for all TCALENDAR records
+   $ll = 0;
+   foreach $oneline (@kcale_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      $oneline .= " " x 400;
+      ($iid,$ilstdate,$iname) = parse_lst(3,$oneline);
+      new_tcalendar($iid,$ilstdate,$iname);
+   }
+
+   open(KOVRD, "< $opt_lst_toverride") || die("Could not open TOVERRIDE $opt_lst_toverride\n");
+   @kovrd_data = <KOVRD>;
+   close(KOVRD);
+   # Get data for all TOVERRIDE records
+   $ll = 0;
+   foreach $oneline (@kovrd_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      $oneline .= " " x 400;
+      ($iid,$ilstdate,$isitname) = parse_lst(3,$oneline);
+      new_toverride($iid,$ilstdate,$isitname);
+   }
+
+   open(KOVRI, "< $opt_lst_toveritem") || die("Could not open TOVERITEM $opt_lst_toveritem\n");
+   @kovri_data = <KOVRI>;
+   close(KOVRI);
+   # Get data for all TOVERITEM records
+   $ll = 0;
+   foreach $oneline (@kovri_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      $oneline .= " " x 400;
+      new_toveritem($iid,$ilstdate,$iitemid,$icalid);
+   }
+
 }
 
 
@@ -2442,6 +3087,13 @@ sub init {
       $opt_txt_tgroupi  = $opt_workpath . "QA1DGRPI.DB.TXT";
       $opt_txt_evntserver = $opt_workpath . "QA1DEVSR.DB.TXT";
       $opt_txt_package = $opt_workpath . "QA1CDSCA.DB.TXT";
+      $opt_txt_cct     = $opt_workpath . "QA1DCCT.DB.TXT";
+      $opt_txt_evntmap = $opt_workpath . "QA1DEVMP.DB.TXT";
+      $opt_txt_tpcydesc = $opt_workpath . "QA1DPCYF.DB.TXT";
+      $opt_txt_tactypcy = $opt_workpath . "QA1DACTP.DB.TXT";
+      $opt_txt_tcalendar = $opt_workpath . "QA1DCALE.DB.TXT";
+      $opt_txt_toverride = $opt_workpath . "QA1DOVRD.DB.TXT";
+      $opt_txt_toveritem = $opt_workpath . "QA1DOVRI.DB.TXT";
    }
    if (defined $opt_lst) {
       $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
@@ -2452,26 +3104,33 @@ sub init {
       $opt_lst_tgroup   = $opt_workpath . "QA1DGRPA.DB.LST";
       $opt_lst_tgroupi  = $opt_workpath . "QA1DGRPI.DB.LST";
       $opt_lst_evntserver = $opt_workpath . "QA1DEVSR.DB.LST";
+      $opt_lst_cct = $opt_workpath . "QA1DCCT.DB.LST";
+      $opt_lst_evntmap = $opt_workpath . "QA1DEVMP.DB.LST";
+      $opt_lst_tpcydesc = $opt_workpath . "QA1DPCYF.DB.LST";
+      $opt_lst_tactypcy = $opt_workpath . "QA1DACTP.DB.LST";
+      $opt_lst_tcalendar = $opt_workpath . "QA1DCALE.DB.LST";
+      $opt_lst_toverride = $opt_workpath . "QA1DOVRD.DB.LST";
+      $opt_lst_toveritem = $opt_workpath . "QA1DOVRI.DB.LST";
    }
    $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.VNDX";
    $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
    $opt_miss_fn = $opt_workpath . "MISSING.SQL";
 
- my ($isec,$imin,$ihour,$imday,$imon,$iyear,$iwday,$iyday,$iisdst) = localtime(time()+86400);
-   $clstdate = "1";
-   $clstdate .= substr($iyear,-2,2);
+my ($isec,$imin,$ihour,$imday,$imon,$iyear,$iwday,$iyday,$iisdst) = localtime(time()+86400);
+   $tlstdate = "1";
+   $tlstdate .= substr($iyear,-2,2);
    $imon += 1;
    $imon = "00" . $imon;
-   $clstdate .= substr($imon,-2,2);
+   $tlstdate .= substr($imon,-2,2);
    $imon = "00" . $imday;
-   $clstdate .= substr($imday,-2,2);
+   $tlstdate .= substr($imday,-2,2);
    $ihour = "00" . $ihour;
-   $clstdate .= substr($ihour,-2,2);
+   $tlstdate .= substr($ihour,-2,2);
    $imin = "00" . $imin;
-   $clstdate .= substr($imin,-2,2);
+   $tlstdate .= substr($imin,-2,2);
    $isec = "00" . $isec;
-   $clstdate .= substr($isec,-2,2);
-   $clstdate .= "000";
+   $tlstdate .= substr($isec,-2,2);
+   $tlstdate .= "000";
 
    if ($opt_dpr == 1) {
 #     my $module = "Data::Dumper";
@@ -2631,4 +3290,5 @@ sub gettime
 # 0.99000  : Fix deficit% in REFIC line
 # 1.00000  : Parse LST files better
 #          : Add 1049W/1050W/1051W/1052W to warn of node/nodelist names with embedded blanks
-# 1.00100  : better future time check
+# 1.01000  : Monitor LSTDATE against future dates
+#          : Add checking of the rest of the FTO synchronized tables
