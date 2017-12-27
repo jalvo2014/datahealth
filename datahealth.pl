@@ -8,7 +8,7 @@
 #  perl datahealth.pl
 #
 #  Identify cases where TEMS database is inconsistent
-#   Version 0.70000 checks TNODESAV and TNODELST
+#   Version 0.870000 checks TNODESAV, TNODELST, TSITDESC, TNAME, TOBJACCL
 #
 #  john alvord, IBM Corporation, 5 July 2014
 #  jalvord@us.ibm.com
@@ -20,7 +20,6 @@
 
 ## todos
 #
-#  TSITDESC multiple identical SITNAMEs
 #
 
 #use warnings::unused; # debug used to check for unused variables
@@ -29,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.8600";
+my $gVersion = "0.87000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -62,9 +61,13 @@ sub init_lst;                            # input from lst files
 sub parse_lst;                           # parse the KfwSQLClient output
 sub new_tnodesav;                        # process the TNODESAV columns
 sub new_tnodelstv;                       # process the TNODELST NODETYPE=V records
+sub new_tobjaccl;                        # process the TOBJACCL records
 sub fill_tnodelstv;                      # reprocess new TNODELST NODETYPE=V data
 
 my $sitdata_start_time = gettime();     # formated current time for report
+
+
+my %miss = ();                          # collection of missing cases
 
 # TNODELST type V record data           Alive records - list thrunode most importantly
 my $vlx;                                # Access index
@@ -116,6 +119,17 @@ my @hsave_sav = ();
 my @hsave_ndx = ();
 my @hsave_ct = ();
 my @hsave_thrundx = ();
+
+# TOBJACCL data
+my %tobjaccl = ();
+my $obji = -1;
+my @obj = ();
+my %objx = ();
+my @obj_objclass = ();
+my @obj_objname = ();
+my @obj_nodel = ();
+my @obj_ct = ();
+
 
 my $tx;                                  # TEMS information
 my $temsi = -1;                          # count of TEMS
@@ -254,13 +268,10 @@ my %hnodelist = (
 $hnodelist{'KSNMP-MANAGER00'} ='*CUSTOM_SNMP-MANAGER00';
 
 # Situation Group related data
-my $gx;
-my $grpi = -1;
-my @grp = ();
-my %grpx = ();
-my @grp_sit = ();
-my @grp_grp = ();
-my %sum_sits = ();
+my %group = ();                            # situation group base data, hash of hashes
+my %groupi = ();                           # situation group item data, hash of hashes
+my %groupx = ();
+
 
 # Situation related data
 
@@ -337,11 +348,15 @@ my $opt_txt_tnodelst;           # TNODELIST txt file
 my $opt_txt_tnodesav;           # TNODESAV txt file
 my $opt_txt_tsitdesc;           # TSITDESC txt file
 my $opt_txt_tname;              # TNAME txt file
+my $opt_txt_tobjaccl;           # TOBJACCL txt file
+my $opt_txt_tgroup;             # TGROUP txt file
+my $opt_txt_tgroupi;            # TGROUPI txt file
 my $opt_lst;                    # input from .lst files
 my $opt_lst_tnodesav;           # TNODESAV lst file
 my $opt_lst_tnodelst;           # TNODELST lst file
 my $opt_lst_tsitdesc;           # TSITDESC lst file
 my $opt_lst_tname;              # TNAME lst file
+my $opt_lst_tobjaccl;           # TOBJACCL lst file
 my $opt_log;                    # name of log file
 my $opt_ini;                    # name of ini file
 my $opt_debuglevel;             # Debug level
@@ -360,6 +375,9 @@ my $opt_vndx;                   # when 1 create a index for missing TNODELST NOD
 my $opt_vndx_fn;                # when opt_vndx - this is filename
 my $opt_mndx;                   # when 1 create a index for missing TNODELST NODETYPE=M records
 my $opt_mndx_fn;                # when opt_mndx - this is filename
+my $opt_miss;                   # when 1 create a missing.sql file
+my $opt_miss_fn;                # missing file SQL name
+my $opt_nodist;            # TGROUP names which are planned as non-distributed
 
 # do basic initialization from parameters, ini file and standard input
 
@@ -396,6 +414,10 @@ if ($opt_vndx == 1) {
 
 if ($opt_mndx == 1) {
    open MDX, ">$opt_mndx_fn" or die "can't open $opt_mndx_fn: $!";
+}
+
+if ($opt_miss == 1) {
+   open MIS, ">$opt_miss_fn" or die "can't open $opt_miss_fn: $!";
 }
 
 my $advi = -1;
@@ -534,12 +556,38 @@ for ($i=0; $i<=$nlistmi; $i++) {
       $advcode[$advi] = "DATAHEALTH1003I";
       $advimpact[$advi] = 00;
       $advsit[$advi] = $node1;
+      if ($opt_miss == 1) {
+         my $key = "DATAHEALTH1003I" . " " . $node1;
+         $miss{$key} = 1;
+      }
    }
    if ($nlistm_nov[$i] != 0) {
       $advi++;$advonline[$advi] = "Node present in TNODELST Type M records but missing TNODELIST Type V records";
       $advcode[$advi] = "DATAHEALTH1004I";
       $advimpact[$advi] = 00;
       $advsit[$advi] = $node1;
+   }
+}
+
+foreach my $f (keys %group) {
+   my $group_detail_ref = $group{$f};
+   if ($group_detail_ref->{indirect} == 0) {
+      my $nodist = 0;
+      if ($opt_nodist ne "") {
+         if (substr($group_detail_ref->{grpname},0,length($opt_nodist)) eq $opt_nodist){
+            $nodist = 1;
+         }
+      }
+      if ($nodist == 0) {
+         my $gkey = substr($f,5);
+         my $ox = $tobjaccl{$gkey};
+         if (!defined $ox) {
+            $advi++;$advonline[$advi] = "TGROUP ID $f not distributed in TOBJACCL";
+            $advcode[$advi] = "DATAHEALTH1034E";
+            $advimpact[$advi] = 50;
+            $advsit[$advi] = $group_detail_ref->{grpname};
+         }
+      }
    }
 }
 
@@ -567,7 +615,6 @@ for ($i=0;$i<=$nsavei;$i++) {
 
 for ($i=0;$i<=$siti;$i++) {
    next if $sit_ct[$i] == 1;
-#$DB::single=2;
    $advi++;$advonline[$advi] = "TSITDESC duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1021E";
    $advimpact[$advi] = 105;
@@ -576,7 +623,6 @@ for ($i=0;$i<=$siti;$i++) {
 
 for ($i=0;$i<=$nami;$i++) {
    next if $nam_ct[$i] == 1;
-#$DB::single=2;
    $advi++;$advonline[$advi] = "TNAME duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1022E";
    $advimpact[$advi] = 105;
@@ -593,13 +639,11 @@ for ($i=0;$i<=$nami;$i++) {
 }
 
 for ($i=0;$i<=$siti;$i++) {
-#$DB::single=2;
    my $pdtone = $sit_pdt[$i];
    my $mysit;
    while($pdtone =~ m/.*?\*SIT (\S+) /g) {
       $mysit = $1;
       next if defined $sitx{$mysit};
-#$DB::single=2;
       $advi++;$advonline[$advi] = "Situation Formula *SIT [$mysit] Missing from TSITDESC table";
       $advcode[$advi] = "DATAHEALTH1024E";
       $advimpact[$advi] = 90;
@@ -645,11 +689,44 @@ for ($i=0;$i<=$nlistvi;$i++) {
    }
    my $thru1 = $nlistv_thrunode[$i];
    $nsx = $nsavex{$thru1};
-   next if defined $nsx;
-   $advi++;$advonline[$advi] = "TNODELST Type V Thrunode $thru1 missing in Node Status";
-   $advcode[$advi] = "DATAHEALTH1025E";
-   $advimpact[$advi] = 100;
-   $advsit[$advi] = $nlistv[$i];
+   if (!defined $nsx) {
+      $advi++;$advonline[$advi] = "TNODELST Type V Thrunode $thru1 missing in Node Status";
+      $advcode[$advi] = "DATAHEALTH1025E";
+      $advimpact[$advi] = 100;
+      $advsit[$advi] = $nlistv[$i];
+      if ($opt_miss == 1) {
+         my $key = "DATAHEALTH1025E" . " " . $thru1;
+         $miss{$key} = 1;
+      }
+   }
+   $invalid_node = 0;
+   if (index("\.\ \*\#",substr($nlistv[$i],0,1)) != -1) {
+      $invalid_node = 1;
+   } else {
+      $test_node = $nlistv[$i];
+      $test_node =~ s/[A-Za-z0-9\*\ \_\-\:\@\$\#\.]//g;
+      $invalid_node = 1 if $test_node ne "";
+   }
+   if ($invalid_node == 1) {
+      $advi++;$advonline[$advi] = "TNODELST Type V node invalid name";
+      $advcode[$advi] = "DATAHEALTH1026E";
+      $advimpact[$advi] = 50;
+      $advsit[$advi] = $nlistv[$i];
+   }
+   $invalid_node = 0;
+   if (index("\.\ \*\#",substr($thru1,0,1)) != -1) {
+      $invalid_node = 1;
+   } else {
+      $test_node = $thru1;
+      $test_node =~ s/[A-Za-z0-9\*\ \_\-\:\@\$\#\.]//g;
+      $invalid_node = 1 if $test_node ne "";
+   }
+   if ($invalid_node == 1) {
+      $advi++;$advonline[$advi] = "TNODELST Type V Thrunode $thru1 invalid name";
+      $advcode[$advi] = "DATAHEALTH1027E";
+      $advimpact[$advi] = 50;
+      $advsit[$advi] = $nlistv[$i];
+   }
 }
 
 ##check nodelist validity
@@ -669,6 +746,74 @@ for ($i=0;$i<=$nlisti;$i++) {
       $advsit[$advi] = $nlist[$i];
    }
 }
+
+# check TOBJACCL validity
+for ($i=0;$i<=$obji;$i++){
+   if ($obj_ct[$i] > 1) {
+      $advi++;$advonline[$advi] = "TOBJACCL duplicate nodes";
+      $advcode[$advi] = "DATAHEALTH1028E";
+      $advimpact[$advi] = 105;
+      $advsit[$advi] = $obj[$i];
+   }
+   my $objname1 = $obj_objname[$i];
+   my $nodel1 = $obj_nodel[$i];
+   my $class1 = $obj_objclass[$i];
+   if ($class1 == 5140) {
+      next if defined $nlistx{$nodel1};         # if known as a MSL, no check for node status
+      my $nodist = 0;
+      if ($opt_nodist ne "") {
+         if (substr($nodel1,0,length($opt_nodist)) eq $opt_nodist){
+            $nodist = 1;
+         }
+         if (substr($objname1,0,length($opt_nodist)) eq $opt_nodist){
+            $nodist = 1;
+         }
+      }
+      next if $nodist == 1;
+      if (substr($nodel1,0,1) eq "*") {
+         $advi++;$advonline[$advi] = "TOBJACCL Nodel $nodel1 Apparent MSL but missing from TNODELST";
+         $advcode[$advi] = "DATAHEALTH1029E";
+         $advimpact[$advi] = 50;
+         $advsit[$advi] = $obj[$i];
+         if ($opt_miss == 1) {
+            my $pick = $obj[$i];
+            $pick =~ /.*\|.*\|(.*)/;
+            my $key = "DATAHEALTH1029E" . " " . $1;
+            $miss{$key} = 1;
+         }
+         next;
+      }
+      $nsx = $nsavex{$nodel1};
+      if (!defined $nsx) {
+         $advi++;$advonline[$advi] = "TOBJACCL Node missing in Node Status";
+         $advcode[$advi] = "DATAHEALTH1030E";
+         $advimpact[$advi] = 50;
+         $advsit[$advi] = $obj[$i];
+         if ($opt_miss == 1) {
+            my $pick = $obj[$i];
+            $pick =~ /.*\|.*\|(.*)/;
+            my $key = "DATAHEALTH1030E" . " " . $1;
+            $miss{$key} = 1;
+         }
+      }
+   } elsif ($class1 == 2010) {
+      next if defined $groupx{$objname1};       # if item being distributed is known as a situation group, good
+      $advi++;$advonline[$advi] = "TOBJACCL Group name missing in Situation Group";
+      $advcode[$advi] = "DATAHEALTH1035E";
+      $advimpact[$advi] = 50;
+      $advsit[$advi] = $nodel1;
+$DB::single=2;
+      if ($opt_miss == 1) {
+$DB::single=2;
+         my $pick = $nodel1;
+         $pick =~ /.*\|.*\|(.*)/;
+         my $key = "DATAHEALTH1035E" . " " . $1;
+         $miss{$key} = 1;
+      }
+   }
+}
+
+
 
 ##check for TEMA level 6.1
 for ($i=0;$i<=$nsavei;$i++) {
@@ -808,6 +953,39 @@ if ($opt_vndx == 1) {
 if ($opt_mndx == 1) {
    close(MDX);
 }
+if ($opt_miss == 1) {
+   foreach my $f (keys %miss) {
+     $f =~ /(.*) (.*)/;
+     my $code = $1;
+     my $obj = $2;
+     die "key $f in wrong format" if !defined $1;
+     die "key $f in wrong format" if !defined $2;
+     if ($code eq "DATAHEALTH1003I") {
+        $oneline = "DELETE FROM O4SRV.TNODELST WHERE NODETYPE='V' AND NODELIST='";
+        $oneline .= $obj;
+        $oneline .= "' AND SYSTEM.PARMA('QIBUSER','_CLEANUP',8) AND SYSTEM.PARMA('QIBCLASSID','5529',4);";
+        print MIS "$oneline\n";
+     } elsif  ($code eq "DATAHEALTH1025E") {
+        $oneline = "DELETE FROM O4SRV.TOBJACCL WHERE OBJCLASS='5140' AND NODEL='";
+        $oneline .= $obj;
+        $oneline .= "' AND SYSTEM.PARMA('QIBUSER','_CLEANUP',8) AND SYSTEM.PARMA('QIBCLASSID','5535',4);";
+        print MIS "$oneline\n";
+     } elsif  ($code eq "DATAHEALTH1029E") {
+        $oneline = "DELETE FROM O4SRV.TOBJACCL WHERE OBJCLASS='5140' AND NODEL='";
+        $oneline .= $obj;
+        $oneline .= "' AND SYSTEM.PARMA('QIBUSER','_CLEANUP',8) AND SYSTEM.PARMA('QIBCLASSID','5535',4);";
+        print MIS "$oneline\n";
+     } elsif  ($code eq "DATAHEALTH1030E") {
+        $oneline = "DELETE FROM O4SRV.TNODELST WHERE NODETYPE='M' AND NODE='";
+        $oneline .= $obj;
+        $oneline .= "'  AND SYSTEM.PARMA('QIBUSER','_CLEANUP',8) AND SYSTEM.PARMA('QIBCLASSID','5529',4);";
+        print MIS "$oneline\n";
+     } else {
+         print STDERR "Unknown advisory code $code\n";
+     }
+   }
+   close(MIS);
+}
 
 my $exit_code = 0;
 if ($advi != -1) {
@@ -815,8 +993,99 @@ if ($advi != -1) {
 }
 exit $exit_code;
 
-# Record data from the TNODESAV table. This is the disk version of [most of] the INODESTS or node status table.
-# capture node name, product, version, online status
+sub new_tgroup {
+   my ($igrpclass,$iid,$igrpname) = @_;
+   my $key = $igrpclass . "|" . $iid;
+   my $group_detail_ref = $group{$key};
+
+   if (!defined $group_detail_ref) {
+      my %igroup = (
+                      grpclass => $igrpclass,      # GRPCLASS usually 2010
+                      id => $iid,                   # ID is the internal group name
+                      grpname => $igrpname,        # GRPNAME is external user name
+                      indirect => 0,               # when 1, included in a TGROUPI and so no distribution expected
+                      count => 0,
+                   );
+      $group_detail_ref = \%igroup;
+      $group{$key} = \%igroup;
+   }
+  $group_detail_ref->{count} += 1;
+  $groupx{$iid} = 1;
+}
+
+sub new_tgroupi {
+   my ($igrpclass,$iid,$iobjclass,$iobjname) = @_;
+   my $key = $igrpclass . "|" . $iid . "|" . $iobjclass . "|" . $iobjname;
+   my $groupi_detail_ref = $groupi{$key};
+   if (!defined $groupi_detail_ref) {
+      my %igroupi = (
+                      grpclass => $igrpclass,      # GRPCLASS usually 2010
+                      id => $iid,                   # ID is the internal group name
+                      objclass => $iobjclass,
+                      objname => $iobjname,
+                      count => 0,
+                   );
+      $groupi_detail_ref = \%igroupi;
+      $groupi{$key} = \%igroupi;
+   }
+  $groupi_detail_ref->{count} += 1;
+  my $gkey = $igrpclass . "|" . $iid;
+  my $group_ref = $group{$gkey};
+  if (!defined $group_ref) {
+$DB::single=2;
+     $advi++;$advonline[$advi] = "TGROUPI $key unknown TGROUP ID";
+     $advcode[$advi] = "DATAHEALTH1031E";
+     $advimpact[$advi] = 50;
+     $advsit[$advi] = $iid;
+  }
+  if ($groupi_detail_ref->{objclass} == 2010) {
+$DB::single=2;
+     my $groupref = $groupi_detail_ref->{objclass};
+    $gkey = "2010" . "|" . $iid;
+     my $group_ref = $group{$gkey};
+     if (!defined $group_ref) {
+$DB::single=2;
+        $advi++;$advonline[$advi] = "TGROUPI $key unknown Group $iobjname";
+        $advcode[$advi] = "DATAHEALTH1032E";
+        $advimpact[$advi] = 50;
+        $advsit[$advi] = $iobjname;
+     } else {
+$DB::single=2;
+        $group_ref->{indirect} = 1;
+     }
+  } elsif ($groupi_detail_ref->{objclass} == 5140) {
+     my $sit1 = $groupi_detail_ref->{objname};
+     if (!defined $sitx{$sit1}) {
+$DB::single=2;
+        $advi++;$advonline[$advi] = "TGROUPI $key unknown Situation $iobjname";
+        $advcode[$advi] = "DATAHEALTH1033E";
+        $advimpact[$advi] = 50;
+        $advsit[$advi] = $iobjname;
+     }
+  } else {
+$DB::single=2;
+     die "Unknown TGROUPI objclass $groupi_detail_ref->{objclass} working on $igrpclass $iid $iobjclass $iobjname";
+  }
+}
+
+sub new_tobjaccl {
+   my ($iobjclass,$iobjname,$inodel) = @_;
+   my $key = $inodel . "|". $iobjclass . "|" . $iobjname;
+   my $ox = $objx{$key};
+   if (!defined $ox) {
+      $obji += 1;
+
+      $ox = $obji;
+      $obj[$obji] = $key;
+      $objx{$key} = $obji;
+      $obj_objclass[$obji] = $iobjclass;
+      $obj_objname[$obji] = $iobjname;
+      $obj_nodel[$obji] = $inodel;
+      $obj_ct[$obji] = 0;
+   }
+  $obj_ct[$ox] += 1;
+  $tobjaccl{$iobjname} = 1;
+}
 
 sub new_tsitdesc {
    my ($isitname,$ipdt) = @_;
@@ -845,6 +1114,9 @@ sub new_tname {
    }
    $nam_ct[$nax] += 1;
 }
+
+# Record data from the TNODESAV table. This is the disk version of [most of] the INODESTS or node status table.
+# capture node name, product, version, online status
 
 
 sub new_tnodesav {
@@ -1124,6 +1396,17 @@ sub init_txt {
    my $iid;
    my $ifullname;
 
+   my @kobj_data;
+   my $iobjclass;
+   my $iobjname;
+   my $inodel;
+
+   my @kgrp_data;
+   my $igrpclass;
+   my $igrpname;
+
+   my @kgrpi_data;
+
    open(KSAV, "< $opt_txt_tnodesav") || die("Could not open TNODESAV $opt_txt_tnodesav\n");
    @ksav_data = <KSAV>;
    close(KSAV);
@@ -1200,7 +1483,7 @@ sub init_txt {
             $hub_tems = $inode;
          }
       }
-      next if $inodetype ne "M";
+     #next if $inodetype ne "M";
       new_tnodelstm($inodetype,$inodelist,$inode);
    }
 
@@ -1239,6 +1522,70 @@ sub init_txt {
       $ifullname =~ s/\s+$//;   #trim trailing whitespace
       new_tname($iid,$ifullname);
    }
+
+   open(KOBJ, "< $opt_txt_tobjaccl") || die("Could not open TOBJACCL $opt_txt_tobjaccl\n");
+   @kobj_data = <KOBJ>;
+   close(KOBJ);
+
+   # Get data for all TOBJACCL records
+   $ll = 0;
+   foreach $oneline (@kobj_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $iobjclass = substr($oneline,0,4);
+      $iobjclass =~ s/\s+$//;   #trim trailing whitespace
+      $iobjname = substr($oneline,9,32);
+      $iobjname =~ s/\s+$//;   #trim trailing whitespace
+      $inodel = substr($oneline,42,32);
+      $inodel =~ s/\s+$//;   #trim trailing whitespace
+      next if ($iobjclass != 5140) and ($iobjclass != 2010);
+      new_tobjaccl($iobjclass,$iobjname,$inodel);
+   }
+
+   open(KGRP, "< $opt_txt_tgroup") || die("Could not open TGROUP $opt_txt_tgroup\n");
+   @kgrp_data = <KGRP>;
+   close(KGRP);
+
+   # Get data for all TGROUP records
+   $ll = 0;
+   foreach $oneline (@kgrp_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $igrpclass = substr($oneline,0,4);
+      $igrpclass =~ s/\s+$//;   #trim trailing whitespace
+      $iid  = substr($oneline,9,32);
+      $iid =~ s/\s+$//;   #trim trailing whitespace
+      $igrpname = substr($oneline,42,32);
+      $igrpname =~ s/\s+$//;   #trim trailing whitespace
+      new_tgroup($igrpclass,$iid,$igrpname);
+   }
+
+   open(KGRPI, "< $opt_txt_tgroupi") || die("Could not open TGROUPI $opt_txt_tgroupi\n");
+   @kgrpi_data = <KGRPI>;
+   close(KGRPI);
+
+   # Get data for all TGROUPI records
+   $ll = 0;
+   foreach $oneline (@kgrpi_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $igrpclass = substr($oneline,0,4);
+      $igrpclass =~ s/\s+$//;   #trim trailing whitespace
+      $iid  = substr($oneline,9,32);
+      $iid =~ s/\s+$//;   #trim trailing whitespace
+      $iobjclass = substr($oneline,42,4);
+      $iobjclass =~ s/\s+$//;   #trim trailing whitespace
+      $iobjname = substr($oneline,51,32);
+      $iobjname =~ s/\s+$//;   #trim trailing whitespace
+      new_tgroupi($igrpclass,$iid,$iobjclass,$iobjname);
+   }
+
 }
 
 # There may be a better way to do this, but this was clear and worked.
@@ -1463,6 +1810,13 @@ sub init {
       } elsif ( $ARGV[0] eq "-mndx") {
          shift(@ARGV);
          $opt_mndx = 1;
+      } elsif ( $ARGV[0] eq "-miss") {
+         shift(@ARGV);
+         $opt_miss = 1;
+      } elsif ( $ARGV[0] eq "-nodist") {
+         shift(@ARGV);
+         $opt_nodist = shift(@ARGV);
+         die "option -nodist with no following name specification\n" if !defined $opt_nodist;
       } else {
          print STDERR "SITAUDIT001E Unrecognized command line option - $ARGV[0]\n";
          exit 1;
@@ -1475,6 +1829,7 @@ sub init {
    if ($opt_h) {&GiveHelp;}  # GiveHelp and exit program
    if (!defined $opt_debuglevel) {$opt_debuglevel=90;}         # debug logging level - low number means fewer messages
    if (!defined $opt_debug) {$opt_debug=0;}                    # debug - turn on rare error cases
+   if (!defined $opt_nodist) {$opt_nodist="";}                  # don't skip objects
 
    # ini control file must be present
 
@@ -1540,6 +1895,7 @@ sub init {
    if (!defined $opt_peak_rate) {$opt_peak_rate=32;}           # default warn on 32 virtual hub table updates per second
    if (!defined $opt_vndx) {$opt_vndx=0;}                      # default vndx off
    if (!defined $opt_mndx) {$opt_mndx=0;}                      # default mndx off
+   if (!defined $opt_miss) {$opt_miss=0;}                      # default mndx off
 
    $opt_workpath =~ s/\\/\//g;                                 # convert to standard perl forward slashes
    if ($opt_workpath ne "") {
@@ -1550,15 +1906,20 @@ sub init {
       $opt_txt_tnodesav = $opt_workpath . "QA1DNSAV.DB.TXT";
       $opt_txt_tsitdesc = $opt_workpath . "QA1CSITF.DB.TXT";
       $opt_txt_tname    = $opt_workpath . "QA1DNAME.DB.TXT";
+      $opt_txt_tobjaccl = $opt_workpath . "QA1DOBJA.DB.TXT";
+      $opt_txt_tgroup   = $opt_workpath . "QA1DGRPA.DB.TXT";
+      $opt_txt_tgroupi  = $opt_workpath . "QA1DGRPI.DB.TXT";
    }
    if (defined $opt_lst) {
       $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
       $opt_lst_tnodelst  = $opt_workpath . "QA1CNODL.DB.LST";
       $opt_lst_tsitdesc  = $opt_workpath . "QA1CSITF.DB.LST";
       $opt_lst_tname     = $opt_workpath . "QA1DNAME.DB.LST";
+      $opt_lst_tobjaccl  = $opt_workpath . "QA1DOBJA.DB.LST";
    }
    $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.VNDX";
    $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
+   $opt_miss_fn = $opt_workpath . "MISSING.SQL";
 
 
    if ($opt_dpr == 1) {
@@ -1695,3 +2056,4 @@ sub gettime
 #          : Add TNODESAV product to the "might be truncated" messages
 #          : make -lst option work
 # 0.86000  : Check for TNODELIST NODETYPE=V thrunode missing from TNODESAV
+# 0.87000  : Add TOBJACCL, TGROUP. TGROUPI checking first stage
