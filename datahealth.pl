@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.91000";
+my $gVersion = "0.92000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -172,7 +172,7 @@ my $vti = -1;                            # count of node types affecting virtual
 my @vtnode = ();                         # virtual hub table agent type
 my %vtnodex = ();                        # virtual hub table agent index
 my @vtnode_rate = ();                    # how many minutes apart
-my @vtnode_tab = ();                     # number of virtual hub tables updated
+my @vtnode_tab = ();                     # number of virtual hub tables updates found in *SYN autostart mode
 my @vtnode_ct = ();                      # count of virtual table hub agents
 my @vtnode_hr = ();                      # virtual hub table updates per hour
 my $vtnode_tot_ct = 0;                   # total count of virtual table hub agents
@@ -180,12 +180,26 @@ my $vtnode_tot_hr = 0;                   # total virtual hub table updates per h
 my $vtnodes = "";                        # list of node types affecting virtual hub table updates
 
 # initialize above table
-$vti = 0;$key="UX";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=3;$vtnode_tab[$vti]=1;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
-$vti = 1;$key="OQ";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=2;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
-$vti = 2;$key="OR";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=2;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
-$vti = 3;$key="OY";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=2;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
-$vti = 4;$key="Q5";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=1;$vtnode_tab[$vti]=1;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
-$vti = 5;$key="HV";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=1;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 0;$key="UX";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=3;$vtnode_tab[$vti]=0;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 1;$key="OQ";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=0;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 2;$key="OR";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=0;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 3;$key="OY";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=0;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 4;$key="Q5";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=1;$vtnode_tab[$vti]=0;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+$vti = 5;$key="HV";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$vtnode_tab[$vti]=0;$vtnode_ct[$vti]=0;$vtnode_hr[$vti]=0;
+
+my %hSP2OS = (
+   UADVISOR_OMUNX_SP2OS => 'UX',
+   UADVISOR_KOQ_VKOQDBMIR => 'OQ',
+   UADVISOR_KOQ_VKOQLSDBD => 'OQ',
+   UADVISOR_KOQ_VKOQSRVR => 'OQ',
+   UADVISOR_KOQ_VKOQSRVRE => 'OQ',
+   UADVISOR_KOR_VKORSRVRE => 'OR',
+   UADVISOR_KOR_VKORSTATE => 'OR',
+   UADVISOR_KOY_VKOYSRVR => 'OY',
+   UADVISOR_KOY_VKOYSRVRE => 'OY',
+   UADVISOR_KQ5_VKQ5CLUSUM => 'Q5',
+   UADVISOR_KHV_VKHVHYPERV => 'HV',
+);
 
 my $snx;
 
@@ -559,12 +573,6 @@ for ($i=0; $i<=$evti;$i++) {
       $advimpact[$advi] = 100;
       $advsit[$advi] = $oneid;
    }
-   if ($evt_lstusrprf[$i] eq "") {
-      $advi++;$advonline[$advi] = "Event Destination LSTUSRPRF is blank and will not synchronize in FTO configuration";
-      $advcode[$advi] = "DATAHEALTH1040E";
-      $advimpact[$advi] = 100;
-      $advsit[$advi] = $oneid;
-   }
 }
 
 for ($i=0; $i<=$nsavei; $i++) {
@@ -650,6 +658,18 @@ for ($i=0;$i<=$nsavei;$i++) {
 }
 
 for ($i=0;$i<=$siti;$i++) {
+   if (substr($sit[$i],0,8) eq "UADVISOR") {
+      if ($sit_autostart[$i] ne "*NO") {              ##check maybe ne "*NO" versus *SYN ????
+         my $hx = $hSP2OS{$sit[$i]};
+         if (defined $hx) {
+            $vtx = $vtnodex{$hx};
+            if (defined $vtx) {
+               $vtnode_tab[$vtx] += 1;
+            }
+         }
+      }
+
+   }
    next if $sit_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TSITDESC duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1021E";
@@ -871,13 +891,16 @@ for ($i=0;$i<=$nsavei;$i++) {
    $advimpact[$advi] = 25;
    $advsit[$advi] = $nsave[$i];
 }
-
 ## Check for virtual hub table update impact
 my $peak_rate = 0;
 for ($i=0;$i<=$vti;$i++) {
-   next if $vtnode_hr[$i] == 0;
+   next if $vtnode_tab[$i] == 0;
+   my $node_hr = (60/$vtnode_rate[$i])*$vtnode_tab[$i];
+   $vtnode_hr[$i] = $node_hr*$vtnode_ct[$i];
+   $vtnode_tot_hr += $vtnode_hr[$i];
    $peak_rate +=  $vtnode_ct[$i] * $vtnode_tab[$i];
 }
+
 if ($peak_rate > $opt_peak_rate) {
    for ($i=0;$i<=$vti;$i++) {
       next if $vtnode_hr[$i] == 0;
@@ -1145,13 +1168,14 @@ sub new_tobjaccl {
 }
 
 sub new_tsitdesc {
-   my ($isitname,$ipdt) = @_;
+   my ($isitname,$iautostart,$ipdt) = @_;
    $sx = $sitx{$isitname};
    if (!defined $sx) {
       $siti += 1;
       $sx = $siti;
       $sit[$siti] = $isitname;
       $sitx{$isitname} = $siti;
+      $sit_autostart[$siti] = $iautostart;
       $sit_pdt[$siti] = $ipdt;
       $sit_ct[$siti] = 0;
    }
@@ -1219,9 +1243,6 @@ sub new_tnodesav {
    if (defined $vtx) {
       $vtnode_ct[$vtx] += 1;
       $vtnode_tot_ct += 1;
-      my $node_hr = (60/$vtnode_rate[$vtx])*$vtnode_tab[$vtx];
-      $vtnode_hr[$vtx] += $node_hr;
-      $vtnode_tot_hr += $node_hr;
    }
    # count number of nodes. If more then one there is a primary key duplication error
    $nsave_ct[$nsx] += 1;
@@ -1458,6 +1479,7 @@ sub init_txt {
 
    my @ksit_data;
    my $isitname;
+   my $iautostart;
    my $ipdt;
 
    my @knam_data;
@@ -1572,9 +1594,11 @@ sub init_txt {
       $oneline .= " " x 400;
       $isitname = substr($oneline,0,32);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
-      $ipdt = substr($oneline,33);
+      $iautostart = substr($oneline,33,4);
+      $iautostart =~ s/\s+$//;   #trim trailing whitespace
+      $ipdt = substr($oneline,43);
       $ipdt =~ s/\s+$//;   #trim trailing whitespace
-      new_tsitdesc($isitname,$ipdt);
+      new_tsitdesc($isitname,$iautostart,$ipdt);
    }
 
    open(KNAM, "< $opt_txt_tname") || die("Could not open TNAME $opt_txt_tname\n");
@@ -1737,6 +1761,7 @@ sub init_lst {
 
    my @ksit_data;
    my $isitname;
+   my $iautostart;
    my $ipdt;
 
    my @knam_data;
@@ -1822,11 +1847,10 @@ sub init_lst {
    foreach $oneline (@ksav_data) {
       $ll += 1;
       next if $ll < 2;
-      ($isitname,$ipdt) = parse_lst(2,$oneline);
-      $isitname = substr($oneline,0,32);
+      ($isitname,$iautostart,$ipdt) = parse_lst(3,$oneline);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
+      $iautostart =~ s/\s+$//;   #trim trailing whitespace
       $ipdt = substr($oneline,33,1);
-      $ipdt =~ s/\s+$//;   #trim trailing whitespace
       new_tsitdesc($isitname,$ipdt);
    }
 
@@ -2177,3 +2201,4 @@ sub gettime
 # 0.89000  : record TEMS version number
 # 0.90000  : detect case where *HUB is missing from TNODELST NODETYPE=M records
 # 0.91000  : Check EVNTSERVR for blank LSTDATE and LSTUSRPRF
+# 0.92000  : Check Virtual Hub Table counts against TSITDESC UADVISOR AUTOSTART settings
