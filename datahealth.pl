@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.02000";
+my $gVersion = "1.03000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -1488,29 +1488,6 @@ if ($advi != -1) {
                           $advonline[$advx{$a}] cmp $advonline[$advx{$b}]
                         } keys %advx ) {
       my $j = $advx{$f};
-      my $skipone = $advcode[$j];
-      if ($advcode[$j] eq "DATAHEALTH1040E") {
-         if (defined $hubi) {
-            next if $tems_version[$hubi]  ge "06.30.03";
-         }
-         if ($isFTO < 2) {
-            $advimpact[$j] = 50;
-            $advcode[$j] = "DATAHEALTH1041W";
-         }
-      }
-   }
-   foreach my $f ( sort { $advimpact[$advx{$b}] <=> $advimpact[$advx{$a}] ||
-                          $advcode[$advx{$a}] cmp $advcode[$advx{$b}] ||
-                          $advsit[$advx{$a}] cmp $advsit[$advx{$b}] ||
-                          $advonline[$advx{$a}] cmp $advonline[$advx{$b}]
-                        } keys %advx ) {
-      my $j = $advx{$f};
-      my $skipone = $advcode[$j];
-      if ($advcode[$j] eq "DATAHEALTH1040E") {
-         if (defined $hubi) {
-            next if $tems_version[$hubi]  ge "06.30.03";
-         }
-      }
       print OH "$advimpact[$j],$advcode[$j],$advsit[$j],$advonline[$j]\n";
       $max_impact = $advimpact[$j] if $advimpact[$j] > $max_impact;
    }
@@ -1724,12 +1701,6 @@ sub new_tgroup {
 
 sub new_tgroupi {
    my ($igrpclass,$iid,$ilstdate,$iobjclass,$iobjname) = @_;
-   if ($ilstdate gt $tlstdate) {
-      $advi++;$advonline[$advi] = "LSTDATE for [ID=$iid] value in the future $ilstdate";
-      $advcode[$advi] = "DATAHEALTH1040E";
-      $advimpact[$advi] = 100;
-      $advsit[$advi] = "TGROUPI";
-   }
    my $key = $igrpclass . "|" . $iid . "|" . $iobjclass . "|" . $iobjname;
    my $groupi_detail_ref = $groupi{$key};
    if (!defined $groupi_detail_ref) {
@@ -2696,7 +2667,8 @@ sub init_lst {
    foreach $oneline (@ksav_data) {
       $ll += 1;
       next if $ll < 2;
-#[1]  BNSF:TOIFVCTR2PW:VM  Y  VM  06.22.01  ip.spipe:#10.121.54.28[11853]<NM>TOIFVCTR2PW</NM>  A=00:WIX64;C=06.22.09.00:WIX64;G=06.22.09.00:WINNT;  REMOTE_catrste050bnsxa  000100000000000000000000000000000G0003yw0a7
+      # KfwSQLClient /e "SELECT NODE,O4ONLINE,PRODUCT,VERSION,HOSTADDR,RESERVED,THRUNODE,AFFINITIES FROM O4SRV.TNODESAV" >QA1DNSAV.DB.LST
+      #[1]  BNSF:TOIFVCTR2PW:VM  Y  VM  06.22.01  ip.spipe:#10.121.54.28[11853]<NM>TOIFVCTR2PW</NM>  A=00:WIX64;C=06.22.09.00:WIX64;G=06.22.09.00:WINNT;  REMOTE_catrste050bnsxa  000100000000000000000000000000000G0003yw0a7
       ($inode,$io4online,$iproduct,$iversion,$ihostaddr,$ireserved,$ithrunode,$iaffinities) = parse_lst(8,$oneline);
       $inode =~ s/\s+$//;   #trim trailing whitespace
       $iproduct =~ s/\s+$//;   #trim trailing whitespace
@@ -2718,6 +2690,7 @@ sub init_lst {
    foreach $oneline (@klst_data) {
       $ll += 1;
       next if $ll < 2;
+      # KfwSQLClient /e "SELECT NODE,NODETYPE,NODELIST,LSTDATE FROM O4SRV.TNODELST" >QA1CNODL.DB.LST
       ($inode,$inodetype,$inodelist,$ilstdate) = parse_lst(4,$oneline);
       next if $inodetype ne "V";
       new_tnodelstv($inodetype,$inodelist,$inode,$ilstdate);
@@ -2729,6 +2702,7 @@ sub init_lst {
    foreach $oneline (@klst_data) {
       $ll += 1;
       next if $ll < 2;
+      # KfwSQLClient /e "SELECT NODE,NODETYPE,NODELIST,LSTDATE FROM O4SRV.TNODELST" >QA1CNODL.DB.LST
       ($inode,$inodetype,$inodelist,$ilstdate) = parse_lst(4,$oneline);
       $inodelist =~ s/\s+$//;   #trim trailing whitespace
       $inode =~ s/\s+$//;   #trim trailing whitespace
@@ -2755,6 +2729,7 @@ sub init_lst {
    foreach $oneline (@ksav_data) {
       $ll += 1;
       next if $ll < 2;
+      # KfwSQLClient /e "SELECT SITNAME,AUTOSTART,LSTDATE,REEV_DAYS,REEV_TIME,PDT FROM O4SRV.TSITDESC" >QA1CSITF.DB.LS
       ($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$ipdt) = parse_lst(6,$oneline);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
       $iautostart =~ s/\s+$//;   #trim trailing whitespace
@@ -2768,10 +2743,11 @@ sub init_lst {
 
    # Get data for all TNAME
    $ll = 0;
-   foreach $oneline (@ksav_data) {
+   foreach $oneline (@knam_data) {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
+      # KfwSQLClient /e "SELECT ID,LSTDATE,FULLNAME FROM O4SRV.TNAME" >QA1DNAME.DB.LST
       ($iid,$ilstdate,$ifullname) = parse_lst(3,$oneline);
       new_tname($iid,$ilstdate,$ifullname);
    }
@@ -2786,6 +2762,7 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
+      # KfwSQLClient /e "SELECT OBJCLASS,OBJNAME,NODEL,LSTDATE FROM O4SRV.TOBJACCL" >QA1DOBJA.DB.LST
       ($iobjclass,$iobjname,$inodel,$ilstdate) = parse_lst(4,$oneline);
       next if ($iobjclass != 5140) and ($iobjclass != 2010);
       new_tobjaccl($iobjclass,$iobjname,$inodel,$ilstdate);
@@ -2801,6 +2778,7 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
+      # KfwSQLClient /e "SELECT GRPCLASS,ID,LSTDATE,GRPNAME FROM O4SRV.TGROUP" >QA1DGRPA.DB.LST
       ($igrpclass,$iid,$ilstdate,$igrpname) = parse_lst(4,$oneline);
       new_tgroup($igrpclass,$iid,$ilstdate,$igrpname);
    }
@@ -2815,6 +2793,7 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
+      # KfwSQLClient /e "SELECT GRPCLASS,ID,LSTDATE,OBJCLASS,OBJNAME FROM O4SRV.TGROUPI" >QA1DGRPI.DB.LST
       ($igrpclass,$iid,$ilstdate,$iobjclass,$iobjname) = parse_lst(5,$oneline);
       new_tgroupi($igrpclass,$iid,$ilstdate,$iobjclass,$iobjname);
    }
@@ -2829,6 +2808,7 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
+      # KfwSQLClient /e "SELECT ID,LSTDATE,LSTUSRPRF FROM O4SRV.EVNTSERVER" >QA1DEVSR.DB.LST
       ($iid,$ilstdate,$ilstusrprf) = parse_lst(3,$oneline);
       new_evntserver($iid,$ilstdate,$ilstusrprf);
    }
@@ -2864,6 +2844,7 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
+      # KfwSQLClient /e "SELECT KEY,LSTDATE,NAME FROM O4SRV.CCT" >QA1DCCT.DB.LST
       ($ikey,$ilstdate,$iname) = parse_lst(3,$oneline);
       new_cct($ikey,$ilstdate,$iname);
    }
@@ -2878,6 +2859,7 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
+      # KfwSQLClient /e "SELECT ID,LSTDATE,MAP FROM O4SRV.EVNTMAP" >QA1DEVMP.DB.LST
       ($iid,$ilstdate,$imap) = parse_lst(3,$oneline);
       new_evntmap($iid,$ilstdate,$imap);
    }
@@ -2893,7 +2875,8 @@ sub init_lst {
       next if $ll < 2;
       chop $oneline;
       $oneline .= " " x 400;
-      ($ilstdate,$ipcyname) = parse_lst(2,$oneline);
+      # KfwSQLClient /e "SELECT PCYNAME,LSTDATE FROM O4SRV.TPCYDESC" >QA1DPCYF.DB.LST
+      ($ipcyname,$ilstdate) = parse_lst(2,$oneline);
       new_tpcydesc($ipcyname,$ilstdate);
    }
 
@@ -2908,6 +2891,7 @@ sub init_lst {
       next if $ll < 2;
       chop $oneline;
       $oneline .= " " x 400;
+      # KfwSQLClient /e "SELECT ACTNAME,PCYNAME,LSTDATE,TYPESTR,ACTINFO FROM O4SRV.TACTYPCY" >QA1DACTP.DB.LST
       ($iactname,$ipcyname,$ilstdate,$itypestr,$iactinfo) = parse_lst(5,$oneline);
       new_tactypcy($iactname,$ipcyname,$ilstdate,$itypestr,$iactinfo);
    }
@@ -2922,6 +2906,7 @@ sub init_lst {
       next if $ll < 2;
       chop $oneline;
       $oneline .= " " x 400;
+      # KfwSQLClient /e "SELECT ID,LSTDATE,NAME FROM O4SRV.TCALENDAR" >QA1DCALE.DB.LST
       ($iid,$ilstdate,$iname) = parse_lst(3,$oneline);
       new_tcalendar($iid,$ilstdate,$iname);
    }
@@ -2936,6 +2921,7 @@ sub init_lst {
       next if $ll < 2;
       chop $oneline;
       $oneline .= " " x 400;
+      # KfwSQLClient /e "SELECT ID,LSTDATE,SITNAME FROM O4SRV.TOVERRIDE" >QA1DOVRD.DB.LST
       ($iid,$ilstdate,$isitname) = parse_lst(3,$oneline);
       new_toverride($iid,$ilstdate,$isitname);
    }
@@ -2950,6 +2936,7 @@ sub init_lst {
       next if $ll < 2;
       chop $oneline;
       $oneline .= " " x 400;
+      # KfwSQLClient /e "SELECT ID,LSTDATE,ITEMID,CALID FROM O4SRV.TOVERITEM" >QA1DOVRI.DB.LST
       new_toveritem($iid,$ilstdate,$iitemid,$icalid);
    }
 
@@ -3325,3 +3312,4 @@ sub gettime
 # 1.01000  : Monitor LSTDATE against future dates
 #          : Add checking of the rest of the FTO synchronized tables
 # 1.02000  : Long sampling interval
+# 1.03000  : Correct parse_lst issues versus capture SQL TNAME and TPCYDESC issues
