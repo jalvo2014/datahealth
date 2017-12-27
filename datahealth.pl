@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.93000";
+my $gVersion = "0.94000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -891,6 +891,17 @@ for ($i=0;$i<=$nsavei;$i++) {
    $advcode[$advi] = "DATAHEALTH1037W";
    $advimpact[$advi] = 25;
    $advsit[$advi] = $nsave[$i];
+}
+## Check for TEMA level in IZ76410 danger zone
+for ($i=0;$i<=$nsavei;$i++) {
+   next if $nsave_temaver[$i] eq "";
+   if ( (substr($nsave_temaver[$i],0,8) ge "06.21.00") and (substr($nsave_temaver[$i],0,8) lt "06.21.03") or
+        (substr($nsave_temaver[$i],0,8) ge "06.22.00") and (substr($nsave_temaver[$i],0,8) lt "06.22.03")) {
+      $advi++;$advonline[$advi] = "Agent using TEMA at version [$nsave_temaver[$i]] in IZ76410 danger zone";
+      $advcode[$advi] = "DATAHEALTH1042E";
+      $advimpact[$advi] = 90;
+      $advsit[$advi] = $nsave[$i];
+   }
 }
 ## Check for virtual hub table update impact
 my $peak_rate = 0;
@@ -2250,3 +2261,4 @@ sub gettime
 # 0.91000  : Check EVNTSERVR for blank LSTDATE and LSTUSRPRF
 # 0.92000  : Check Virtual Hub Table counts against TSITDESC UADVISOR AUTOSTART settings
 # 0.93000  : Check for invalid TSITDESC.LSTDATE values
+# 0.94000  : Check IZ76410 TEMA problem case
