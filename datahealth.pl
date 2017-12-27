@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.14000";
+my $gVersion = "1.15000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -163,6 +163,11 @@ my $tepsi = -1;
 my @teps = ();
 my @teps_version = ();
 my @teps_arch = ();
+
+my %ka4x;
+my $ka4i = -1;
+my @ka4 = ();
+my @ka4_version_count = ();
 
 my $mx;                                  # index
 my $magenti = -1;                        # count of managing agents
@@ -1458,6 +1463,14 @@ if ($hub_tems_no_tnodesav == 0) {
    }
    print OH "\n";
 
+   print OH "i/5 Agent Level report\n";
+   foreach my $f (sort { $a cmp $b } keys %ka4x) {
+      my $ka4_ct = $ka4_version_count[$ka4x{$f}];
+      print OH "KA4,$f,$ka4_ct,\n";
+   }
+   print OH "\n";
+
+
    # One case had 3 TEMS in FTO mode - so check for 2 or more
    if ($isFTO >= 2){
       print OH "Fault Tolerant Option FTO enabled\n\n";
@@ -2010,6 +2023,27 @@ sub new_tnodesav {
          $teps_version[$tx] = $iversion;
          $teps_arch[$tx] = $arch;
       }
+   }
+   # track the i/5 OS Agent and the version
+# $DB::single=2;
+   if ($iproduct eq "A4") {
+# $DB::single=2;
+      my $sub_level = "00";
+      $ireserved =~ /A=(\d+):/;
+      $sub_level = $1 if defined $1;
+      my $agt_version = $iversion . "." . $sub_level;
+      $tx = $ka4x{$agt_version};
+      if (!defined $tx) {
+# $DB::single=2;
+         $ka4i += 1;
+         $tx = $ka4i;
+         $ka4[$tx] = $agt_version;
+         $ka4x{$agt_version} = $tx;
+         $ka4_version_count[$tx] = 0;
+      }
+# $DB::single=2;
+      $ka4_version_count[$tx] += 1;
+# $DB::single=2;
    }
    # track individual HOSTADDR
    # duplicates often reflect minor issues
@@ -3548,3 +3582,4 @@ sub gettime
 # 1.13000  : record mulitple TEIBLOGT inserts of same object, same day?
 # 1.14000  : for multiple inserts, report on counts >= mode of frequency
 #            Add report of TEPS version and architecture
+# 1.15000  : Add report for i/5 agent levels
