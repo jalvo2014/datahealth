@@ -19,7 +19,7 @@
 # $DB::single=2;   # remember debug breakpoint
 
 ## todos
-#
+#  for 1040E, skip advisory if at ITM 630 FP3 or later.
 #
 
 #use warnings::unused; # debug used to check for unused variables
@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.92000";
+my $gVersion = "0.93000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -49,6 +49,7 @@ my $pcount;
 my $oneline;
 my $sx;
 my $i;
+my $clstdate;
 
 # forward declarations of subroutines
 
@@ -932,7 +933,7 @@ if ($opt_nohdr == 0) {
 if ($hub_tems_no_tnodesav == 0) {
    if (defined $hubi) {
       my $hub_limit = 10000;
-      $hub_limit = 20000 if substr($tems_ct[$hubi],0,5) gt "06.23";
+      $hub_limit = 20000 if substr($tems_version[$hubi],0,5) gt "06.23";
 
       if ($hub_tems_ct > $hub_limit){
          $advi++;$advonline[$advi] = "Hub TEMS has $hub_tems_ct managed systems which exceeds limits $hub_limit";
@@ -1000,6 +1001,28 @@ if ($advi != -1) {
                         } keys %advx ) {
       my $j = $advx{$f};
       my $skipone = $advcode[$j];
+      if ($advcode[$j] eq "DATAHEALTH1040E") {
+         if (defined $hubi) {
+            next if $tems_version[$hubi]  ge "06.30.03";
+         }
+         if ($isFTO < 2) {
+            $advimpact[$j] = 50;
+            $advcode[$j] = "DATAHEALTH1041W";
+         }
+      }
+   }
+   foreach my $f ( sort { $advimpact[$advx{$b}] <=> $advimpact[$advx{$a}] ||
+                          $advcode[$advx{$a}] cmp $advcode[$advx{$b}] ||
+                          $advsit[$advx{$a}] cmp $advsit[$advx{$b}] ||
+                          $advonline[$advx{$a}] cmp $advonline[$advx{$b}]
+                        } keys %advx ) {
+      my $j = $advx{$f};
+      my $skipone = $advcode[$j];
+      if ($advcode[$j] eq "DATAHEALTH1040E") {
+         if (defined $hubi) {
+            next if $tems_version[$hubi]  ge "06.30.03";
+         }
+      }
       print OH "$advimpact[$j],$advcode[$j],$advsit[$j],$advonline[$j]\n";
       $max_impact = $advimpact[$j] if $advimpact[$j] > $max_impact;
    }
@@ -1168,7 +1191,7 @@ sub new_tobjaccl {
 }
 
 sub new_tsitdesc {
-   my ($isitname,$iautostart,$ipdt) = @_;
+   my ($isitname,$iautostart,$ilstdate,$ipdt) = @_;
    $sx = $sitx{$isitname};
    if (!defined $sx) {
       $siti += 1;
@@ -1180,6 +1203,12 @@ sub new_tsitdesc {
       $sit_ct[$siti] = 0;
    }
   $sit_ct[$sx] += 1;
+  if ($ilstdate gt $clstdate) {
+     $advi++;$advonline[$advi] = "TSITDESC LSTDATE value in the future $ilstdate";
+     $advcode[$advi] = "DATAHEALTH1040E";
+     $advimpact[$advi] = 100;
+     $advsit[$advi] = $isitname;
+  }
 }
 
 sub new_tname {
@@ -1596,9 +1625,11 @@ sub init_txt {
       $isitname =~ s/\s+$//;   #trim trailing whitespace
       $iautostart = substr($oneline,33,4);
       $iautostart =~ s/\s+$//;   #trim trailing whitespace
-      $ipdt = substr($oneline,43);
+      $ilstdate = substr($oneline,43,16);
+      $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+      $ipdt = substr($oneline,60);
       $ipdt =~ s/\s+$//;   #trim trailing whitespace
-      new_tsitdesc($isitname,$iautostart,$ipdt);
+      new_tsitdesc($isitname,$iautostart,$ilstdate,$ipdt);
    }
 
    open(KNAM, "< $opt_txt_tname") || die("Could not open TNAME $opt_txt_tname\n");
@@ -1847,11 +1878,12 @@ sub init_lst {
    foreach $oneline (@ksav_data) {
       $ll += 1;
       next if $ll < 2;
-      ($isitname,$iautostart,$ipdt) = parse_lst(3,$oneline);
+#$DB::single=2;
+      ($isitname,$iautostart,$ilstdate,$ipdt) = parse_lst(4,$oneline);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
       $iautostart =~ s/\s+$//;   #trim trailing whitespace
       $ipdt = substr($oneline,33,1);
-      new_tsitdesc($isitname,$ipdt);
+      new_tsitdesc($isitname,$iautostart,$ilstdate,$ipdt);
    }
 
    open(KNAM, "< $opt_lst_tname") || die("Could not open TNAME $opt_lst_tname\n");
@@ -2061,6 +2093,21 @@ sub init {
    $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
    $opt_miss_fn = $opt_workpath . "MISSING.SQL";
 
+ my ($isec,$imin,$ihour,$imday,$imon,$iyear,$iwday,$iyday,$iisdst) = localtime();
+   $clstdate = "1";
+   $clstdate .= substr($iyear,-2,2);
+   $imon += 1;
+   $imon = "00" . $imon;
+   $clstdate .= substr($imon,-2,2);
+   $imon = "00" . $imday;
+   $clstdate .= substr($imday,-2,2);
+   $ihour = "00" . $ihour;
+   $clstdate .= substr($ihour,-2,2);
+   $imin = "00" . $imin;
+   $clstdate .= substr($imin,-2,2);
+   $isec = "00" . $isec;
+   $clstdate .= substr($isec,-2,2);
+   $clstdate .= "000";
 
    if ($opt_dpr == 1) {
 #     my $module = "Data::Dumper";
@@ -2202,3 +2249,4 @@ sub gettime
 # 0.90000  : detect case where *HUB is missing from TNODELST NODETYPE=M records
 # 0.91000  : Check EVNTSERVR for blank LSTDATE and LSTUSRPRF
 # 0.92000  : Check Virtual Hub Table counts against TSITDESC UADVISOR AUTOSTART settings
+# 0.93000  : Check for invalid TSITDESC.LSTDATE values
