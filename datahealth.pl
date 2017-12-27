@@ -23,7 +23,7 @@
 #  QA1DAPPL     TAPPLPROPS  ??
 #  QA1CSPRD     TUSER       ??
 #  QA1CEIBL   check for duplicate inserts - high rate
-#
+#  STSH - multi-row events... 001->998
 
 #use warnings::unused; # debug used to check for unused variables
 use strict;
@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.20000";
+my $gVersion = "1.21000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -327,6 +327,7 @@ $hnodelist{'KSNMP-MANAGER00'} ='*CUSTOM_SNMP-MANAGER00';
 # apars: array of TEMA APAR fixes included
 
 my %mhash= (
+            '06.30.06' => {date=>'12/10/2015',days=>42346,apars=>['IV66841','IV69144','IV70115','IV73766','IV76109','IV79364'],},
             '06.30.05' => {date=>'06/30/2015',days=>42183,apars=>['IV64897','IV65775','IV67576','IV69027'],},
             '06.30.04' => {date=>'12/12/2014',days=>41983,apars=>['IV44811','IV53859','IV54581','IV56194','IV56578','IV62139','IV62138','IV60851'],},
             '06.30.03' => {date=>'08/07/2014',days=>41856,apars=>['IV62667'],},
@@ -365,7 +366,7 @@ my %mhash= (
             '06.10.03' => {date=>'08/18/2006',days=>38945,apars=>['IY90352','IY91296'],},
             '06.10.02' => {date=>'06/30/2006',days=>38896,apars=>['IY81984','IY84853','IY85392'],},
             '06.10.01' => {date=>'03/31/2006',days=>38805,apars=>['IY82424','IY82431','IY82785'],},
-            '06.10.00' => {date=>'10/25/2005',days=>38638,apars=>[],},
+            '06.10.00' => {date=>'10/25/2005',days=>38648,apars=>[],},
         );
 
 my %levelx = ();
@@ -562,6 +563,7 @@ my $opt_v;                      # verbose flag
 my $opt_vt;                     # verbose traffic flag
 my $opt_dpr;                    # dump data structure flag
 my $opt_o;                      # output file
+my $opt_event;                  # When 1, create event reports
 my $opt_s;                      # write summary line if max impact > 0
 my $opt_workpath;               # Directory to store output files
 my $opt_nohdr = 0;              # skip header to make regression testing easier
@@ -1521,7 +1523,7 @@ my $pfraction;
 
 if ($tema_total_count > 0 ){
    print OH "\n";
-   print OH "TEMA Deficit Report Summary - 126 TEMA APARs to latest maintenance\n";
+   print OH "TEMA Deficit Report Summary - 132 TEMA APARs to latest maintenance ITM 630 FP6\n";
    $oneline = $tema_total_count . ",Agents with TEMA,";
    print OH "$oneline\n";
    $oneline = $tema_total_good_count . ",Agents with TEMA version same as TEMS version,";
@@ -1616,65 +1618,17 @@ foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
 }
 print OH "\n" if $top20 > 0;
 
-$top20 = 0;
-print OH "Top 20 Flapper Situation Report\n";
-print OH "Situation,Count,Open,Close,Node,Thrunode,Interval,Atomize\n";
-foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
-                      $a cmp $b
-                    } keys %eventx) {
-   foreach my $g (sort {$a cmp $b} keys  %{$eventx{$f}->{origin}}) {
-      next if $eventx{$f}->{reeval} == 0;                                    # ignore pure events for this report
-      next if $eventx{$f}->{origin}{$g}->{count} == 1;             # ignore single cases
-      if ( $eventx{$f}->{origin}{$g}->{count} == 2) {
-         next if $eventx{$f}->{origin}{$g}->{open} == 1;           # ignore single open/close case
-      }
-      $top20 += 1;
-      last if $top20 > 20;
-      $oneline = $f . ",";
-      $oneline .=  $eventx{$f}->{origin}{$g}->{count} . ",";
-      $oneline .=  $eventx{$f}->{origin}{$g}->{open} . ",";
-      $oneline .=  $eventx{$f}->{origin}{$g}->{close} . ",";
-      $oneline .=  $eventx{$f}->{origin}{$g}->{node} . ",";
-      $oneline .=  $eventx{$f}->{origin}{$g}->{thrunode} . ",";
-      $oneline .=  $eventx{$f}->{reeval} . ",";
-      $oneline .=  $eventx{$f}->{origin}{$g}->{atomize} . ",";
-      print OH "$oneline\n";
-   }
-   last if $top20 > 20;
-}
-print OH "\n";
-
-$top20 = 0;
-print OH "Top 20 Pure Situations with DisplayItems Report\n";
-print OH "Situation,Count,Open,Close,Nodes,Thrunode,Interval,Atomize\n";
-foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
-                      $a cmp $b
-                    } keys %eventx) {
-   next if $eventx{$f}->{reeval} > 0;
-   next if $eventx{$f}->{atomize} == 0;
-   $top20 += 1;
-   last if $top20 > 20;
-   $oneline = $f . ",";
-   $oneline .=  $eventx{$f}->{count} . ",";
-   $oneline .=  $eventx{$f}->{open} . ",";
-   $oneline .=  $eventx{$f}->{close} . ",";
-   my $ncount = keys %{$eventx{$f}->{origin}};
-   $oneline .=  $ncount . ",";
-   $oneline .=  $eventx{$f}->{reeval} . ",";
-   $oneline .=  $eventx{$f}->{atomize} . ",";
-   print OH "$oneline\n";
-}
-print OH "\n";
 
 $top20 = 0;
 print OH "Top 20 Situation Event Report\n";
 print OH "Situation,Count,Open,Close,Nodes,Thrunode,Interval,Atomize\n";
-foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+foreach my $f (sort { $eventx{$b}->{count} cmp $eventx{$a}->{count} ||
                       $a cmp $b
                     } keys %eventx) {
    $top20 += 1;
    last if $top20 > 20;
-   $oneline = $f . ",";
+   $oneline = $eventx{$f}->{sitname} . ",";
+   $oneline .= $eventx{$f}->{atomize} . ",";
    $oneline .=  $eventx{$f}->{count} . ",";
    $oneline .=  $eventx{$f}->{open} . ",";
    $oneline .=  $eventx{$f}->{close} . ",";
@@ -1708,6 +1662,52 @@ if ($advi != -1) {
       print OH "$advimpact[$j],$advcode[$j],$advsit[$j],$advonline[$j]\n";
       $max_impact = $advimpact[$j] if $advimpact[$j] > $max_impact;
    }
+}
+if ($opt_event == 1){
+   print OH "\n";
+   print OH "Flapper Situation Report\n";
+   print OH "Situation,Atomize,Count,Open,Close,Node,Thrunode,Interval\n";
+   foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                         $a cmp $b
+                        } keys %eventx) {
+      foreach my $g (sort {$a cmp $b} keys  %{$eventx{$f}->{origin}}) {
+         next if $eventx{$f}->{reeval} == 0;                                    # ignore pure events for this report
+         next if $eventx{$f}->{origin}{$g}->{count} == 1;             # ignore single cases
+         my $diff = abs($eventx{$f}->{origin}{$g}->{open}-$eventx{$f}->{origin}{$g}->{close});
+         next if $diff < 2;
+         $oneline = $eventx{$f}->{sitname} . ",";
+         $oneline .= $eventx{$f}->{atomize} . ",";
+         $oneline .=  $eventx{$f}->{origin}{$g}->{count} . ",";
+         $oneline .=  $eventx{$f}->{origin}{$g}->{open} . ",";
+         $oneline .=  $eventx{$f}->{origin}{$g}->{close} . ",";
+         $oneline .=  $eventx{$f}->{origin}{$g}->{node} . ",";
+         $oneline .=  $eventx{$f}->{origin}{$g}->{thrunode} . ",";
+         $oneline .=  $eventx{$f}->{reeval} . ",";
+         print OH "$oneline\n";
+      }
+   }
+   print OH "\n";
+
+   print OH "Pure Situations with DisplayItems Report\n";
+   print OH "Situation,Atomize,Count,Open,Close,Thrunode,Interval\n";
+   foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                         $a cmp $b
+                       } keys %eventx) {
+      next if $eventx{$f}->{reeval} > 0;
+      foreach my $g (sort {$a cmp $b} keys  %{$eventx{$f}->{origin}}) {
+         $oneline = $eventx{$f}->{sitname} . ",";
+         $oneline .= $eventx{$f}->{atomize} . ",";
+         $oneline .=  $eventx{$f}->{origin}{$g}->{open} . ",";
+         $oneline .=  $eventx{$f}->{origin}{$g}->{open} . ",";
+         $oneline .=  "0,";
+         $oneline .=  $eventx{$f}->{origin}{$g}->{thrunode} . ",";
+#      my $ncount = keys %{$eventx{$f}->{origin}};
+#      $oneline .=  $ncount . ",";
+         $oneline .=  $eventx{$f}->{reeval} . ",";
+         print OH "$oneline\n";
+      }
+   }
+   print OH "\n";
 }
 
 if ($opt_s ne "") {
@@ -2410,30 +2410,29 @@ my ($igbltmstmp,$iobjname,$operation,$itable) = @_;
 sub new_tsitstsh {
    my ($igbltmstmp,$ideltastat,$isitname,$inode,$ioriginnode,$iatomize) = @_;
    return if ($ideltastat ne "Y") and ($ideltastat ne "N");
-   my $sit_ref = $eventx{$isitname};
+   my $sitkey = $isitname . "|" . $iatomize;
+   my $sit_ref = $eventx{$sitkey};
    if (!defined $sit_ref) {
       my %originref = ();
       my %sitref = (
+                      sitname => $isitname,
+                      atomize => $iatomize,
                       count => 0,
                       open  => 0,
                       close => 0,
-                      atomize => 0,
                       reeval => 0,                      # 0 for sampled, >0 for pure
                       start => $igbltmstmp,
                       last  => $igbltmstmp,
                       origin => \%originref,
                    );
       $sit_ref = \%sitref;
-      $eventx{$isitname} = \%sitref;
+      $eventx{$sitkey} = \%sitref;
       my $sx = $sitx{$isitname};
       $sit_ref->{reeval} = $sit_reeval[$sx] if defined $sx;
    }
-#$DB::single=2;
     $sit_ref->{count} += 1;
-#$DB::single=2 if ($ideltastat ne "Y") and ($ideltastat ne "N");
     $sit_ref->{open} += 1 if $ideltastat eq "Y";
     $sit_ref->{close} += 1 if $ideltastat eq "N";
-    $sit_ref->{atomize} += 1 if $iatomize ne "";
 
     if ($igbltmstmp < $sit_ref->{start}) {
        $sit_ref->{start} = $igbltmstmp;
@@ -2455,7 +2454,7 @@ sub new_tsitstsh {
                           last  => $igbltmstmp,
                        );
        $origin_ref = \%originref;
-       $eventx{$isitname}->{origin}{$okey} = \%originref;
+       $eventx{$sitkey}->{origin}{$okey} = \%originref;
     }
     $origin_ref->{count} += 1;
     $origin_ref->{open} += 1 if $ideltastat eq "Y";
@@ -3476,6 +3475,9 @@ sub init {
       } elsif ( $ARGV[0] eq "-nohdr") {
          shift(@ARGV);
          $opt_nohdr = 1;
+      } elsif ( $ARGV[0] eq "-event") {
+         shift(@ARGV);
+         $opt_event = 1;
       } elsif ( $ARGV[0] eq "-txt") {
          shift(@ARGV);
          $opt_txt = 1;
@@ -3537,6 +3539,7 @@ sub init {
          next if $#words == -1;                  # skip blank line
           if ($#words == 0) {                         # single word parameters
             if ($words[0] eq "verbose") {$opt_v = 1;}
+            if ($words[0] eq "event") {$opt_event = 1;}
             elsif ($words[0] eq "traffic") {$opt_vt = 1;}
             else {
                print STDERR "SITAUDIT003E Control without needed parameters $words[0] - $opt_ini [$l]\n";
@@ -3583,6 +3586,7 @@ sub init {
    if (!defined $opt_vndx) {$opt_vndx=0;}                      # default vndx off
    if (!defined $opt_mndx) {$opt_mndx=0;}                      # default mndx off
    if (!defined $opt_miss) {$opt_miss=0;}                      # default mndx off
+   if (!defined $opt_event) {$opt_event=0;}                    # default event report off
    if (!defined $opt_hub)  {$opt_hub = "";}                    # external hub nodeid not supplied
 
    $opt_workpath =~ s/\\/\//g;                                 # convert to standard perl forward slashes
@@ -3830,3 +3834,4 @@ sub gettime
 # 1.18000  : parse_lst handle null chunks correctly
 #          : better report on possible duplicate agents, screen TNODELST for just M records
 # 1.20000  : Report on Situation Flippers and Fireflys
+# 1.21000  : Add TEMA APARs from ITM 630 FP6
