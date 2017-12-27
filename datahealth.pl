@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.95000";
+my $gVersion = "0.96000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -355,6 +355,9 @@ my $tema_total_days = 0;
 my $tema_total_max_days = 0;
 my $tema_total_max_apars = 0;
 
+my $tems_packages = 0;
+my $tems_packages_nominal = 500;
+
 
 # Situation Group related data
 my %group = ();                            # situation group base data, hash of hashes
@@ -445,6 +448,7 @@ my $opt_txt_tobjaccl;           # TOBJACCL txt file
 my $opt_txt_tgroup;             # TGROUP txt file
 my $opt_txt_tgroupi;            # TGROUPI txt file
 my $opt_txt_evntserver;         # EVNTSERVER txt file
+my $opt_txt_package;            # PACKAGE txt file
 my $opt_lst;                    # input from .lst files
 my $opt_lst_tnodesav;           # TNODESAV lst file
 my $opt_lst_tnodelst;           # TNODELST lst file
@@ -655,6 +659,20 @@ if ($hub_tems_no_tnodesav == 0) {
          }
       }
    }
+}
+
+if ($tems_packages > $tems_packages_nominal) {
+   $advi++;$advonline[$advi] = "Total TEMS Packages [.cat files] count [$tems_packages] exceeds nominal [$tems_packages_nominal]";
+   $advcode[$advi] = "DATAHEALTH1046W";
+   $advimpact[$advi] = 90;
+   $advsit[$advi] = "Package.cat";
+}
+
+if ($tems_packages > 510) {
+   $advi++;$advonline[$advi] = "Total TEMS Packages [.cat files] count [$tems_packages] close to TEMS failure point of 513";
+   $advcode[$advi] = "DATAHEALTH1048E";
+   $advimpact[$advi] = 110;
+   $advsit[$advi] = "Package.cat";
 }
 
 for ($i=0; $i<=$nsavei; $i++) {
@@ -1731,6 +1749,8 @@ sub init_txt {
    my $ilstdate;
    my $ilstusrprf;
 
+   my @kdsca_data;
+
    open(KSAV, "< $opt_txt_tnodesav") || die("Could not open TNODESAV $opt_txt_tnodesav\n");
    @ksav_data = <KSAV>;
    close(KSAV);
@@ -1934,6 +1954,18 @@ sub init_txt {
       $ilstusrprf = substr($oneline,20,10);
       $ilstusrprf =~ s/\s+$//;   #trim trailing whitespace
       new_evntserver($iid,$ilstdate,$ilstusrprf);
+   }
+
+   open(KDSCA, "< $opt_txt_package") || die("Could not open PACKAGE $opt_txt_package\n");
+   @kdsca_data = <KDSCA>;
+   close(KDSCA);
+
+   # Count entries in PACKAGE file
+   $ll = 0;
+   foreach $oneline (@kdsca_data) {
+      $ll += 1;
+      next if $ll < 5;
+      $tems_packages += 1;
    }
 
 }
@@ -2280,6 +2312,7 @@ sub init {
       $opt_txt_tgroup   = $opt_workpath . "QA1DGRPA.DB.TXT";
       $opt_txt_tgroupi  = $opt_workpath . "QA1DGRPI.DB.TXT";
       $opt_txt_evntserver = $opt_workpath . "QA1DEVSR.DB.TXT";
+      $opt_txt_package = $opt_workpath . "QA1CDSCA.DB.TXT";
    }
    if (defined $opt_lst) {
       $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
@@ -2462,3 +2495,4 @@ sub gettime
 # 0.95000  : Refine check for lower level TEMAs
 #          : Add summary for TEMA Deficit levels, auto-detect TXT and LST options
 #          : Add hub version and fraction TEMA deficit to one line summary for PMR
+# 0.96000  : Add check for number of packages close to failure point
