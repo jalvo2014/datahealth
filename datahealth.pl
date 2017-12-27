@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.16000";
+my $gVersion = "1.17000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -188,6 +188,7 @@ my %advx = ();
 my $hubi;
 my $max_impact = 0;
 my $isFTO = 0;
+my %FTOver = ();
 
 my $test_node;
 my $invalid_node;
@@ -762,9 +763,34 @@ for (my $i=0;$i<=$temsi;$i++) {
       # is available. I tried many ways and failed before finding this.
       if (substr($tems_affinities[$i],40,1) eq "O") {
          $isFTO += 1;
+         $FTOver{$tems[$i]} = $tems_version[$i];
       }
    }
 }
+
+my $FTO_diff = 0;
+if ($isFTO >= 2) {
+   my %reverse;
+   my $pftover = "";
+   while (my ($key, $value) = each %FTOver) {
+      push @{$reverse{$value}}, $key;
+      $pftover .= $key . "=" . $value . ";";
+   }
+   if (scalar (keys %reverse) > 1) {
+      $advi++;$advonline[$advi] = "FTO hub TEMS have different version levels [$pftover]";
+      $advcode[$advi] = "DATAHEALTH1069E";
+      $advimpact[$advi] = 100;
+      $advsit[$advi] = "FTO";
+   }
+   my $pFTO_ct = scalar (keys %FTOver);
+   if ($pFTO_ct > 2) {
+      $advi++;$advonline[$advi] = "There are $pFTO_ct hub TEMS [$pftover]";
+      $advcode[$advi] = "DATAHEALTH1070W";
+      $advimpact[$advi] = 50;
+      $advsit[$advi] = "FTO";
+   }
+}
+
 
 if ($tems_packages > $tems_packages_nominal) {
    $advi++;$advonline[$advi] = "Total TEMS Packages [.cat files] count [$tems_packages] exceeds nominal [$tems_packages_nominal]";
@@ -1616,8 +1642,9 @@ if ($opt_s ne "") {
            $oneline = "REFIC ";
            $oneline .= $max_impact . " ";
            $oneline .= $tadvi . " ";
-           $oneline .= $hub_tems_version . " ";
            $oneline .= $tema_total_deficit_percent . "% ";
+           $oneline .= $hub_tems_version . " ";
+           $oneline .= $hub_tems . " ";
            $oneline .= $hub_tems_ct . " ";
            $oneline .= "https://ibm.biz/BdFrJL" . " ";
            print SH $oneline . "\n";
@@ -1903,9 +1930,23 @@ sub new_tsitdesc {
       $sit_reeval[$siti] = 1;
       $sit_fullname[$siti] = "";
       $sit_psit[$siti] = $isitname;
+      if ((length($ireev_days) == 0) or (length($ireev_days) > 3)) {
+         $advi++;$advonline[$advi] = "Situation with invalid sampling days [$ireev_days]";
+         $advcode[$advi] = "DATAHEALTH1071W";
+         $advimpact[$advi] = 20;
+         $advsit[$advi] = $isitname;
+      }
+      if (length($ireev_time) != 6){
+         $advi++;$advonline[$advi] = "Situation with invalid sampling time [$ireev_time]";
+         $advcode[$advi] = "DATAHEALTH1072W";
+         $advimpact[$advi] = 20;
+         $advsit[$advi] = $isitname;
+      }
       if ((length($ireev_days) >= 1) and (length($ireev_days) <= 3) ) {
          if ((length($ireev_time) >= 1) and (length($ireev_time) <= 6)) {
             $ireev_days += 0;
+            $ireev_time .= "000000";                 # found some old situations with sample time "0000" so auto-extend
+            $ireev_time = substr($ireev_time,0,6);
             my $reev_time_hh = 0;
             my $reev_time_mm = 0;
             my $reev_time_ss = 0;
@@ -3590,3 +3631,5 @@ sub gettime
 #            Add report of TEPS version and architecture
 # 1.15000  : Add report for i/5 agent levels
 # 1.16000  : Add general i5os reports, not just OS Agent
+# 1.17000  : Detect FTO hub TEMS at different maintenance levels
+#          : Alert on some sampling date/time issues
