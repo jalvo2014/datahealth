@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.98000";
+my $gVersion = "0.99000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -1187,6 +1187,7 @@ if ($tema_total_count > 0 ){
    $fraction = ($tema_total_deficit_count*100) / $tema_total_count;
    $pfraction = sprintf( "%.2f", $fraction);
    $oneline = $pfraction . "%,Per cent TEMAs less then TEMS version,";
+   $tema_total_deficit_percent = $pfraction;
    print OH "$oneline\n";
    $oneline = $tema_total_days . ",Total Days TEMA version less then TEMS version,";
    print OH "$oneline\n";
@@ -2590,3 +2591,4 @@ sub gettime
 # 0.97000  : Full review of TEMA APARs and levels after ITM 6.1 FP6 readme found
 # 0.98000  : Reconcile -lst logic
 #          : Change 1043E warning for cases where agent is release higher then TEMS
+# 0.99000  : Fix deficit% in REFIC line
