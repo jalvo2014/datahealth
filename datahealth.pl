@@ -29,7 +29,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.73000";
+my $gVersion = "0.75000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -89,6 +89,11 @@ my @mlist = ();
 my %mlistx = ();
 my @mlist_ct;
 
+my $nlx;
+my $nlisti = -1;
+my @nlist = ();
+my %nlistx = ();
+
 
 # TNODESAV record data                  Disk copy of INODESTS [mostly]
 my $nsx;
@@ -129,6 +134,10 @@ my %magentx = ();                        # hash from managing agent name to inde
 my @magent_subct = ();                   # count of subnode agents
 my @magent_sublen = ();                  # length of subnode agent list
 my @magent_tems_version = ();            # version of managing agent TEMS
+
+my $test_node;
+my $invalid_node;
+
 
 my $snx;
 
@@ -367,6 +376,20 @@ for ($i=0; $i<=$nlistmi; $i++) {
 }
 
 for ($i=0;$i<=$nsavei;$i++) {
+   $invalid_node = 0;
+   if (index("\.\ \*\#",substr($nsave[$i],0,1)) != -1) {
+      $invalid_node = 1;
+   } else {
+      $test_node = $nsave[$i];
+      $test_node =~ s/[A-Za-z0-9\*\ \_\-\:\@\$\#\.]//g;
+      $invalid_node = 1 if $test_node ne "";
+   }
+   if ($invalid_node == 1) {
+      $advi++;$advonline[$advi] = "TNODESAV invalid node name";
+      $advcode[$advi] = "DATAHEALTH1016E";
+      $advimpact[$advi] = 50;
+      $advsit[$advi] = $nsave[$i];
+   }
    next if $nsave_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODESAV duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1007E";
@@ -409,6 +432,24 @@ for ($i=0;$i<=$nlistvi;$i++) {
    $advcode[$advi] = "DATAHEALTH1008E";
    $advimpact[$advi] = 105;
    $advsit[$advi] = $nlistv[$i];
+}
+
+##check nodelist validity
+for ($i=0;$i<=$nlisti;$i++) {
+   $invalid_node = 0;
+   if (index("\.\ \#",substr($nlist[$i],0,1)) != -1) {
+      $invalid_node = 1;
+   } else {
+      $test_node = $nlist[$i];
+      $test_node =~ s/[A-Za-z0-9\* _\-:@\$\#\.]//g;
+      $invalid_node = 1 if $test_node ne "";
+   }
+   if ($invalid_node == 1) {
+      $advi++;$advonline[$advi] = "TNODELIST NODETYPE=M invalid nodelist name";
+      $advcode[$advi] = "DATAHEALTH1017E";
+      $advimpact[$advi] = 50;
+      $advsit[$advi] = $nlist[$i];
+   }
 }
 
 for ($i=0;$i<=$mlisti;$i++) {
@@ -663,6 +704,14 @@ my ($inodetype,$inodelist,$inode) = @_;
       $mlist_ct[$mlx] = 0;
    }
    $mlist_ct[$mlx] += 1;
+
+   $nlx = $nlistx{$inodelist};
+   if (!defined $nlx) {
+      $nlisti += 1;
+      $nlx = $nlisti;
+      $nlist[$nlx] = $inodelist;
+      $nlistx{$inodelist} = $nlx;
+   }
 
    # record the agent oriented data. During processing we will record data about
    # various missing cases.
@@ -951,6 +1000,14 @@ sub init {
    if ($opt_h) {&GiveHelp;}  # GiveHelp and exit program
    if (!defined $opt_debuglevel) {$opt_debuglevel=90;}         # debug logging level - low number means fewer messages
    if (!defined $opt_debug) {$opt_debug=0;}                    # debug - turn on rare error cases
+   if (defined $opt_txt) {
+      $opt_txt_tnodelst = "QA1CNODL.DB.TXT";
+      $opt_txt_tnodesav = "QA1DNSAV.DB.TXT";
+   }
+   if (defined $opt_lst) {
+      $opt_lst_tnodesav  = "QA1DNSAV.DB.LST";
+      $opt_lst_tnodelst  = "QA1CNODL.DB.LST";
+   }
 
    # ini control file must be present
 
@@ -1015,16 +1072,6 @@ sub init {
    if ($opt_workpath ne "") {
       $opt_workpath .= "\/" if substr($opt_workpath,length($opt_workpath)-1,1) ne "\/";
    }
-
-   if (defined $opt_txt) {
-      $opt_txt_tnodelst = $opt_workpath . "QA1CNODL.DB.TXT";
-      $opt_txt_tnodesav = $opt_workpath . "QA1DNSAV.DB.TXT";
-   }
-   if (defined $opt_lst) {
-      $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
-      $opt_lst_tnodelst  = $opt_workpath . "QA1CNODL.DB.LST";
-   }
-   $opt_o =  $opt_workpath .  $opt_o;
 
 
    if ($opt_dpr == 1) {
@@ -1148,3 +1195,4 @@ sub gettime
 #          : low impact advisory on long node names
 # 0.72000  : count size of subnode list and advise if TEMS < "06.23.02" and near 32K
 # 0.73000  : Handle duplicate hostaddr with null thrunode better
+# 0.75000  : Advisory on invalid nodes and nodelist names
