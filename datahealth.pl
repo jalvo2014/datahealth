@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.18000";
+my $gVersion = "1.20000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -511,6 +511,8 @@ my @tci_calid = ();
 
 my %eibnodex = ();
 
+my %eventx = ();
+
 # option and ini file variables variables
 
 my $opt_txt;                    # input from .txt files
@@ -530,7 +532,8 @@ my $opt_txt_tactypcy;           # TACTYPCY txt file
 my $opt_txt_tcalendar;          # TCALENDAR txt file
 my $opt_txt_toverride;          # TOVERRIDE txt file
 my $opt_txt_toveritem;          # TOVERITEM txt file
-my $opt_txt_teiblogt;           # TOVERITEM txt file
+my $opt_txt_teiblogt;           # TEIBLOGT txt file
+my $opt_txt_tsitstsh;           # TSITSTSH txt file
 my $opt_lst;                    # input from .lst files
 my $opt_lst_tnodesav;           # TNODESAV lst file
 my $opt_lst_tnodelst;           # TNODELST lst file
@@ -547,7 +550,8 @@ my $opt_lst_tactypcy;           # TACTYPCY lst file
 my $opt_lst_tcalendar;          # TCALENDAR lst file
 my $opt_lst_toverride;          # TOVERRIDE lst file
 my $opt_lst_toveritem;          # TOVERITEM lst file
-my $opt_lst_teiblogt;           # TOVERITEM lst file
+my $opt_lst_teiblogt;           # TEIBLOGT lst file
+my $opt_lst_tsitstsh;           # TSITSTSH lst file
 my $opt_log;                    # name of log file
 my $opt_ini;                    # name of ini file
 my $opt_hub;                    # externally supplied nodeid of hub TEMS
@@ -1612,6 +1616,77 @@ foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
 }
 print OH "\n" if $top20 > 0;
 
+$top20 = 0;
+print OH "Top 20 Flapper Situation Report\n";
+print OH "Situation,Count,Open,Close,Node,Thrunode,Interval,Atomize\n";
+foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                      $a cmp $b
+                    } keys %eventx) {
+   foreach my $g (sort {$a cmp $b} keys  %{$eventx{$f}->{origin}}) {
+      next if $eventx{$f}->{reeval} == 0;                                    # ignore pure events for this report
+      next if $eventx{$f}->{origin}{$g}->{count} == 1;             # ignore single cases
+      if ( $eventx{$f}->{origin}{$g}->{count} == 2) {
+         next if $eventx{$f}->{origin}{$g}->{open} == 1;           # ignore single open/close case
+      }
+      $top20 += 1;
+      last if $top20 > 20;
+      $oneline = $f . ",";
+      $oneline .=  $eventx{$f}->{origin}{$g}->{count} . ",";
+      $oneline .=  $eventx{$f}->{origin}{$g}->{open} . ",";
+      $oneline .=  $eventx{$f}->{origin}{$g}->{close} . ",";
+      $oneline .=  $eventx{$f}->{origin}{$g}->{node} . ",";
+      $oneline .=  $eventx{$f}->{origin}{$g}->{thrunode} . ",";
+      $oneline .=  $eventx{$f}->{reeval} . ",";
+      $oneline .=  $eventx{$f}->{origin}{$g}->{atomize} . ",";
+      print OH "$oneline\n";
+   }
+   last if $top20 > 20;
+}
+print OH "\n";
+
+$top20 = 0;
+print OH "Top 20 Pure Situations with DisplayItems Report\n";
+print OH "Situation,Count,Open,Close,Nodes,Thrunode,Interval,Atomize\n";
+foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                      $a cmp $b
+                    } keys %eventx) {
+   next if $eventx{$f}->{reeval} > 0;
+   next if $eventx{$f}->{atomize} == 0;
+   $top20 += 1;
+   last if $top20 > 20;
+   $oneline = $f . ",";
+   $oneline .=  $eventx{$f}->{count} . ",";
+   $oneline .=  $eventx{$f}->{open} . ",";
+   $oneline .=  $eventx{$f}->{close} . ",";
+   my $ncount = keys %{$eventx{$f}->{origin}};
+   $oneline .=  $ncount . ",";
+   $oneline .=  $eventx{$f}->{reeval} . ",";
+   $oneline .=  $eventx{$f}->{atomize} . ",";
+   print OH "$oneline\n";
+}
+print OH "\n";
+
+$top20 = 0;
+print OH "Top 20 Situation Event Report\n";
+print OH "Situation,Count,Open,Close,Nodes,Thrunode,Interval,Atomize\n";
+foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                      $a cmp $b
+                    } keys %eventx) {
+   $top20 += 1;
+   last if $top20 > 20;
+   $oneline = $f . ",";
+   $oneline .=  $eventx{$f}->{count} . ",";
+   $oneline .=  $eventx{$f}->{open} . ",";
+   $oneline .=  $eventx{$f}->{close} . ",";
+   my $ncount = keys %{$eventx{$f}->{origin}};
+   $oneline .=  $ncount . ",";
+   $oneline .=  $eventx{$f}->{reeval} . ",";
+   $oneline .=  $eventx{$f}->{atomize} . ",";
+   print OH "$oneline\n";
+}
+
+print OH "\n";
+
 my $tadvi = $advi + 1;
 print OH "Advisory messages,$tadvi\n";
 
@@ -2069,9 +2144,7 @@ sub new_tnodesav {
       }
    }
    # track the i/5 OS Agent and the version
-# $DB::single=2;
    if ($arch eq "i5os") {
-# $DB::single=2;
       my $sub_level = "00";
       $ireserved =~ /A=(\d+):/;
       $sub_level = $1 if defined $1;
@@ -2079,7 +2152,6 @@ sub new_tnodesav {
       my $key = $iproduct . $agt_version;
       $tx = $ka4x{$key};
       if (!defined $tx) {
-# $DB::single=2;
          $ka4i += 1;
          $tx = $ka4i;
          $ka4[$tx] = $key;
@@ -2088,9 +2160,7 @@ sub new_tnodesav {
          $ka4_version[$tx] = $agt_version;
          $ka4_version_count[$tx] = 0;
       }
-# $DB::single=2;
       $ka4_version_count[$tx] += 1;
-# $DB::single=2;
    }
    # track individual HOSTADDR
    # duplicates often reflect minor issues
@@ -2337,6 +2407,70 @@ my ($igbltmstmp,$iobjname,$operation,$itable) = @_;
 }
 
 
+sub new_tsitstsh {
+   my ($igbltmstmp,$ideltastat,$isitname,$inode,$ioriginnode,$iatomize) = @_;
+   return if ($ideltastat ne "Y") and ($ideltastat ne "N");
+   my $sit_ref = $eventx{$isitname};
+   if (!defined $sit_ref) {
+      my %originref = ();
+      my %sitref = (
+                      count => 0,
+                      open  => 0,
+                      close => 0,
+                      atomize => 0,
+                      reeval => 0,                      # 0 for sampled, >0 for pure
+                      start => $igbltmstmp,
+                      last  => $igbltmstmp,
+                      origin => \%originref,
+                   );
+      $sit_ref = \%sitref;
+      $eventx{$isitname} = \%sitref;
+      my $sx = $sitx{$isitname};
+      $sit_ref->{reeval} = $sit_reeval[$sx] if defined $sx;
+   }
+#$DB::single=2;
+    $sit_ref->{count} += 1;
+#$DB::single=2 if ($ideltastat ne "Y") and ($ideltastat ne "N");
+    $sit_ref->{open} += 1 if $ideltastat eq "Y";
+    $sit_ref->{close} += 1 if $ideltastat eq "N";
+    $sit_ref->{atomize} += 1 if $iatomize ne "";
+
+    if ($igbltmstmp < $sit_ref->{start}) {
+       $sit_ref->{start} = $igbltmstmp;
+    }
+    if ($igbltmstmp > $sit_ref->{last}) {
+       $sit_ref->{last} = $igbltmstmp;
+    }
+    my $okey = $ioriginnode . "|" . $inode;
+    my $origin_ref =  $sit_ref->{origin}{$okey};
+    if (!defined $origin_ref) {
+       my %originref = (
+                          node => $ioriginnode,
+                          thrunode => $inode,
+                          count => 0,
+                          open  => 0,
+                          close => 0,
+                          atomize => 0,
+                          start => $igbltmstmp,
+                          last  => $igbltmstmp,
+                       );
+       $origin_ref = \%originref;
+       $eventx{$isitname}->{origin}{$okey} = \%originref;
+    }
+    $origin_ref->{count} += 1;
+    $origin_ref->{open} += 1 if $ideltastat eq "Y";
+    $origin_ref->{close} += 1 if $ideltastat eq "N";
+    $origin_ref->{atomize} += 1 if $iatomize ne "";
+
+    if ($igbltmstmp < $origin_ref->{start}) {
+       $origin_ref->{start} = $igbltmstmp;
+    }
+    if ($igbltmstmp > $origin_ref->{last}) {
+       $origin_ref->{last} = $igbltmstmp;
+    }
+}
+
+
 # following routine gets data from txt files. tems2sql.pl is an internal only program which can
 # extract data from a TEMS database file.
 
@@ -2413,6 +2547,11 @@ sub init_txt {
    my $igbltmstmp;
    my $ioperation;
    my $itable;
+
+   my @kstsh_data;
+   my $ideltastat;
+   my $ioriginnode;
+   my $iatomize;
 
    open(KSAV, "< $opt_txt_tnodesav") || die("Could not open TNODESAV $opt_txt_tnodesav\n");
    @ksav_data = <KSAV>;
@@ -2813,6 +2952,31 @@ sub init_txt {
       new_teiblogt($igbltmstmp,$iobjname,$ioperation,$itable);
    }
 
+   open(KSTSH, "< $opt_txt_tsitstsh") || die("Could not open TSITSTSH $opt_txt_tsitstsh\n");
+   @kstsh_data = <KSTSH>;
+   close(KSTSH);
+   # Get data for all TSITSTSH records
+   $ll = 0;
+   foreach $oneline (@kstsh_data) {
+      $ll += 1;
+      next if $ll < 5;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $igbltmstmp = substr($oneline,0,16);
+      $igbltmstmp =~ s/\s+$//;   #trim trailing whitespace
+      $ideltastat = substr($oneline,17,1);
+      $ideltastat =~ s/\s+$//;   #trim trailing whitespace
+      $isitname = substr($oneline,27,32);
+      $isitname =~ s/\s+$//;   #trim trailing whitespace
+      $inode = substr($oneline,60,32);
+      $inode =~ s/\s+$//;   #trim trailing whitespace
+      $ioriginnode = substr($oneline,93,32);
+      $ioriginnode =~ s/\s+$//;   #trim trailing whitespace
+      $iatomize = substr($oneline,126,128);
+      $iatomize =~ s/\s+$//;   #trim trailing whitespace
+      new_tsitstsh($igbltmstmp,$ideltastat,$isitname,$inode,$ioriginnode,$iatomize);
+   }
+
 }
 
 # There may be a better way to do this, but this was clear and worked.
@@ -2937,6 +3101,11 @@ sub init_lst {
    my $igbltmstmp;
    my $ioperation;
    my $itable;
+
+   my @kstsh_data;
+   my $ideltastat;
+   my $ioriginnode;
+   my $iatomize;
 
    # Parsing the KfwSQLClient output has some challenges. For example
    #      [1]  OGRP_59B815CE8A3F4403  2010  Test Group 1
@@ -3249,6 +3418,21 @@ sub init_lst {
       new_teiblogt($igbltmstmp,$iobjname,$ioperation,$itable);
    }
 
+   open(KSTSH, "< $opt_lst_tsitstsh") || die("Could not open TSITSTSH $opt_lst_tsitstsh\n");
+   @kstsh_data = <KSTSH>;
+   close(KSTSH);
+   # Get data for all TSITSTSH records
+   $ll = 0;
+   foreach $oneline (@kstsh_data) {
+      $ll += 1;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
+      chop $oneline;
+      $oneline .= " " x 400;
+      ($igbltmstmp,$ideltastat,$isitname,$inode,$ioriginnode,$iatomize) = parse_lst(6,$oneline);
+      new_tsitstsh($igbltmstmp,$ideltastat,$isitname,$inode,$ioriginnode,$iatomize);
+   }
+
+
 }
 
 
@@ -3423,6 +3607,7 @@ sub init {
       $opt_txt_toverride = $opt_workpath . "QA1DOVRD.DB.TXT";
       $opt_txt_toveritem = $opt_workpath . "QA1DOVRI.DB.TXT";
       $opt_txt_teiblogt = $opt_workpath . "QA1CEIBL.DB.TXT";
+      $opt_txt_tsitstsh = $opt_workpath . "QA1CSTSH.DB.TXT";
    }
    if (defined $opt_lst) {
       $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
@@ -3441,6 +3626,7 @@ sub init {
       $opt_lst_toverride = $opt_workpath . "QA1DOVRD.DB.LST";
       $opt_lst_toveritem = $opt_workpath . "QA1DOVRI.DB.LST";
       $opt_lst_teiblogt = $opt_workpath . "QA1CEIBL.DB.LST";
+      $opt_lst_tsitstsh = $opt_workpath . "QA1CSTSH.DB.LST";
    }
    $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.VNDX";
    $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
@@ -3643,3 +3829,4 @@ sub gettime
 #          : Alert on some sampling date/time issues
 # 1.18000  : parse_lst handle null chunks correctly
 #          : better report on possible duplicate agents, screen TNODELST for just M records
+# 1.20000  : Report on Situation Flippers and Fireflys
