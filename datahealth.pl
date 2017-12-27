@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.04000";
+my $gVersion = "1.06000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -1402,6 +1402,12 @@ if ($hub_tems_no_tnodesav == 0) {
          $advimpact[$advi] = 75;
          $advsit[$advi] = $hub_tems;
       }
+      if ($tems_version[$hubi]  eq "06.30.02") {
+         $advi++;$advonline[$advi] = "Danger of TEMS crash sending events to receiver APAR IV50167";
+         $advcode[$advi] = "DATAHEALTH1067E";
+         $advimpact[$advi] = 110;
+         $advsit[$advi] = $hub_tems;
+      }
    }
 
 
@@ -2541,13 +2547,13 @@ sub init_txt {
 # The input $lcount must be matched up to the number of columns
 # SELECTED in the SQL.
 # [1]  OGRP_59B815CE8A3F4403  OGRP_6F783DF5FF904988  2010  2010
+
 sub parse_lst {
   my ($lcount,$inline) = @_;            # count of desired chunks and the input line
   my @retlist = ();                     # an array of strings to return
   my $chunk = "";                       # One chunk
-  my $oct = 0;                          # output chunk count
+  my $oct = 1;                          # output chunk count
   my $rest;                             # the rest of the line to process
-  chop($inline);
   $inline =~ /\]\s*(.*)/;               # skip by [NNN]  field
   $rest = " " . $1 . "        ";
   my $lenrest = length($rest);          # length of $rest string
@@ -2670,7 +2676,8 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@ksav_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
+      chop $oneline;
       # KfwSQLClient /e "SELECT NODE,O4ONLINE,PRODUCT,VERSION,HOSTADDR,RESERVED,THRUNODE,AFFINITIES FROM O4SRV.TNODESAV" >QA1DNSAV.DB.LST
       #[1]  BNSF:TOIFVCTR2PW:VM  Y  VM  06.22.01  ip.spipe:#10.121.54.28[11853]<NM>TOIFVCTR2PW</NM>  A=00:WIX64;C=06.22.09.00:WIX64;G=06.22.09.00:WINNT;  REMOTE_catrste050bnsxa  000100000000000000000000000000000G0003yw0a7
       ($inode,$io4online,$iproduct,$iversion,$ihostaddr,$ireserved,$ithrunode,$iaffinities) = parse_lst(8,$oneline);
@@ -2693,7 +2700,8 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@klst_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
+      chop $oneline;
       # KfwSQLClient /e "SELECT NODE,NODETYPE,NODELIST,LSTDATE FROM O4SRV.TNODELST" >QA1CNODL.DB.LST
       ($inode,$inodetype,$inodelist,$ilstdate) = parse_lst(4,$oneline);
       next if $inodetype ne "V";
@@ -2705,7 +2713,8 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@klst_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
+      chop $oneline;
       # KfwSQLClient /e "SELECT NODE,NODETYPE,NODELIST,LSTDATE FROM O4SRV.TNODELST" >QA1CNODL.DB.LST
       ($inode,$inodetype,$inodelist,$ilstdate) = parse_lst(4,$oneline);
       $inodelist =~ s/\s+$//;   #trim trailing whitespace
@@ -2730,9 +2739,10 @@ sub init_lst {
 
    # Get data for all TSITDESC records
    $ll = 0;
-   foreach $oneline (@ksav_data) {
+   foreach $oneline (@ksit_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
+      chop $oneline;
       # KfwSQLClient /e "SELECT SITNAME,AUTOSTART,LSTDATE,REEV_DAYS,REEV_TIME,PDT FROM O4SRV.TSITDESC" >QA1CSITF.DB.LS
       ($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$ipdt) = parse_lst(6,$oneline);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
@@ -2749,7 +2759,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@knam_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       # KfwSQLClient /e "SELECT ID,LSTDATE,FULLNAME FROM O4SRV.TNAME" >QA1DNAME.DB.LST
       ($iid,$ilstdate,$ifullname) = parse_lst(3,$oneline);
@@ -2764,7 +2774,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kobj_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       # KfwSQLClient /e "SELECT OBJCLASS,OBJNAME,NODEL,LSTDATE FROM O4SRV.TOBJACCL" >QA1DOBJA.DB.LST
       ($iobjclass,$iobjname,$inodel,$ilstdate) = parse_lst(4,$oneline);
@@ -2780,7 +2790,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kgrp_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       # KfwSQLClient /e "SELECT GRPCLASS,ID,LSTDATE,GRPNAME FROM O4SRV.TGROUP" >QA1DGRPA.DB.LST
       ($igrpclass,$iid,$ilstdate,$igrpname) = parse_lst(4,$oneline);
@@ -2795,7 +2805,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kgrpi_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       # KfwSQLClient /e "SELECT GRPCLASS,ID,LSTDATE,OBJCLASS,OBJNAME FROM O4SRV.TGROUPI" >QA1DGRPI.DB.LST
       ($igrpclass,$iid,$ilstdate,$iobjclass,$iobjname) = parse_lst(5,$oneline);
@@ -2810,7 +2820,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kevsr_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       # KfwSQLClient /e "SELECT ID,LSTDATE,LSTUSRPRF FROM O4SRV.EVNTSERVER" >QA1DEVSR.DB.LST
       ($iid,$ilstdate,$ilstusrprf) = parse_lst(3,$oneline);
@@ -2835,7 +2845,7 @@ sub init_lst {
 #  $ll = 0;
 #  foreach $oneline (@kdsca_data) {
 #     $ll += 1;
-#     next if $ll < 2;
+#     next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
 #     $tems_packages += 1;
 #  }
 
@@ -2846,7 +2856,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kcct_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       # KfwSQLClient /e "SELECT KEY,LSTDATE,NAME FROM O4SRV.CCT" >QA1DCCT.DB.LST
       ($ikey,$ilstdate,$iname) = parse_lst(3,$oneline);
@@ -2861,7 +2871,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kevmp_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       # KfwSQLClient /e "SELECT ID,LSTDATE,MAP FROM O4SRV.EVNTMAP" >QA1DEVMP.DB.LST
       ($iid,$ilstdate,$imap) = parse_lst(3,$oneline);
@@ -2876,7 +2886,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kpcyf_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       $oneline .= " " x 400;
       # KfwSQLClient /e "SELECT PCYNAME,LSTDATE FROM O4SRV.TPCYDESC" >QA1DPCYF.DB.LST
@@ -2892,7 +2902,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kactp_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       $oneline .= " " x 400;
       # KfwSQLClient /e "SELECT ACTNAME,PCYNAME,LSTDATE,TYPESTR,ACTINFO FROM O4SRV.TACTYPCY" >QA1DACTP.DB.LST
@@ -2907,7 +2917,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kcale_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       $oneline .= " " x 400;
       # KfwSQLClient /e "SELECT ID,LSTDATE,NAME FROM O4SRV.TCALENDAR" >QA1DCALE.DB.LST
@@ -2922,7 +2932,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kovrd_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       $oneline .= " " x 400;
       # KfwSQLClient /e "SELECT ID,LSTDATE,SITNAME FROM O4SRV.TOVERRIDE" >QA1DOVRD.DB.LST
@@ -2937,7 +2947,7 @@ sub init_lst {
    $ll = 0;
    foreach $oneline (@kovri_data) {
       $ll += 1;
-      next if $ll < 2;
+      next if substr($oneline,0,10) eq "KCIIN0187I";      # A Linux/Unix first line
       chop $oneline;
       $oneline .= " " x 400;
       # KfwSQLClient /e "SELECT ID,LSTDATE,ITEMID,CALID FROM O4SRV.TOVERITEM" >QA1DOVRI.DB.LST
@@ -3042,7 +3052,7 @@ sub init {
       foreach my $oneline (@ips)
       {
          $l++;
-         chomp($oneline);
+         chop $oneline;
          next if (substr($oneline,0,1) eq "#");  # skip comment line
          @words = split(" ",$oneline);
          next if $#words == -1;                  # skip blank line
@@ -3317,4 +3327,6 @@ sub gettime
 #          : Add checking of the rest of the FTO synchronized tables
 # 1.02000  : Long sampling interval
 # 1.03000  : Correct parse_lst issues versus capture SQL TNAME and TPCYDESC issues
-# 1.04000  : Fix Workflow Policy checks to warn on autostart *NO at lower impact
+# 1.04000  : Fix Workflow Policy checks to warn on autostart *NO at lower impact, correct TSITDESC -lst capture
+# 1.05000  : Improved parse_lst logic
+# 1.06000  : Add check for APAR IV50167
