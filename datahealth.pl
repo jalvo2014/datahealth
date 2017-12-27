@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.17000";
+my $gVersion = "1.18000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -1575,7 +1575,7 @@ foreach my $f (keys %eibnodex) {
 }
 
 for my $k (sort {$online_count{$b} <=> $online_count{$a}} keys %online_count) {
-   $online_mode = $online_count{$k};
+   $online_mode = $k;
    last;
 }
 
@@ -1595,14 +1595,14 @@ foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
    $oneline .= $f . ",";
    my $pthrunode = "";
    my $pthruct = 0;
-   foreach my $g (keys  %{$eibnodex{$f}->{thrunode}}) {
+   foreach my $g (sort {$a cmp $b} keys  %{$eibnodex{$f}->{thrunode}}) {
       $pthruct += 1;
       $pthrunode .= ":" if $pthrunode ne "";
       $pthrunode .= $g;
    }
    $oneline .= $pthruct . "," . $pthrunode . ",";
    print OH "$oneline\n";
-   if ($top20 == 1) {
+   if ($eibnodex{$f}->{count} > 2) {
       $advi++;$advonline[$advi] = "Agent registering $eibnodex{$f}->{count} times: possible duplicate agent names";
       $advcode[$advi] = "DATAHEALTH1068E";
       $advimpact[$advi] = 90;
@@ -2299,35 +2299,41 @@ my ($igbltmstmp,$iobjname,$operation,$itable) = @_;
    my $ithrunode = substr($iobjname,32,32);
    $ithrunode =~ s/\s+$//;   #trim trailing whitespace
 
-   # Insertions can be into V type records - alive which contain current thrunode
-   # Insertions can also be into M type records, containing system generated MSL entries
-   # Multiple of either is a good indication of problems
-   if ($ithrunode ne "") {
-       my $nx = $nsavex{$inode};
-       if (!defined $nx) {
+   # There are two cases we want to track
+   #  $inode = managed system list, $ithrunode = system generated managed system TNODELST M type records
+   #  $inode and $ithrunode = managed system    TNODELST V type records
+
+   my $doit = 0;
+   if (defined $nlistx{$inode}) {
+      if ((substr($inode,0,1) eq "*") and (defined $nsavex{$ithrunode})) {
           ($inode,$ithrunode) = ($ithrunode,$inode);
-       }
+          $doit = 1;
+      }
+   } elsif ((defined $nsavex{$inode}) and (defined $nsavex{$ithrunode})) {
+       $doit = 1;
    }
-   my $node_ref = $eibnodex{$inode};
-   if (!defined $node_ref) {
-      my %thrunoderef = ();
-      my %noderef = ( count => 0,
-                      thrunode => \%thrunoderef,
-                    );
-      $node_ref = \%noderef;
-      $eibnodex{$inode} = \%noderef;
+   if ($doit == 1) {
+      my $node_ref = $eibnodex{$inode};
+      if (!defined $node_ref) {
+         my %thrunoderef = ();
+         my %noderef = ( count => 0,
+                         thrunode => \%thrunoderef,
+                       );
+         $node_ref = \%noderef;
+         $eibnodex{$inode} = \%noderef;
+      }
+      $eibnodex{$inode}->{count} += 1;
+      my $thrunode_ref = $eibnodex{$inode}->{thrunode}{$ithrunode};
+      if (!defined $thrunode_ref) {
+         my %thrunoderef = ( count => 0,
+                             gbltmstmp => [],
+                           );
+         $thrunode_ref = \%thrunoderef;
+         $eibnodex{$inode}->{thrunode}{$ithrunode} = \%thrunoderef;
+      }
+      $eibnodex{$inode}->{thrunode}{$ithrunode}->{count} += 1;
+      push (@{$eibnodex{$inode}->{thrunode}{$ithrunode}->{gbltmstmp}},$igbltmstmp);
    }
-   $eibnodex{$inode}->{count} += 1;
-   my $thrunode_ref = $eibnodex{$inode}->{thrunode}{$ithrunode};
-   if (!defined $thrunode_ref) {
-      my %thrunoderef = ( count => 0,
-                          gbltmstmp => [],
-                        );
-      $thrunode_ref = \%thrunoderef;
-      $eibnodex{$inode}->{thrunode}{$ithrunode} = \%thrunoderef;
-   }
-   $eibnodex{$inode}->{thrunode}{$ithrunode}->{count} += 1;
-   push (@{$eibnodex{$inode}->{thrunode}{$ithrunode}->{gbltmstmp}},$igbltmstmp);
 }
 
 
@@ -2490,6 +2496,7 @@ sub init_txt {
             $hub_tems_version = "";
          }
       }
+      next if $inodetype ne "M";
       new_tnodelstm($inodetype,$inodelist,$inode,$ilstdate);
    }
 
@@ -2836,6 +2843,7 @@ sub parse_lst {
      if ($oct < $lcount) {
         if (substr($rest,$restpos,2) eq "  ") {               # null string case
            $chunk = "";
+           $oct += 1;
            push @retlist, $chunk;                 # record null data chunk
            $restpos += 2;
         } else {
@@ -3633,3 +3641,5 @@ sub gettime
 # 1.16000  : Add general i5os reports, not just OS Agent
 # 1.17000  : Detect FTO hub TEMS at different maintenance levels
 #          : Alert on some sampling date/time issues
+# 1.18000  : parse_lst handle null chunks correctly
+#          : better report on possible duplicate agents, screen TNODELST for just M records
