@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.89000";
+my $gVersion = "0.90000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -369,6 +369,7 @@ my $opt_lst_tname;              # TNAME lst file
 my $opt_lst_tobjaccl;           # TOBJACCL lst file
 my $opt_log;                    # name of log file
 my $opt_ini;                    # name of ini file
+my $opt_hub;                    # externally supplied nodeid of hub TEMS
 my $opt_debuglevel;             # Debug level
 my $opt_debug;                  # Debug level
 my $opt_h;                      # help file
@@ -449,20 +450,30 @@ if ($nlistvi == -1) {
 
 # following produces a report of how many agents connect to a TEMS.
 
+$hub_tems = $opt_hub if $hub_tems eq "";
 if ($hub_tems_no_tnodesav == 0) {
-   $hubi = $temsx{$hub_tems};
-   for ($i=0; $i<=$nlistvi; $i++) {
-      my $node1 = $nlistv[$i];
-      next if $nlistv_tems[$i] eq "";
-      my $tems1 = $nlistv_tems[$i];
-      my $tx = $temsx{$tems1};
-      next if !defined $tx;
-      $hub_tems_ct += 1;
-      $tems_ct[$tx] += 1;
-      my $nx = $nsavex{$node1};
-      next if !defined $nx;
-      if (($nsave_product[$nx] ne "CQ") and ($nsave_product[$nx] ne "HD") and ($nsave_product[$nx] ne "SY")) {
-         $tems_ctnok[$tx] += 1;
+   # following is a rare case where the TNODELIST *HUB entry is missing.
+   # for analysis work, that can be supplied by a -hub <nodeid> parameter
+   if ($hub_tems eq "") {
+      $advi++;$advonline[$advi] = "*HUB node missing from TNODELIST Type M records";
+      $advcode[$advi] = "DATAHEALTH1038E";
+      $advimpact[$advi] = 105;
+      $advsit[$advi] = "*HUB";
+   } else {
+      $hubi = $temsx{$hub_tems};
+      for ($i=0; $i<=$nlistvi; $i++) {
+         my $node1 = $nlistv[$i];
+         next if $nlistv_tems[$i] eq "";
+         my $tems1 = $nlistv_tems[$i];
+         my $tx = $temsx{$tems1};
+         next if !defined $tx;
+         $hub_tems_ct += 1;
+         $tems_ct[$tx] += 1;
+         my $nx = $nsavex{$node1};
+         next if !defined $nx;
+         if (($nsave_product[$nx] ne "CQ") and ($nsave_product[$nx] ne "HD") and ($nsave_product[$nx] ne "SY")) {
+            $tems_ctnok[$tx] += 1;
+         }
       }
    }
 }
@@ -872,14 +883,16 @@ if ($opt_nohdr == 0) {
 
    my $remote_limit = 1500;
 if ($hub_tems_no_tnodesav == 0) {
-   my $hub_limit = 10000;
-   $hub_limit = 20000 if substr($tems_ct[$hubi],0,5) gt "06.23";
+   if (defined $hubi) {
+      my $hub_limit = 10000;
+      $hub_limit = 20000 if substr($tems_ct[$hubi],0,5) gt "06.23";
 
-   if ($hub_tems_ct > $hub_limit){
-      $advi++;$advonline[$advi] = "Hub TEMS has $hub_tems_ct managed systems which exceeds limits $hub_limit";
-      $advcode[$advi] = "DATAHEALTH1005W";
-      $advimpact[$advi] = 75;
-      $advsit[$advi] = $hub_tems;
+      if ($hub_tems_ct > $hub_limit){
+         $advi++;$advonline[$advi] = "Hub TEMS has $hub_tems_ct managed systems which exceeds limits $hub_limit";
+         $advcode[$advi] = "DATAHEALTH1005W";
+         $advimpact[$advi] = 75;
+         $advsit[$advi] = $hub_tems;
+      }
    }
 
 
@@ -1788,6 +1801,10 @@ sub init {
          shift(@ARGV);
          $opt_ini = shift(@ARGV);
          die "option -ini with no following ini specification\n" if !defined $opt_ini;
+      } elsif ( $ARGV[0] eq "-hub") {
+         shift(@ARGV);
+         $opt_hub = shift(@ARGV);
+         die "option -hub with no following hub specification\n" if !defined $opt_hub;
       } elsif ( $ARGV[0] eq "-debuglevel") {
          shift(@ARGV);
          $opt_debuglevel = shift(@ARGV);
@@ -1891,6 +1908,7 @@ sub init {
             elsif ($words[0] eq "workpath") {$opt_workpath = $words[1];}
             elsif ($words[0] eq "subpc") {$opt_subpc_warn = $words[1];}
             elsif ($words[0] eq "peak_rate") {$opt_peak_rate = $words[1];}
+            elsif ($words[0] eq "hub") {$opt_hub = $words[1];}
             else {
                print STDERR "SITAUDIT005E ini file $l - unknown control $oneline\n"; # kill process after current phase
                $run_status++;
@@ -1919,6 +1937,7 @@ sub init {
    if (!defined $opt_vndx) {$opt_vndx=0;}                      # default vndx off
    if (!defined $opt_mndx) {$opt_mndx=0;}                      # default mndx off
    if (!defined $opt_miss) {$opt_miss=0;}                      # default mndx off
+   if (!defined $opt_hub)  {$opt_hub = "";}                    # external hub nodeid not supplied
 
    $opt_workpath =~ s/\\/\//g;                                 # convert to standard perl forward slashes
    if ($opt_workpath ne "") {
@@ -2082,3 +2101,4 @@ sub gettime
 # 0.87000  : Add TOBJACCL, TGROUP. TGROUPI checking first stage
 # 0.88000  : Identify TEMA version < Agent version, adjust impacts, add more missing tests, change some impacts
 # 0.89000  : record TEMS version number
+# 0.90000  : detect case where *HUB is missing from TNODELST NODETYPE=M records
