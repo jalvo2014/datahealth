@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.09000";
+my $gVersion = "1.10000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -1472,7 +1472,8 @@ if ($tema_total_count > 0 ){
    print OH "$oneline\n";
    $oneline = $tema_total_days . ",Total Days TEMA version less than TEMS version,";
    print OH "$oneline\n";
-   $fraction = ($tema_total_days) / $tema_total_apars;
+   $fraction = 0;
+   $fraction = ($tema_total_days) / $tema_total_apars if $tema_total_apars > 0;
    $oneline = sprintf( "%.0f", $fraction) . ",Average days/APAR TEMA version less than TEMS version,";
    print OH "$oneline\n";
    $oneline = $tema_total_apars . ",Total APARS TEMA version less than TEMS version,";
@@ -1482,7 +1483,8 @@ if ($tema_total_count > 0 ){
    print OH "$oneline\n";
    $oneline = $tema_total_max_days . ",Total Days TEMA version less than latest TEMS version,";
    print OH "$oneline\n";
-   $fraction = ($tema_total_max_days) / $tema_total_max_apars;
+   $fraction = 0;
+   $fraction = ($tema_total_max_days) / $tema_total_max_apars if $tema_total_max_apars > 0;
    $oneline = sprintf( "%.0f", $fraction) . ",Average days/APAR TEMA version less than latest TEMS version,";
    print OH "$oneline\n";
    $oneline = $tema_total_max_apars . ",Total APARS TEMA version less than latest TEMS version,";
@@ -3351,3 +3353,4 @@ sub gettime
 #          : Add TEMS architecture
 # 1.08000  : Improve APAR deficit calculation, ignore A4 tema version 06.20.20
 # 1.09000  : Dislay Days/APAR in deficit calculations
+# 1.10000  : Handle divide by zero case when no agents backlevel
