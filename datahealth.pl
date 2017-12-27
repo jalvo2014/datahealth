@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.01000";
+my $gVersion = "1.02000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -377,6 +377,8 @@ my %groupx = ();
 
 # Situation related data
 
+my $sit_bad_time = 4*24*60*60;             # dangerous sampling interval
+
 my $siti = -1;                             # count of situations
 my $curi;                                  # global index for subroutines
 my @sit = ();                              # array of situations
@@ -487,7 +489,7 @@ my @tci_calid = ();
 # option and ini file variables variables
 
 my $opt_txt;                    # input from .txt files
-my $opt_txt_tnodelst;           # TNODELIST txt file
+my $opt_txt_tnodelst;           # TNODELST txt file
 my $opt_txt_tnodesav;           # TNODESAV txt file
 my $opt_txt_tsitdesc;           # TSITDESC txt file
 my $opt_txt_tname;              # TNAME txt file
@@ -599,7 +601,7 @@ if ($hub_tems_no_tnodesav == 1) {
 }
 
 if ($nlistvi == -1) {
-   $advi++;$advonline[$advi] = "No TNODELIST NODETYPE=V records";
+   $advi++;$advonline[$advi] = "No TNODELST NODETYPE=V records";
    $advcode[$advi] = "DATAHEALTH1012E";
    $advimpact[$advi] = 105;
    $advsit[$advi] = $hub_tems;
@@ -610,10 +612,10 @@ if ($nlistvi == -1) {
 
 $hub_tems = $opt_hub if $hub_tems eq "";
 if ($hub_tems_no_tnodesav == 0) {
-   # following is a rare case where the TNODELIST *HUB entry is missing.
+   # following is a rare case where the TNODELST *HUB entry is missing.
    # for analysis work, that can be supplied by a -hub <nodeid> parameter
    if ($hub_tems eq "") {
-      $advi++;$advonline[$advi] = "*HUB node missing from TNODELIST Type M records";
+      $advi++;$advonline[$advi] = "*HUB node missing from TNODELST Type M records";
       $advcode[$advi] = "DATAHEALTH1038E";
       $advimpact[$advi] = 105;
       $advsit[$advi] = "*HUB";
@@ -757,7 +759,7 @@ for ($i=0; $i<=$nsavei; $i++) {
    $nsx = $nlistvx{$node1};
    next if defined $nsx;
    if (index($node1,":") !=  -1) {
-      $advi++;$advonline[$advi] = "Node present in node status but missing in TNODELIST Type V records";
+      $advi++;$advonline[$advi] = "Node present in node status but missing in TNODELST Type V records";
       $advcode[$advi] = "DATAHEALTH1001E";
       $advimpact[$advi] = 100;
       $advsit[$advi] = $node1;
@@ -835,7 +837,7 @@ for ($i=0; $i<=$evmapi;$i++) {
    } else {
       $onesit =~ s/\s+$//;   #trim trailing whitespace
       if (!defined $sitx{$onesit}){
-         $advi++;$advonline[$advi] = "EVNTMAP ID[$evmap[$i]] Unknown Situation in mapping";
+         $advi++;$advonline[$advi] = "EVNTMAP ID[$evmap[$i]] Unknown Situation in mapping - $onesit";
          $advcode[$advi] = "DATAHEALTH1047E";
          $advimpact[$advi] = 20;
          $advsit[$advi] = $evmap[$i];
@@ -955,7 +957,7 @@ for ($i=0; $i<=$nsavei; $i++) {
       next if $nlistv_thrunode[$vlx] ne $nlistv_tems[$vlx];
    }
    if (index($node1,":") !=  -1) {
-      $advi++;$advonline[$advi] = "Node without a system generated MSL in TNODELIST Type M records";
+      $advi++;$advonline[$advi] = "Node without a system generated MSL in TNODELST Type M records";
       $advcode[$advi] = "DATAHEALTH1002E";
       $advimpact[$advi] = 90;
       $advsit[$advi] = $node1;
@@ -976,7 +978,7 @@ for ($i=0; $i<=$nlistmi; $i++) {
       }
    }
    if ($nlistm_nov[$i] != 0) {
-      $advi++;$advonline[$advi] = "Node present in TNODELST Type M records but missing TNODELIST Type V records";
+      $advi++;$advonline[$advi] = "Node present in TNODELST Type M records but missing TNODELST Type V records";
       $advcode[$advi] = "DATAHEALTH1004I";
       $advimpact[$advi] = 0;
       $advsit[$advi] = $node1;
@@ -1118,6 +1120,12 @@ for ($i=0;$i<=$siti;$i++) {
       $advimpact[$advi] = 90;
       $advsit[$advi] = $sit[$i];
    }
+   if ($sit_reeval[$i] - $sit_bad_time gt 0) {
+      $advi++;$advonline[$advi] = "Situation Sampling Interval $sit_reeval[$i] seconds - higher then danger level $sit_bad_time";
+      $advcode[$advi] = "DATAHEALTH1064W";
+      $advimpact[$advi] = 50;
+      $advsit[$advi] = $sit[$i];
+   }
 
 }
 
@@ -1150,7 +1158,7 @@ for ($i=0;$i<=$hsavei;$i++) {
 }
 
 for ($i=0;$i<=$nlistvi;$i++) {
-   valid_lstdate("TNODELIST",$nlistv_lstdate[$i],$nlistv[$i],"V NODE=$nlistv[$i] THRUNODE=$nlistv_thrunode[$i]");
+   valid_lstdate("TNODELST",$nlistv_lstdate[$i],$nlistv[$i],"V NODE=$nlistv[$i] THRUNODE=$nlistv_thrunode[$i]");
    if ($nlistv_ct[$i] > 1) {
       $advi++;$advonline[$advi] = "TNODELST Type V duplicate nodes";
       $advcode[$advi] = "DATAHEALTH1008E";
@@ -1222,7 +1230,7 @@ for ($i=0;$i<=$nlisti;$i++) {
       $invalid_node = 1 if $test_node ne "";
    }
    if ($invalid_node == 1) {
-      $advi++;$advonline[$advi] = "TNODELIST NODETYPE=M invalid nodelist name";
+      $advi++;$advonline[$advi] = "TNODELST NODETYPE=M invalid nodelist name";
       $advcode[$advi] = "DATAHEALTH1017E";
       $advimpact[$advi] = 50;
       $advsit[$advi] = $nlist[$i];
@@ -1363,7 +1371,7 @@ if ($peak_rate > $opt_peak_rate) {
 }
 
 for ($i=0;$i<=$mlisti;$i++) {
-   valid_lstdate("TNODELIST",$mlist_lstdate[$i],$mlist_node[$i],"M NODE=$mlist_node[$i] NODELIST=$mlist_nodelist[$i]");
+   valid_lstdate("TNODELST",$mlist_lstdate[$i],$mlist_node[$i],"M NODE=$mlist_node[$i] NODELST=$mlist_nodelist[$i]");
    next if $mlist_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODELST Type M duplicate NODE/NODELIST";
    $advcode[$advi] = "DATAHEALTH1009E";
@@ -1797,7 +1805,7 @@ sub new_tobjaccl {
 }
 
 sub new_tsitdesc {
-   my ($isitname,$iautostart,$ilstdate,$ipdt) = @_;
+   my ($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$ipdt) = @_;
    $sx = $sitx{$isitname};
    if (!defined $sx) {
       $siti += 1;
@@ -1808,6 +1816,21 @@ sub new_tsitdesc {
       $sit_pdt[$siti] = $ipdt;
       $sit_ct[$siti] = 0;
       $sit_lstdate[$siti] = $ilstdate;
+      $sit_reeval[$siti] = 1;
+      if ((length($ireev_days) >= 1) and (length($ireev_days) <= 3) ) {
+         if ((length($ireev_time) >= 1) and (length($ireev_time) <= 6)) {
+            $ireev_days += 0;
+            my $reev_time_hh = 0;
+            my $reev_time_mm = 0;
+            my $reev_time_ss = 0;
+            if ($ireev_time ne "0") {
+               $reev_time_hh = substr($ireev_time,0,2);
+               $reev_time_mm = substr($ireev_time,2,2);
+               $reev_time_ss = substr($ireev_time,4,2);
+            }
+            $sit_reeval[$siti] = $ireev_days*86400 + $reev_time_hh*3600 + $reev_time_mm*60 + $reev_time_ss;   # sampling interval in seconds
+         }
+      }
    }
   $sit_ct[$sx] += 1;
 }
@@ -2116,6 +2139,8 @@ sub init_txt {
    my @ksit_data;
    my $isitname;
    my $iautostart;
+   my $ireev_days;
+   my $ireev_time;
    my $ipdt;
 
    my @knam_data;
@@ -2264,9 +2289,13 @@ sub init_txt {
       $iautostart =~ s/\s+$//;   #trim trailing whitespace
       $ilstdate = substr($oneline,43,16);
       $ilstdate =~ s/\s+$//;   #trim trailing whitespace
-      $ipdt = substr($oneline,60);
+      $ireev_days = substr($oneline,60,3);
+      $ireev_days =~ s/\s+$//;   #trim trailing whitespace
+      $ireev_time = substr($oneline,70,6);
+      $ireev_time =~ s/\s+$//;   #trim trailing whitespace
+      $ipdt = substr($oneline,80);
       $ipdt =~ s/\s+$//;   #trim trailing whitespace
-      new_tsitdesc($isitname,$iautostart,$ilstdate,$ipdt);
+      new_tsitdesc($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$ipdt);
    }
 
    open(KNAM, "< $opt_txt_tname") || die("Could not open TNAME $opt_txt_tname\n");
@@ -2604,6 +2633,8 @@ sub init_lst {
    my @ksit_data;
    my $isitname;
    my $iautostart;
+   my $ireev_days;
+   my $ireev_time;
    my $ipdt;
 
    my @knam_data;
@@ -2665,7 +2696,8 @@ sub init_lst {
    foreach $oneline (@ksav_data) {
       $ll += 1;
       next if $ll < 2;
-      ($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities) = parse_lst(8,$oneline);
+#[1]  BNSF:TOIFVCTR2PW:VM  Y  VM  06.22.01  ip.spipe:#10.121.54.28[11853]<NM>TOIFVCTR2PW</NM>  A=00:WIX64;C=06.22.09.00:WIX64;G=06.22.09.00:WINNT;  REMOTE_catrste050bnsxa  000100000000000000000000000000000G0003yw0a7
+      ($inode,$io4online,$iproduct,$iversion,$ihostaddr,$ireserved,$ithrunode,$iaffinities) = parse_lst(8,$oneline);
       $inode =~ s/\s+$//;   #trim trailing whitespace
       $iproduct =~ s/\s+$//;   #trim trailing whitespace
       $iversion =~ s/\s+$//;   #trim trailing whitespace
@@ -2686,9 +2718,9 @@ sub init_lst {
    foreach $oneline (@klst_data) {
       $ll += 1;
       next if $ll < 2;
-      ($inode,$inodetype,$inodelist) = parse_lst(3,$oneline);
+      ($inode,$inodetype,$inodelist,$ilstdate) = parse_lst(4,$oneline);
       next if $inodetype ne "V";
-      new_tnodelstv($inodetype,$inodelist,$inode);
+      new_tnodelstv($inodetype,$inodelist,$inode,$ilstdate);
    }
    fill_tnodelstv();
 
@@ -2697,7 +2729,7 @@ sub init_lst {
    foreach $oneline (@klst_data) {
       $ll += 1;
       next if $ll < 2;
-      ($inode,$inodetype,$inodelist) = parse_lst(3,$oneline);
+      ($inode,$inodetype,$inodelist,$ilstdate) = parse_lst(4,$oneline);
       $inodelist =~ s/\s+$//;   #trim trailing whitespace
       $inode =~ s/\s+$//;   #trim trailing whitespace
       if (($inodetype eq "") and ($inodelist eq "*HUB")) {    # *HUB has blank NODETYPE. Set to M for this calculation
@@ -2712,7 +2744,7 @@ sub init_lst {
          }
       }
       next if $inodetype ne "M";
-      new_tnodelstm($inodetype,$inodelist,$inode);
+      new_tnodelstm($inodetype,$inodelist,$inode,$ilstdate);
    }
    open(KSIT, "< $opt_lst_tsitdesc") || die("Could not open TSITDESC $opt_lst_tsitdesc\n");
    @ksit_data = <KSIT>;
@@ -2723,11 +2755,11 @@ sub init_lst {
    foreach $oneline (@ksav_data) {
       $ll += 1;
       next if $ll < 2;
-      ($isitname,$iautostart,$ilstdate,$ipdt) = parse_lst(4,$oneline);
+      ($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$ipdt) = parse_lst(6,$oneline);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
       $iautostart =~ s/\s+$//;   #trim trailing whitespace
       $ipdt = substr($oneline,33,1);
-      new_tsitdesc($isitname,$iautostart,$ilstdate,$ipdt);
+      new_tsitdesc($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$ipdt);
    }
 
    open(KNAM, "< $opt_lst_tname") || die("Could not open TNAME $opt_lst_tname\n");
@@ -2740,8 +2772,8 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
-      ($iid,$ifullname) = parse_lst(2,$oneline);
-      new_tname($iid,$ifullname);
+      ($iid,$ilstdate,$ifullname) = parse_lst(3,$oneline);
+      new_tname($iid,$ilstdate,$ifullname);
    }
 
    open(KOBJ, "< $opt_lst_tobjaccl") || die("Could not open TOBJACCL $opt_lst_tobjaccl\n");
@@ -2754,9 +2786,9 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
-      ($iobjclass,$iobjname,$inodel) = parse_lst(3,$oneline);
+      ($iobjclass,$iobjname,$inodel,$ilstdate) = parse_lst(4,$oneline);
       next if ($iobjclass != 5140) and ($iobjclass != 2010);
-      new_tobjaccl($iobjclass,$iobjname,$inodel);
+      new_tobjaccl($iobjclass,$iobjname,$inodel,$ilstdate);
    }
 
    open(KGRP, "< $opt_lst_tgroup") || die("Could not open TGROUP $opt_lst_tgroup\n");
@@ -2769,8 +2801,8 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
-      ($igrpclass,$iid,$igrpname) = parse_lst(3,$oneline);
-      new_tgroup($igrpclass,$iid,$igrpname);
+      ($igrpclass,$iid,$ilstdate,$igrpname) = parse_lst(4,$oneline);
+      new_tgroup($igrpclass,$iid,$ilstdate,$igrpname);
    }
 
    open(KGRPI, "< $opt_lst_tgroupi") || die("Could not open TGROUPI $opt_lst_tgroupi\n");
@@ -2783,8 +2815,8 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
-      ($igrpclass,$iid,$iobjclass,$iobjname) = parse_lst(4,$oneline);
-      new_tgroupi($igrpclass,$iid,$iobjclass,$iobjname);
+      ($igrpclass,$iid,$ilstdate,$iobjclass,$iobjname) = parse_lst(5,$oneline);
+      new_tgroupi($igrpclass,$iid,$ilstdate,$iobjclass,$iobjname);
    }
 
    open(KEVSR, "< $opt_lst_evntserver") || die("Could not open EVNTSERVER $opt_lst_evntserver\n");
@@ -3271,7 +3303,7 @@ sub gettime
 #          : Handle z/OS no extension agents
 #          : Add TNODESAV product to the "might be truncated" messages
 #          : make -lst option work
-# 0.86000  : Check for TNODELIST NODETYPE=V thrunode missing from TNODESAV
+# 0.86000  : Check for TNODELST NODETYPE=V thrunode missing from TNODESAV
 # 0.87000  : Add TOBJACCL, TGROUP. TGROUPI checking first stage
 # 0.88000  : Identify TEMA version < Agent version, adjust impacts, add more missing tests, change some impacts
 # 0.89000  : record TEMS version number
@@ -3292,3 +3324,4 @@ sub gettime
 #          : Add 1049W/1050W/1051W/1052W to warn of node/nodelist names with embedded blanks
 # 1.01000  : Monitor LSTDATE against future dates
 #          : Add checking of the rest of the FTO synchronized tables
+# 1.02000  : Long sampling interval
