@@ -29,7 +29,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.8500";
+my $gVersion = "0.8600";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -637,10 +637,18 @@ for ($i=0;$i<=$hsavei;$i++) {
 }
 
 for ($i=0;$i<=$nlistvi;$i++) {
-   next if $nlistv_ct[$i] == 1;
-   $advi++;$advonline[$advi] = "TNODELST Type V duplicate nodes";
-   $advcode[$advi] = "DATAHEALTH1008E";
-   $advimpact[$advi] = 105;
+   if ($nlistv_ct[$i] > 1) {
+      $advi++;$advonline[$advi] = "TNODELST Type V duplicate nodes";
+      $advcode[$advi] = "DATAHEALTH1008E";
+      $advimpact[$advi] = 105;
+      $advsit[$advi] = $nlistv[$i];
+   }
+   my $thru1 = $nlistv_thrunode[$i];
+   $nsx = $nsavex{$thru1};
+   next if defined $nsx;
+   $advi++;$advonline[$advi] = "TNODELST Type V Thrunode $thru1 missing in Node Status";
+   $advcode[$advi] = "DATAHEALTH1025E";
+   $advimpact[$advi] = 100;
    $advsit[$advi] = $nlistv[$i];
 }
 
@@ -1686,3 +1694,4 @@ sub gettime
 #          : Handle z/OS no extension agents
 #          : Add TNODESAV product to the "might be truncated" messages
 #          : make -lst option work
+# 0.86000  : Check for TNODELIST NODETYPE=V thrunode missing from TNODESAV
