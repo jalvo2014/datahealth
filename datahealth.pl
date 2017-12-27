@@ -29,7 +29,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.72000";
+my $gVersion = "0.73000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -377,6 +377,8 @@ for ($i=0;$i<=$nsavei;$i++) {
 for ($i=0;$i<=$hsavei;$i++) {
    next if $hsave_ct[$i] == 1;
    next if !defined $hsave[$i];
+#$DB::single=2   if $hsave[$i] eq "ip.pipe:#10.210.12.141[10055]<NM>ktazp1928</NM>";
+
    my $pi;
    my @hagents = split(" ",$hsave_ndx[$i]);
    my $pagents = "";
@@ -386,13 +388,15 @@ for ($i=0;$i<=$hsavei;$i++) {
       my $oneagent = $nsave[$pi];
       my $onethru = $tagents[$j];
       my $nx = $nsavex{$oneagent};
+      next if $onethru eq ".";
       if (defined $nx) {
          $pagents .= $nsave[$pi]. "[$onethru][Y] " if $nsave_o4online[$nx] eq "Y";
       } else {
          $pagents .= $nsave[$pi]. "[][Y] " if $nsave_o4online[$nx] eq "Y";
       }
    }
-   next if $pagents eq "";
+   my @ragents = split(" ",$pagents);
+   next if $#ragents < 1;
    $advi++;$advonline[$advi] = "TNODESAV duplicate hostaddr in [$pagents]";
    $advcode[$advi] = "DATAHEALTH1010W";
    $advimpact[$advi] = 10;
@@ -947,14 +951,6 @@ sub init {
    if ($opt_h) {&GiveHelp;}  # GiveHelp and exit program
    if (!defined $opt_debuglevel) {$opt_debuglevel=90;}         # debug logging level - low number means fewer messages
    if (!defined $opt_debug) {$opt_debug=0;}                    # debug - turn on rare error cases
-   if (defined $opt_txt) {
-      $opt_txt_tnodelst = "QA1CNODL.DB.TXT";
-      $opt_txt_tnodesav = "QA1DNSAV.DB.TXT";
-   }
-   if (defined $opt_lst) {
-      $opt_lst_tnodesav  = "QA1DNSAV.DB.LST";
-      $opt_lst_tnodelst  = "QA1CNODL.DB.LST";
-   }
 
    # ini control file must be present
 
@@ -1019,6 +1015,16 @@ sub init {
    if ($opt_workpath ne "") {
       $opt_workpath .= "\/" if substr($opt_workpath,length($opt_workpath)-1,1) ne "\/";
    }
+
+   if (defined $opt_txt) {
+      $opt_txt_tnodelst = $opt_workpath . "QA1CNODL.DB.TXT";
+      $opt_txt_tnodesav = $opt_workpath . "QA1DNSAV.DB.TXT";
+   }
+   if (defined $opt_lst) {
+      $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
+      $opt_lst_tnodelst  = $opt_workpath . "QA1CNODL.DB.LST";
+   }
+   $opt_o =  $opt_workpath .  $opt_o;
 
 
    if ($opt_dpr == 1) {
@@ -1141,3 +1147,4 @@ sub gettime
 # 0.71000  : Adapt to regression test process
 #          : low impact advisory on long node names
 # 0.72000  : count size of subnode list and advise if TEMS < "06.23.02" and near 32K
+# 0.73000  : Handle duplicate hostaddr with null thrunode better
