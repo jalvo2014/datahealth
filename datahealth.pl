@@ -22,6 +22,11 @@
 #
 #  TSITDESC multiple identical SITNAMEs
 #
+#  subnode agents, is super-agent defined
+#
+#  HTEMS total agents, 20K or 10K depending on version
+#  RTEMS total agents, 1500
+#
 
 #use warnings::unused; # debug used to check for unused variables
 use strict;
@@ -29,7 +34,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.60000";
+my $gVersion = "0.50000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -57,7 +62,6 @@ my $pcount;
 my $oneline;
 my $sx;
 my $i;
-my $exit_code;
 
 # forward declarations of subroutines
 
@@ -79,7 +83,6 @@ my %nlistvx = ();
 my @nlistv_thrunode = ();
 my @nlistv_tems = ();
 my @nlistv_not = ();
-my @nlistv_ct = ();
 
 # TNODELST type M record data           Managed Systemlists
 my $mlx;
@@ -89,13 +92,6 @@ my %nlistmx = ();
 my @nlistm_miss = ();
 my @nlistm_nov = ();
 
-my $mkey;
-my $mlisti = -1;
-my @mlist = ();
-my %mlistx = ();
-my @mlist_ct;
-
-
 # TNODESAV record data                  Disk copy of INODESTS [mostly]
 my $nsx;
 my $nsavei = -1;
@@ -104,7 +100,6 @@ my %nsavex = ();
 my @nsave_product = ();
 my @nsave_version = ();
 my @nsave_sysmsl = ();
-my @nsave_ct = ();
 
 my $tx;                                  # TEMS information
 my $temsi = -1;                          # count of TEMS
@@ -206,15 +201,23 @@ my $opt_debuglevel;             # Debug level
 my $opt_debug;                  # Debug level
 my $opt_h;                      # help file
 my $opt_v;                      # verbose flag
+my $opt_vt;                     # verbose traffic flag
 my $opt_dpr;                    # dump data structure flag
-my $opt_workdir;                # Directory where files are processed
+my $opt_std;                    # Credentials from standard input
+my $opt_o;                      # output file
+my $opt_workpath;               # Directory to store output files
+my $opt_runall;                 # check Run at Startup = *OFF situations
+my $user="";
+my $passwd="";
+my $opt_nodist;                 # report on AUTOSTART=*YES but no distribution
 my $opt_nohdr = 0;              # skip header to make regression testing easier
+my $opt_dist;                   # report on distribution
 
 # do basic initialization from parameters, ini file and standard input
 
 $rc = init($args_start);
 
-$opt_log = $opt_workdir . $opt_log;
+$opt_log = $opt_workpath . $opt_log;
 open FH, ">>$opt_log" or die "can't open $opt_log: $!";
 
 logit(0,"SITAUDIT000I - ITM_Situation_Audit $gVersion $args_start");
@@ -227,8 +230,7 @@ if ($opt_txt == 1) {                    # text files
    $rc = init_lst();
 }
 
-$o_file = $opt_workdir . $o_file;
-\
+
 open OH, ">$o_file" or die "can't open $o_file: $!";
 
 
@@ -239,7 +241,6 @@ my @advimpact = ();
 my @advcode = ();
 my %advx = ();
 my $hubi;
-my $max_adv = -1;
 
 $hubi = $temsx{$hub_tems};
 
@@ -275,7 +276,7 @@ for ($i=0; $i<=$nsavei; $i++) {
    }
    $advi++;$advonline[$advi] = "Node without a system generated MSL in TNODELIST Type M records";
    $advcode[$advi] = "DATAHEALTH1002E";
-   $advimpact[$advi] = 75;
+   $advimpact[$advi] = 100;
    $advsit[$advi] = $node1;
 }
 
@@ -283,53 +284,30 @@ for ($i=0; $i<=$nlistmi; $i++) {
    my $node1 = $nlistm[$i];
    if ($nlistm_miss[$i] != 0) {
       $advi++;$advonline[$advi] = "Node present in TNODELST Type M records but missing in Node Status";
-      $advcode[$advi] = "DATAHEALTH1003I";
-      $advimpact[$advi] = 00;
+      $advcode[$advi] = "DATAHEALTH1003E";
+      $advimpact[$advi] = 25;
       $advsit[$advi] = $node1;
    }
    if ($nlistm_nov[$i] != 0) {
       $advi++;$advonline[$advi] = "Node present in TNODELST Type M records but missing TNODELIST Type V records";
-      $advcode[$advi] = "DATAHEALTH1004I";
-      $advimpact[$advi] = 00;
+      $advcode[$advi] = "DATAHEALTH1004E";
+      $advimpact[$advi] = 100;
       $advsit[$advi] = $node1;
    }
 }
 
-for ($i=0;$i<=$nsavei;$i++) {
-   next if $nsave_ct[$i] == 1;
-   $advi++;$advonline[$advi] = "TNODESAV duplicate nodes";
-   $advcode[$advi] = "DATAHEALTH1007E";
-   $advimpact[$advi] = 100;
-   $advsit[$advi] = $nsave[$i];
-}
-
-for ($i=0;$i<=$nlistvi;$i++) {
-   next if $nlistv_ct[$i] == 1;
-   $advi++;$advonline[$advi] = "TNODELST Type V duplicate nodes";
-   $advcode[$advi] = "DATAHEALTH1008E";
-   $advimpact[$advi] = 100;
-   $advsit[$advi] = $nlistv[$i];
-}
-
-for ($i=0;$i<=$mlisti;$i++) {
-   next if $mlist_ct[$i] == 1;
-   $advi++;$advonline[$advi] = "TNODELST Type M duplicate NODE/NODELIST";
-   $advcode[$advi] = "DATAHEALTH1009E";
-   $advimpact[$advi] = 100;
-   $advsit[$advi] = $mlist[$i];
-}
-
-print OH "ITM Database Health report $gVersion\n";
+print OH "ITM Database Health report\n";
 print OH "\n";
 
 my $hub_limit = 10000;
 $hub_limit = 20000 if substr($tems_ct[$hubi],0,5) gt "06.23";
 my $remote_limit = 1500;
 
+#$DB::single=2;
 if ($tems_ct[$hubi] > $hub_limit){
    $advi++;$advonline[$advi] = "Hub TEMS has $tems_ct[$hubi] managed systems which exceeds limits $hub_limit";
-   $advcode[$advi] = "DATAHEALTH1005W";
-   $advimpact[$advi] = 75;
+   $advcode[$advi] = "DATAHEALTH1005E";
+   $advimpact[$advi] = 105;
    $advsit[$advi] = $hub_tems;
 }
 
@@ -339,8 +317,8 @@ for (my $i=0;$i<=$temsi;$i++) {
    next if $i == $hubi;
    if ($tems_ct[$i] > $remote_limit){
       $advi++;$advonline[$advi] = "Remote TEMS has $tems_ct[$i] managed systems which exceeds limits $remote_limit";
-      $advcode[$advi] = "DATAHEALTH1006W";
-      $advimpact[$advi] = 75;
+      $advcode[$advi] = "DATAHEALTH1005E";
+      $advimpact[$advi] = 105;
       $advsit[$advi] = $tems[$i];
    }
    print OH "Remote,$tems[$i],$tems_ct[$i]\n";
@@ -367,18 +345,15 @@ if ($advi != -1) {
       my $j = $advx{$f};
       my $skipone = $advcode[$j];
       print OH "$advimpact[$j],$advcode[$j],$advsit[$j],$advonline[$j]\n";
-      $max_adv = $advimpact[$j] if $advimpact[$j] > $max_adv;
+
    }
 }
-if ($max_adv <= 0) {
-   $exit_code = 0;                     # no actionable advisory messages
-} elsif ($max_adv <= 25) {
-   $exit_code = 1;                     # minor advisory messages
-} else {
-   $exit_code = 2;                     # major actionable advisory messages
-}
-
+my $exit_code = ($advi != -1);
 exit $exit_code;
+
+# following routine collects a list of unique attribute groups
+# will be used in future report segments
+
 
 # following routine gets data from txt files. tems2sql.pl is an internal only program which can
 # extract data from a TEMS database file.
@@ -393,7 +368,6 @@ sub init_txt {
    my $inodetype;
 
    my @ksav_data;
-   my $io4online;
    my $iproduct;
    my $iversion;
 
@@ -407,18 +381,10 @@ sub init_txt {
       $ll += 1;
       next if $ll < 5;
       chop $oneline;
-#      my $plen = length($oneline);
-#   print "Working on sav $ll $plen\n";
       $inode = substr($oneline,0,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
-      $io4online = substr($oneline,33,1);
-
-      # if offline with no product, ignore - maybe produce advisory later
-      if ($io4online eq "N") {
-         next if length($oneline) < 58;
-      }
-      $iproduct = substr($oneline,42,2);
-      $iversion = substr($oneline,50,8);
+      $iproduct = substr($oneline,33,2);
+      $iversion = substr($oneline,41,8);
       $iversion =~ s/\s+$//;   #trim trailing whitespace
       $nsx = $nsavex{$inode};
       if (!defined $nsx) {
@@ -429,9 +395,7 @@ sub init_txt {
          $nsave_sysmsl[$nsx] = 0;
          $nsave_product[$nsx] = $iproduct;
          $nsave_version[$nsx] = $iversion;
-         $nsave_ct[$nsx] = 0;
       }
-      $nsave_ct[$nsx] += 1;
       if ($iproduct eq "EM") {
          $tx = $temsx{inode};
          if (!defined $tx) {
@@ -471,9 +435,7 @@ sub init_txt {
          $nlistv_thrunode[$vlx] = $inode;
          $nlistv_tems[$vlx] = "";
          $nlistv_not[$vlx] = 0;
-         $nlistv_ct[$vlx] = 0;
       }
-      $nlistv_ct[$vlx] += 1;
       $tx = $temsx{$inode};      # is thrunode a TEMS?
       if (!defined $tx) {
          $snx = $snodex{$inode};
@@ -501,8 +463,6 @@ sub init_txt {
    }
 
 
-
-
    # Get data for all TNODELST type M records
    $ll = 0;
    foreach $oneline (@klst_data) {
@@ -521,18 +481,6 @@ sub init_txt {
          $hub_tems = $inode;
       }
       next if $inodetype ne "M";
-      next if $inode eq "--EMPTYNODE--";
-      $mkey = $inode . "|" . $inodelist;
-      $mlx = $mlistx{$mkey};
-      if (!defined $mlx) {
-         $mlisti += 1;
-         $mlx = $mlisti;
-         $mlist[$mlx] = $mkey;
-         $mlistx{$mkey} = $mlx;
-         $mlist_ct[$mlx] = 0;
-      }
-      $mlist_ct[$mlx] += 1;
-
       $mlx = $nlistmx{$inode};
       if (!defined $mlx) {
          $nlistmi++;
@@ -631,9 +579,7 @@ sub init_lst {
          $nsave_sysmsl[$nsx] = 0;
          $nsave_product[$nsx] = $iproduct;
          $nsave_version[$nsx] = $iversion;
-         $nsave_ct[$nsx] = 0;
       }
-      $nsave_ct[$nsx] += 1;
       if ($iproduct eq "EM") {
          $tx = $temsx{inode};
          if (!defined $tx) {
@@ -671,9 +617,7 @@ sub init_lst {
          $nlistv_thrunode[$vlx] = $inode;
          $nlistv_tems[$vlx] = "";
          $nlistv_not[$vlx] = 0;
-         $nlistv_ct[$vlx] = 0;
       }
-      $nlistv_ct[$vlx] += 1;
       $tx = $temsx{$inode};      # is thrunode a TEMS?
       if (!defined $tx) {
          $snx = $snodex{$inode};
@@ -719,17 +663,6 @@ sub init_lst {
       }
       next if $inodetype ne "M";
       next if $inode eq "--EMPTYNODE--";
-      $mkey = $inode . "|" . $inodelist;
-      $mlx = $mlistx{$mkey};
-      if (!defined $mlx) {
-         $mlisti += 1;
-         $mlx = $mlisti;
-         $mlist[$mlx] = $mkey;
-         $mlistx{$mkey} = $mlx;
-         $mlist_ct[$mlx] = 0;
-      }
-      $mlist_ct[$mlx] += 1;
-
       $mlx = $nlistmx{$inode};
       if (!defined $mlx) {
          $nlistmi++;
@@ -764,17 +697,26 @@ sub init {
    my @myargs_remain_array;
    use Getopt::Long qw(GetOptionsFromString);
    $myargs = shift;
+
    ($rc,$myargs_remain) = GetOptionsFromString($myargs,
               'log=s' => \ $opt_log,                  # log file
               'ini=s' => \ $opt_ini,                  # control file
+              'user=s' => \$user,                     # userid
+              'passwd=s' => \$passwd,                 # password
               'debuglevel=i' => \ $opt_debuglevel,    # log file contents control
               'debug' => \ $opt_debug,                # log file contents control
               'h' => \ $opt_h,                        # help
               'v' => \  $opt_v,                       # verbose - print immediately as well as log
-              'workdir=s' => \ $opt_workdir,          # Work directories
+              'vt' => \  $opt_vt,                     # verbose traffic - print traffic.txt
+              'o=s' => \ $opt_o,                      # output file
+              'workpath=s' => \ $opt_workpath,        # output file
+              'runall' => \$opt_runall,               # analyze Run at Startup = *Off situations
+              'std' => \ $opt_std,                    # credentials from standard input
+              'nodist' => \ $opt_nodist,              # credentials from standard input
+              'dist' => \ $opt_dist,                  # Report on situation distribution
               'nohdr' => \ $opt_nohdr,                # Skip header for regression test
               'txt' => \ $opt_txt,                    # txt input
-              'lst' => \ $opt_lst                     # lst input
+              'lst' => \ $opt_lst                     # txt input
              );
    # if other things found on the command line - complain and quit
    @myargs_remain_array = @$myargs_remain;
@@ -792,6 +734,14 @@ sub init {
    if ($opt_h) {&GiveHelp;}  # GiveHelp and exit program
    if (!defined $opt_debuglevel) {$opt_debuglevel=90;}         # debug logging level - low number means fewer messages
    if (!defined $opt_debug) {$opt_debug=0;}                    # debug - turn on rare error cases
+   if (defined $opt_txt) {
+      $opt_txt_tnodelst = "QA1CNODL.DB.TXT";
+      $opt_txt_tnodesav = "QA1DNSAV.DB.TXT";
+   }
+   if (defined $opt_lst) {
+      $opt_lst_tnodesav  = "QA1DNSAV.DB.LST";
+      $opt_lst_tnodelst  = "QA1CNODL.DB.LST";
+   }
 
    # ini control file must be present
 
@@ -813,6 +763,11 @@ sub init {
          next if $#words == -1;                  # skip blank line
           if ($#words == 0) {                         # single word parameters
             if ($words[0] eq "verbose") {$opt_v = 1;}
+            elsif ($words[0] eq "traffic") {$opt_vt = 1;}
+            elsif ($words[0] eq "std") {$opt_std = 1;}
+            elsif ($words[0] eq "runall") {$opt_runall = 1;}            # all agents of interest
+            elsif ($words[0] eq "nodist") {$opt_nodist = 1;}            # Report on Run at Startup but nodist
+            elsif ($words[0] eq "dist") {$opt_dist = 1;}                # Report on Situation Distribution
             else {
                print STDERR "SITAUDIT003E Control without needed parameters $words[0] - $opt_ini [$l]\n";
                $run_status++;
@@ -823,8 +778,11 @@ sub init {
          if ($#words == 1) {
             # two word controls - option and value
             if ($words[0] eq "log") {$opt_log = $words[1];}
+            elsif ($words[0] eq "user")  {$user = $words[1];}
+            elsif ($words[0] eq "passwd")  {$passwd = $words[1];}
             elsif ($words[0] eq "log") {$opt_log = $words[1];}
-            elsif ($words[0] eq "workdir") {$opt_workdir = $words[1];}
+            elsif ($words[0] eq "o") {$opt_o = $words[1];}
+            elsif ($words[0] eq "workpath") {$opt_workpath = $words[1];}
             else {
                print STDERR "SITAUDIT005E ini file $l - unknown control oneline\n"; # kill process after current phase
                $run_status++;
@@ -841,21 +799,20 @@ sub init {
    if (!defined $opt_log) {$opt_log = "sitaudit.log";}           # default log file if not specified
    if (!defined $opt_h) {$opt_h=0;}                            # help flag
    if (!defined $opt_v) {$opt_v=0;}                            # verbose flag
+   if (!defined $opt_vt) {$opt_vt=0;}                          # verbose traffic default off
    if (!defined $opt_dpr) {$opt_dpr=0;}                        # data dump flag
-   if (!defined $opt_workdir) {$opt_workdir="";}               # default work directory is current directory
+   if (!defined $opt_std) {$opt_std=0;}                        # default - no credentials in stdin
+   if (!defined $opt_o) {$opt_o="sitaudit.csv";}               # default output file
+   if (!defined $opt_workpath) {$opt_workpath="";}             # default is current directory
+   if (!defined $opt_runall) {$opt_runall = 0;}                # default no Run at Startup = *YES situations
    if (!defined $opt_txt) {$opt_txt = 0;}                      # default no txt input
    if (!defined $opt_lst) {$opt_lst = 0;}                      # default no lst input
-   $opt_workdir =~ s/\\/\//g;                                 # convert to standard perl forward slashes
-   if ($opt_workdir ne "") {
-      $opt_workdir .= "\/" if substr($opt_workdir,-1,1) ne "\/";
-   }
-   if (defined $opt_txt) {
-      $opt_txt_tnodelst = $opt_workdir . "QA1CNODL.DB.TXT";
-      $opt_txt_tnodesav =  $opt_workdir . "QA1DNSAV.DB.TXT";
-   }
-   if (defined $opt_lst) {
-      $opt_lst_tnodesav  =  $opt_workdir . "QA1DNSAV.DB.LST";
-      $opt_lst_tnodelst  =  $opt_workdir . "QA1CNODL.DB.LST";
+   if (!defined $opt_nodist) {$opt_nodist=0;}                  # do not advise on *YES and no distribution cases
+   if (!defined $opt_dist) {$opt_dist=0;}                      # default do not report on situation distribution
+
+   $opt_workpath =~ s/\\/\//g;                                 # convert to standard perl forward slashes
+   if ($opt_workpath ne "") {
+      $opt_workpath .= "\/" if substr($opt_workpath,length($opt_workpath)-1,1) ne "\/";
    }
 
 
@@ -870,6 +827,27 @@ sub init {
    }
 
    # if credential as passed in via standard input, then that takes precendence.
+
+   if ($opt_std == 1) {
+      my $stdline = <STDIN>;
+      if (defined $stdline) {
+         my @values = split(" ",$stdline);
+         while (@values) {
+            if ($values[0] eq "-user")  {
+               shift(@values);
+               $user = shift(@values);
+               die "STD option -user with no following value\n" if !defined $user;
+            } elsif ($values[0] eq "-passwd")  {
+               shift(@values);
+               $passwd = shift(@values);
+               die "STD option -passwd with no following value\n" if !defined $passwd;
+            } else {
+               my $rest_stdin = join(" ",@values);
+               die "unknown option(s) in stdin [$rest_stdin]\n" if defined $rest_stdin;
+            }
+         }
+      }
+   }
 
    # complain about options which must be present
    if (($opt_txt + $opt_lst) != 1) {
@@ -899,12 +877,15 @@ sub GiveHelp
   Default values:
     log           : sitaudit.log
     ini           : sitaudit.ini
+    user          : <none>
+    passwd        : <none>
     debuglevel    : 90 [considerable number of messages]
     debug         : 0  when 1 some breakpoints are enabled]
     h             : 0  display help information
     v             : 0  display log messages on console
     vt            : 0  record http traffic on traffic.txt file
     dpr           : 0  dump data structure if Dump::Data installed
+    std           : 0  get user/password from stardard input
 
   Example invovation
     $0  -ini <control file> -pc ux
@@ -973,4 +954,4 @@ sub gettime
 # get current time in ITM standard timestamp form
 # History log
 
-# 0.60000  : New script based somewhat on ITM Situation Audit 1.14000
+# 0.50000  : New script based on ITM Situation Audit 1.14000
