@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.13000";
+my $gVersion = "1.14000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -157,6 +157,12 @@ my $hub_tems = "";                       # hub TEMS nodeid
 my $hub_tems_version = "";               # hub TEMS version
 my $hub_tems_no_tnodesav = 0;            # hub TEMS nodeid missingfrom TNODESAV
 my $hub_tems_ct = 0;                     # total agents managed by a hub TEMS
+
+my %tepsx;
+my $tepsi = -1;
+my @teps = ();
+my @teps_version = ();
+my @teps_arch = ();
 
 my $mx;                                  # index
 my $magenti = -1;                        # count of managing agents
@@ -1441,6 +1447,15 @@ if ($hub_tems_no_tnodesav == 0) {
       }
       print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],\n";
    }
+   for (my $i=0;$i<=$tepsi;$i++) {
+      my $poffline = "Offline";
+      my $node1 = $teps[$i];
+      my $nx = $nsavex{$node1};
+      if (defined $nx) {
+         $poffline = "Online" if $nsave_o4online[$nx] eq "Y";
+      }
+      print OH "TEPS,$teps[$i],,$poffline,$teps_version[$i],$teps_arch[$i],\n";
+   }
    print OH "\n";
 
    # One case had 3 TEMS in FTO mode - so check for 2 or more
@@ -1505,27 +1520,32 @@ my $top20 = 0;
 foreach my $f ( sort { $sit_lstdate[$sitx{$b}] cmp $sit_lstdate[$sitx{$a}]} keys %sitx) {
    $top20 += 1;
    my $j = $sitx{$f};
-   print OH "$sit_lstdate[$j],$sit_psit[$j],$sit_pdt[$j],\n";
+   print OH "=\"$sit_lstdate[$j]\",$sit_psit[$j],$sit_pdt[$j],\n";
    last if $top20 >= 20;
 }
 print OH "\n";
 
-# Calculate for same agent inserted into TNODELST multiple times minimum count seen
-my $online_min_count = 99999;
-foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} } keys %eibnodex) {
-   next if $eibnodex{$f}->{count} > $online_min_count;
-   $online_min_count = $eibnodex{$f}->{count};
+# Calculate for same agent inserted into TNODELST multiple times the mode [most common frequency]
+my %online_count = ();
+my $online_mode = 0;
+foreach my $f (keys %eibnodex) {
+   $online_count{$eibnodex{$f}->{count}} += 1;
 }
 
-# Calculate for same agent inserted into TNODELST multiple times more then minimum
-# This is an important clue signal about identically named agents on different systems.
+for my $k (sort {$online_count{$b} <=> $online_count{$a}} keys %online_count) {
+   $online_mode = $online_count{$k};
+   last;
+}
+
+# Calculate for same agent inserted into TNODELST multiple times more then most common
+# This is an important signal about identically named agents on different systems.
 $top20 = 0;
 foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
                       $a cmp $b
                     } keys %eibnodex) {
-   last if $eibnodex{$f}->{count} == $online_min_count;
+   last if $eibnodex{$f}->{count} <= $online_mode;
    if ($top20 == 0) {
-      print OH "Maximum Top 20 agents showing online status more than $online_min_count times\n";
+      print OH "Maximum Top 20 agents showing online status more than $online_mode times - the most common number\n";
       print OH "OnlineCount,Node,ThrunodeCount,Thrunodes\n";
    }
    $top20 += 1;
@@ -1974,6 +1994,21 @@ sub new_tnodesav {
          $tems_arch[$tx] = $arch;
          $tems_thrunode[$tx] = $ithrunode;
          $tems_affinities[$tx] = $iaffinities;
+      }
+   }
+   # track the TEPS and the version
+   if ($iproduct eq "CQ") {
+      $tx = $tepsx{$inode};
+      if (!defined $tx) {
+         $tepsi += 1;
+         $tx = $tepsi;
+         my $arch = "";
+         $ireserved =~ /:(.*?)\;/;
+         $arch = $1 if defined $1;
+         $teps[$tx] = $inode;
+         $tepsx{$inode} = $tx;
+         $teps_version[$tx] = $iversion;
+         $teps_arch[$tx] = $arch;
       }
    }
    # track individual HOSTADDR
@@ -2686,7 +2721,7 @@ sub init_txt {
       $itable = substr($oneline,188,4);
       $itable =~ s/\s+$//;   #trim trailing whitespace
       next if $ioperation ne "I";
-      next if $itable != 5529;
+      next if $itable ne "5529";
       new_teiblogt($igbltmstmp,$iobjname,$ioperation,$itable);
    }
 
@@ -3511,3 +3546,5 @@ sub gettime
 # 1.11000  : Add ITM 630 FP5 APARs for TEMA deficit report
 # 1.12000  : Add top 10 changed situations
 # 1.13000  : record mulitple TEIBLOGT inserts of same object, same day?
+# 1.14000  : for multiple inserts, report on counts >= mode of frequency
+#            Add report of TEPS version and architecture
