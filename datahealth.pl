@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.97000";
+my $gVersion = "0.98000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -494,6 +494,12 @@ $opt_o =~ s/\/\//\//g;
 $opt_s =~ s/\\\\/\//g;
 $opt_s =~ s/\/\//\//g;
 
+my $tema_maxlevel = "";
+foreach my $f (sort { $b cmp $a } keys %mhash) {
+   $tema_maxlevel = $f;
+   last;
+}
+
 open FH, ">>$opt_log" or die "can't open $opt_log: $!";
 
 logit(0,"SITAUDIT000I - ITM_Situation_Audit $gVersion $args_start");
@@ -553,6 +559,7 @@ if ($hub_tems_no_tnodesav == 0) {
       $hubi = $temsx{$hub_tems};
       for ($i=0; $i<=$nlistvi; $i++) {
          my $node1 = $nlistv[$i];
+#$DB::single=2 if $node1 eq "Primary:ADMINIB-DN65QI8:NT";
          next if $nlistv_tems[$i] eq "";
          my $tems1 = $nlistv_tems[$i];
          my $tx = $temsx{$tems1};
@@ -611,7 +618,7 @@ if ($hub_tems_no_tnodesav == 0) {
                      $level_ref    = \%levelref;
                      foreach my $f (sort { $a cmp $b } keys %mhash) {
                         next if $f lt $agtlevel;
-                        last if $f gt $temslevel;
+                        last if $f ge $temslevel;
                         foreach my $h ( @{$mhash{$f}->{apars}}) {
                              next if defined $level_ref->{aparh}{$h};
                              $level_ref->{aparh}{$h} = 1;
@@ -624,10 +631,8 @@ if ($hub_tems_no_tnodesav == 0) {
                   $tema_total_days += $level_ref->{days};
                   $tema_total_apars += $level_ref->{apars};
                }
-            }
 
-            if ($temslevel ne "06.30.04") {
-               $temslevel = "06.30.04";
+               $temslevel = $tema_maxlevel;
                $key = $temslevel . "|" . $agtlevel;
                my $level_ref = $levelx{$key};
                if (!defined $level_ref) {
@@ -642,7 +647,7 @@ if ($hub_tems_no_tnodesav == 0) {
                   $level_ref    = \%levelref;
                   foreach my $f (sort { $a cmp $b } keys %mhash) {
                      next if $f lt $agtlevel;
-                     last if $f gt $temslevel;
+                     last if $f ge $temslevel;
                      foreach my $h ( @{$mhash{$f}->{apars}}) {
                           next if defined $level_ref->{aparh}{$h};
                           $level_ref->{aparh}{$h} = 1;
@@ -1057,7 +1062,7 @@ for ($i=0;$i<=$nsavei;$i++) {
    next if $nsave_temaver[$i] eq "";
    next if substr($nsave_temaver[$i],0,3) ne "06.";
    next if substr($nsave_temaver[$i],0,2) ne substr($nsave_version[$i],0,2);
-   next if substr($nsave_version[$i],0,5) gt "06.30";
+   next if substr($nsave_version[$i],0,5) gt substr($tema_maxlevel,0,5);
    next if substr($nsave_temaver[$i],0,5) ge substr($nsave_version[$i],0,5);
    $advi++;$advonline[$advi] = "Agent at version [$nsave_version[$i]] using TEMA at lower release version [$nsave_temaver[$i]]";
    $advcode[$advi] = "DATAHEALTH1037W";
@@ -1362,19 +1367,19 @@ sub new_tgroupi {
   my $gkey = $igrpclass . "|" . $iid;
   my $group_ref = $group{$gkey};
   if (!defined $group_ref) {
-$DB::single=2;
+#$DB::single=2;
      $advi++;$advonline[$advi] = "TGROUPI $key unknown TGROUP ID";
      $advcode[$advi] = "DATAHEALTH1031E";
      $advimpact[$advi] = 50;
      $advsit[$advi] = $iid;
   }
   if ($groupi_detail_ref->{objclass} == 2010) {
-$DB::single=2;
+#$DB::single=2;
      my $groupref = $groupi_detail_ref->{objclass};
     $gkey = "2010" . "|" . $iid;
      my $group_ref = $group{$gkey};
      if (!defined $group_ref) {
-$DB::single=2;
+#$DB::single=2;
         $advi++;$advonline[$advi] = "TGROUPI $key unknown Group $iobjname";
         $advcode[$advi] = "DATAHEALTH1032E";
         $advimpact[$advi] = 50;
@@ -1386,7 +1391,7 @@ $DB::single=2;
   } elsif ($groupi_detail_ref->{objclass} == 5140) {
      my $sit1 = $groupi_detail_ref->{objname};
      if (!defined $sitx{$sit1}) {
-$DB::single=2;
+#$DB::single=2;
         $advi++;$advonline[$advi] = "TGROUPI $key unknown Situation $iobjname";
         $advcode[$advi] = "DATAHEALTH1033E";
         $advimpact[$advi] = 50;
@@ -2043,6 +2048,17 @@ sub init_lst {
    my $iid;
    my $ifullname;
 
+   my @kobj_data;
+   my $iobjclass;
+   my $iobjname;
+   my $inodel;
+
+   my @kgrp_data;
+   my $igrpclass;
+   my $igrpname;
+
+   my @kgrpi_data;
+
    my @kevsr_data;
    my $ilstdate;
    my $ilstusrprf;
@@ -2143,6 +2159,49 @@ sub init_lst {
       new_tname($iid,$ifullname);
    }
 
+   open(KOBJ, "< $opt_lst_tobjaccl") || die("Could not open TOBJACCL $opt_lst_tobjaccl\n");
+   @kobj_data = <KOBJ>;
+   close(KOBJ);
+
+   # Get data for all TOBJACCL records
+   $ll = 0;
+   foreach $oneline (@kobj_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      ($iobjclass,$iobjname,$inodel) = parse_lst(3,$oneline);
+      next if ($iobjclass != 5140) and ($iobjclass != 2010);
+      new_tobjaccl($iobjclass,$iobjname,$inodel);
+   }
+
+   open(KGRP, "< $opt_lst_tgroup") || die("Could not open TGROUP $opt_lst_tgroup\n");
+   @kgrp_data = <KGRP>;
+   close(KGRP);
+
+   # Get data for all TGROUP records
+   $ll = 0;
+   foreach $oneline (@kgrp_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      ($igrpclass,$iid,$igrpname) = parse_lst(3,$oneline);
+      new_tgroup($igrpclass,$iid,$igrpname);
+   }
+
+   open(KGRPI, "< $opt_lst_tgroupi") || die("Could not open TGROUPI $opt_lst_tgroupi\n");
+   @kgrpi_data = <KGRPI>;
+   close(KGRPI);
+
+   # Get data for all TGROUPI records
+   $ll = 0;
+   foreach $oneline (@kgrpi_data) {
+      $ll += 1;
+      next if $ll < 2;
+      chop $oneline;
+      ($igrpclass,$iid,$iobjclass,$iobjname) = parse_lst(4,$oneline);
+      new_tgroupi($igrpclass,$iid,$iobjclass,$iobjname);
+   }
+
    open(KEVSR, "< $opt_lst_evntserver") || die("Could not open EVNTSERVER $opt_lst_evntserver\n");
    @kevsr_data = <KEVSR>;
    close(KEVSR);
@@ -2153,9 +2212,32 @@ sub init_lst {
       $ll += 1;
       next if $ll < 2;
       chop $oneline;
-      ($iid,$ilstdate,$ilstusrprf) = parse_lst(2,$oneline);
+      ($iid,$ilstdate,$ilstusrprf) = parse_lst(3,$oneline);
       new_evntserver($iid,$ilstdate,$ilstusrprf);
    }
+
+#   open(KDSCA, "< $opt_lst_package") || die("Could not open PACKAGE $opt_lst_package\n");
+#   @kdsca_data = <KDSCA>;
+#   close(KDSCA);
+
+   # Count entries in PACKAGE file
+   # for LST type files set $tems_packages set to zero since otherwise unknown
+   # leave logic in case it can be performed later
+
+   $tems_packages = 0;
+
+#  open(KDSCA, "< $opt_lst_package") || die("Could not open PACKAGE $opt_lst_package\n");
+#  @kdsca_data = <KDSCA>;
+#  close(KDSCA);
+#
+#  # Count entries in PACKAGE file
+#  $ll = 0;
+#  foreach $oneline (@kdsca_data) {
+#     $ll += 1;
+#     next if $ll < 2;
+#     $tems_packages += 1;
+#  }
+
 }
 
 
@@ -2506,4 +2588,5 @@ sub gettime
 #          : Add hub version and fraction TEMA deficit to one line summary for PMR
 # 0.96000  : Add check for number of packages close to failure point
 # 0.97000  : Full review of TEMA APARs and levels after ITM 6.1 FP6 readme found
+# 0.98000  : Reconcile -lst logic
 #          : Change 1043E warning for cases where agent is release higher then TEMS
