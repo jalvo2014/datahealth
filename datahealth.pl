@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.06000";
+my $gVersion = "1.07000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -150,6 +150,7 @@ my @tems_hub = ();                       # When 1, is the hub TEMS
 my @tems_ct = ();                        # Count of managed systems
 my @tems_ctnok = ();                     # Count of managed systems excluding OK at FTO hub TEMS
 my @tems_version = ();                   # TEMS version number
+my @tems_arch = ();                      # TEMS architecture
 my @tems_thrunode = ();                  # TEMS THRUNODE, when NODE=THRUNODE that is a hub TEMS
 my @tems_affinities = ();                # TEMS AFFINITIES
 my $hub_tems = "";                       # hub TEMS nodeid
@@ -353,6 +354,13 @@ my %mhash= (
         );
 
 my %levelx = ();
+my %klevelx = ( '06.30' => 1,
+                '06.23' => 1,
+                '06.22' => 1,
+                '06.21' => 1,
+                '06.20' => 1,
+                '06.10' => 1,
+              );
 
 my $tema_total_count = 0;
 my $tema_total_good_count = 0;
@@ -1330,7 +1338,7 @@ for ($i=0;$i<=$nsavei;$i++) {
 ## Check for TEMA level below Agent version
 for ($i=0;$i<=$nsavei;$i++) {
    next if $nsave_temaver[$i] eq "";
-   next if substr($nsave_temaver[$i],0,3) ne "06.";
+   next if !defined $klevelx{substr($nsave_version[$i],0,5)};
    next if substr($nsave_temaver[$i],0,2) ne substr($nsave_version[$i],0,2);
    next if substr($nsave_version[$i],0,5) gt substr($tema_maxlevel,0,5);
    next if substr($nsave_temaver[$i],0,5) ge substr($nsave_version[$i],0,5);
@@ -1425,7 +1433,7 @@ if ($hub_tems_no_tnodesav == 0) {
       if (defined $nx) {
          $poffline = "Online" if $nsave_o4online[$nx] eq "Y";
       }
-      print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i]\n";
+      print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],\n";
    }
    print OH "\n";
 
@@ -1886,12 +1894,16 @@ sub new_tnodesav {
       if (!defined $tx) {
          $temsi += 1;
          $tx = $temsi;
+         my $arch = "";
+         $ireserved =~ /:(.*?)\;/;
+         $arch = $1 if defined $1;
          $tems[$tx] = $inode;
          $temsx{$inode} = $tx;
          $tems_hub[$tx] = 0;
          $tems_ct[$tx] = 0;
          $tems_ctnok[$tx] = 0;
          $tems_version[$tx] = $iversion;
+         $tems_arch[$tx] = $arch;
          $tems_thrunode[$tx] = $ithrunode;
          $tems_affinities[$tx] = $iaffinities;
       }
@@ -3330,3 +3342,5 @@ sub gettime
 # 1.04000  : Fix Workflow Policy checks to warn on autostart *NO at lower impact, correct TSITDESC -lst capture
 # 1.05000  : Improved parse_lst logic
 # 1.06000  : Add check for APAR IV50167
+# 1.07000  : Improve agent/tema version check - reduce false warnings
+#          : Add TEMS architecture
