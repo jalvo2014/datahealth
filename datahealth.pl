@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.08000";
+my $gVersion = "1.09000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -693,7 +693,33 @@ if ($hub_tems_no_tnodesav == 0) {
                               );
                $levelx{$key} = \%levelref;
                $level_ref    = \%levelref;
+               foreach my $f (sort { $a cmp $b } keys %mhash) {
+                  next if $f le $agtlevel;
+                  last if $f gt $temslevel;
+                  foreach my $h ( @{$mhash{$f}->{apars}}) {
+                       next if defined $level_ref->{aparh}{$h};
+                       $level_ref->{aparh}{$h} = 1;
+                       $level_ref->{apars} += 1;
+                       $level_ref->{days}  += $mhash{$temslevel}->{days} - $mhash{$agtlevel}->{days};
+                  }
+               }
             }
+            $tema_total_days += $level_ref->{days};
+            $tema_total_apars += $level_ref->{apars};
+         }
+#        print "working on $node1 $agtlevel\n";
+         $temslevel = $tema_maxlevel;
+         $key = $temslevel . "|" . $agtlevel;
+         my $level_ref = $levelx{$key};
+         if (!defined $level_ref) {
+            my %aparref = ();
+            my %levelref = (
+                              days => 0,
+                              apars => 0,
+                              aparh => \%aparref,
+                           );
+            $levelx{$key} = \%levelref;
+            $level_ref    = \%levelref;
             foreach my $f (sort { $a cmp $b } keys %mhash) {
                next if $f le $agtlevel;
                last if $f gt $temslevel;
@@ -703,35 +729,6 @@ if ($hub_tems_no_tnodesav == 0) {
                     $level_ref->{apars} += 1;
                     $level_ref->{days}  += $mhash{$temslevel}->{days} - $mhash{$agtlevel}->{days};
                }
-            }
-            $tema_total_days += $level_ref->{days};
-            $tema_total_apars += $level_ref->{apars};
-         }
-#$DB::single=2;
-#        print "working on $node1 $agtlevel\n";
-         $temslevel = $tema_maxlevel;
-         $key = $temslevel . "|" . $agtlevel;
-         my $level_ref = $levelx{$key};
-         if (!defined $level_ref) {
-#$DB::single=2;
-            my %aparref = ();
-            my %levelref = (
-                              days => 0,
-                              apars => 0,
-                              aparh => \%aparref,
-                           );
-            $levelx{$key} = \%levelref;
-            $level_ref    = \%levelref;
-         }
-         foreach my $f (sort { $a cmp $b } keys %mhash) {
-            next if $f le $agtlevel;
-            last if $f gt $temslevel;
-#$DB::single=2;
-            foreach my $h ( @{$mhash{$f}->{apars}}) {
-                 next if defined $level_ref->{aparh}{$h};
-                 $level_ref->{aparh}{$h} = 1;
-                 $level_ref->{apars} += 1;
-                 $level_ref->{days}  += $mhash{$temslevel}->{days} - $mhash{$agtlevel}->{days};
             }
          }
          $tema_total_max_days +=  $level_ref->{days};
@@ -1475,8 +1472,8 @@ if ($tema_total_count > 0 ){
    print OH "$oneline\n";
    $oneline = $tema_total_days . ",Total Days TEMA version less than TEMS version,";
    print OH "$oneline\n";
-   $fraction = ($tema_total_days) / $tema_total_count;
-   $oneline = sprintf( "%.0f", $fraction) . ",Average days TEMA version less than TEMS version,";
+   $fraction = ($tema_total_days) / $tema_total_apars;
+   $oneline = sprintf( "%.0f", $fraction) . ",Average days/APAR TEMA version less than TEMS version,";
    print OH "$oneline\n";
    $oneline = $tema_total_apars . ",Total APARS TEMA version less than TEMS version,";
    print OH "$oneline\n";
@@ -1485,8 +1482,8 @@ if ($tema_total_count > 0 ){
    print OH "$oneline\n";
    $oneline = $tema_total_max_days . ",Total Days TEMA version less than latest TEMS version,";
    print OH "$oneline\n";
-   $fraction = ($tema_total_max_days) / $tema_total_count;
-   $oneline = sprintf( "%.0f", $fraction) . ",Average days TEMA version less than latest TEMS version,";
+   $fraction = ($tema_total_max_days) / $tema_total_max_apars;
+   $oneline = sprintf( "%.0f", $fraction) . ",Average days/APAR TEMA version less than latest TEMS version,";
    print OH "$oneline\n";
    $oneline = $tema_total_max_apars . ",Total APARS TEMA version less than latest TEMS version,";
    print OH "$oneline\n";
@@ -1529,6 +1526,7 @@ if ($opt_s ne "") {
            $oneline .= $tadvi . " ";
            $oneline .= $hub_tems_version . " ";
            $oneline .= $tema_total_deficit_percent . "% ";
+           $oneline .= $hub_tems_ct . " ";
            $oneline .= "https://ibm.biz/BdFrJL" . " ";
            print SH $oneline . "\n";
            close SH;
@@ -3352,3 +3350,4 @@ sub gettime
 # 1.07000  : Improve agent/tema version check - reduce false warnings
 #          : Add TEMS architecture
 # 1.08000  : Improve APAR deficit calculation, ignore A4 tema version 06.20.20
+# 1.09000  : Dislay Days/APAR in deficit calculations
