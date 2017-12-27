@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.15000";
+my $gVersion = "1.16000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -167,6 +167,8 @@ my @teps_arch = ();
 my %ka4x;
 my $ka4i = -1;
 my @ka4 = ();
+my @ka4_product = ();
+my @ka4_version = ();
 my @ka4_version_count = ();
 
 my $mx;                                  # index
@@ -1465,8 +1467,9 @@ if ($hub_tems_no_tnodesav == 0) {
 
    print OH "i/5 Agent Level report\n";
    foreach my $f (sort { $a cmp $b } keys %ka4x) {
+      my $i = $ka4x{$f};
       my $ka4_ct = $ka4_version_count[$ka4x{$f}];
-      print OH "KA4,$f,$ka4_ct,\n";
+      print OH $ka4_product[$i] . "," . $ka4_version[$i] . "," . $ka4_version_count[$i] . ",\n";
    }
    print OH "\n";
 
@@ -2009,15 +2012,15 @@ sub new_tnodesav {
          $tems_affinities[$tx] = $iaffinities;
       }
    }
+   my $arch = "";
+   $ireserved =~ /:(.*?)\;/;
+   $arch = $1 if defined $1;
    # track the TEPS and the version
    if ($iproduct eq "CQ") {
       $tx = $tepsx{$inode};
       if (!defined $tx) {
          $tepsi += 1;
          $tx = $tepsi;
-         my $arch = "";
-         $ireserved =~ /:(.*?)\;/;
-         $arch = $1 if defined $1;
          $teps[$tx] = $inode;
          $tepsx{$inode} = $tx;
          $teps_version[$tx] = $iversion;
@@ -2026,19 +2029,22 @@ sub new_tnodesav {
    }
    # track the i/5 OS Agent and the version
 # $DB::single=2;
-   if ($iproduct eq "A4") {
+   if ($arch eq "i5os") {
 # $DB::single=2;
       my $sub_level = "00";
       $ireserved =~ /A=(\d+):/;
       $sub_level = $1 if defined $1;
       my $agt_version = $iversion . "." . $sub_level;
-      $tx = $ka4x{$agt_version};
+      my $key = $iproduct . $agt_version;
+      $tx = $ka4x{$key};
       if (!defined $tx) {
 # $DB::single=2;
          $ka4i += 1;
          $tx = $ka4i;
-         $ka4[$tx] = $agt_version;
-         $ka4x{$agt_version} = $tx;
+         $ka4[$tx] = $key;
+         $ka4x{$key} = $tx;
+         $ka4_product[$tx] = $iproduct;
+         $ka4_version[$tx] = $agt_version;
          $ka4_version_count[$tx] = 0;
       }
 # $DB::single=2;
@@ -3583,3 +3589,4 @@ sub gettime
 # 1.14000  : for multiple inserts, report on counts >= mode of frequency
 #            Add report of TEPS version and architecture
 # 1.15000  : Add report for i/5 agent levels
+# 1.16000  : Add general i5os reports, not just OS Agent
