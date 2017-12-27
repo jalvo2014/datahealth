@@ -29,7 +29,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.83000";
+my $gVersion = "0.8400";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -166,6 +166,13 @@ $vti = 5;$key="HV";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$
 my $snx;
 
 my %hnodelist = (
+   KKT3S => '*EM_SERVER_DB',                                     # T3
+   KKYJW => '*CAM_J2EE_WLS_SERVER',                              # YJ
+   KWMI => '*IBM_RemoteWinOS_WMI',                               # R2
+   KR2 => '*IBM_RemoteWinOS',                                    # R2
+   KRZ => '*IBM_OracleAgents',                                   # RZ
+   KEX => '*NT_EXCHANGE',                                        # EX
+   KRDB => '*IBM_OracleAgentRD',                                 # RZ
    KSVR => '*HMC_BASE_SERVERS',                                  # SVR
    KM6 => '*IBM_WM',                                             # M6
    KFTE => '*IBM_WMQFTEAgent',                                   # FTE
@@ -339,6 +346,8 @@ my $opt_subpc_warn;             # advise when subnode length > 90 of limit on pr
 my $opt_peak_rate;              # Advise when virtual hub update peak is higher
 my $opt_vndx;                   # when 1 create a index for missing TNODELST NODETYPE=V records
 my $opt_vndx_fn;                # when opt_vndx - this is filename
+my $opt_mndx;                   # when 1 create a index for missing TNODELST NODETYPE=M records
+my $opt_mndx_fn;                # when opt_mndx - this is filename
 
 # do basic initialization from parameters, ini file and standard input
 
@@ -371,6 +380,10 @@ open OH, ">$opt_o" or die "can't open $opt_o: $!";
 
 if ($opt_vndx == 1) {
    open NDX, ">$opt_vndx_fn" or die "can't open $opt_vndx_fn: $!";
+}
+
+if ($opt_mndx == 1) {
+   open MDX, ">$opt_mndx_fn" or die "can't open $opt_mndx_fn: $!";
 }
 
 my $advi = -1;
@@ -425,25 +438,20 @@ for ($i=0; $i<=$nsavei; $i++) {
    next if $nsave_product[$i] eq "EM";
    $nsx = $nlistvx{$node1};
    next if defined $nsx;
-   $advi++;$advonline[$advi] = "Node present in node status but missing in TNODELIST Type V records";
-   $advcode[$advi] = "DATAHEALTH1001E";
-   $advimpact[$advi] = 100;
-   $advsit[$advi] = $node1;
-   next if $opt_vndx == 0;
-   print NDX "$node1\n";
+   if (index($node1,":") !=  -1) {
+      $advi++;$advonline[$advi] = "Node present in node status but missing in TNODELIST Type V records";
+      $advcode[$advi] = "DATAHEALTH1001E";
+      $advimpact[$advi] = 100;
+      $advsit[$advi] = $node1;
+      next if $opt_vndx == 0;
+      print NDX "$node1\n";
+   }
 }
 
 for ($i=0; $i<=$nsavei; $i++) {
    my $node1 = $nsave[$i];
    next if $nsave_product[$i] eq "EM";
-   my $known_ext = 0;
-   @words = split(":",$node1);
-   if ($#words > 0) {
-      my $lastseg = $words[$#words];
-      my $keyseg = "K" . $lastseg;
-      $known_ext = 1 if defined $hnodelist{$keyseg};
-   }
-   next if $known_ext == 1;
+   my $product1 = $nsave_product[$i];
    $nsx = $nlistvx{$node1};
    if (defined $nsx) {
       my $subn = 0;
@@ -456,13 +464,21 @@ for ($i=0; $i<=$nsavei; $i++) {
       }
       if ($subn == 0) {
          next if length($node1) < 32;
-         $advi++;$advonline[$advi] = "Node Name at 32 characters and might be truncated";
+         my $known_ext = 0;
+         @words = split(":",$node1);
+         if ($#words > 0) {
+            my $lastseg = $words[$#words];
+            my $keyseg = "K" . $lastseg;
+           $known_ext = 1 if defined $hnodelist{$keyseg};
+         }
+         next if $known_ext == 1;
+         $advi++;$advonline[$advi] = "Node Name at 32 characters and might be truncated - product[$product1]";
          $advcode[$advi] = "DATAHEALTH1013W";
          $advimpact[$advi] = 20;
          $advsit[$advi] = $node1;
       } else {
          next if length($node1) < 31;
-         $advi++;$advonline[$advi] = "Subnode Name at 31/32 characters and might be truncated";
+         $advi++;$advonline[$advi] = "Subnode Name at 31/32 characters and might be truncated - product[$product1]";
          $advcode[$advi] = "DATAHEALTH1014W";
          $advimpact[$advi] = 20;
          $advsit[$advi] = $node1;
@@ -489,10 +505,14 @@ for ($i=0; $i<=$nsavei; $i++) {
    if (defined $vlx) {
       next if $nlistv_thrunode[$vlx] ne $nlistv_tems[$vlx];
    }
-   $advi++;$advonline[$advi] = "Node without a system generated MSL in TNODELIST Type M records";
-   $advcode[$advi] = "DATAHEALTH1002E";
-   $advimpact[$advi] = 75;
-   $advsit[$advi] = $node1;
+   if (index($node1,":") !=  -1) {
+      $advi++;$advonline[$advi] = "Node without a system generated MSL in TNODELIST Type M records";
+      $advcode[$advi] = "DATAHEALTH1002E";
+      $advimpact[$advi] = 75;
+      $advsit[$advi] = $node1;
+      next if $opt_mndx == 0;
+      print MDX "$node1\n";
+   }
 }
 
 for ($i=0; $i<=$nlistmi; $i++) {
@@ -722,6 +742,9 @@ if ($opt_s ne "") {
 if ($opt_vndx == 1) {
    close(NDX);
 }
+if ($opt_mndx == 1) {
+   close(MDX);
+}
 
 my $exit_code = 0;
 if ($advi != -1) {
@@ -745,16 +768,18 @@ sub new_tnodesav {
       $nsave_version[$nsx] = $iversion;
       $nsave_ct[$nsx] = 0;
       $nsave_o4online[$nsx] = $io4online;
-      if ($ireserved eq "") {
+      if (length($ireserved) == 0) {
          $nsave_temaver[$nsx] = "";
       } else {
          my @words;
          @words = split(";",$ireserved);
          $nsave_temaver[$nsx] = "";
-         # found ona agent with RESERVED == A=00:ls3246;;;
+         # found one agent with RESERVED == A=00:ls3246;;;
          if ($#words > 0) {
-            @words = split(":",$words[1]);
-            $nsave_temaver[$nsx] = substr($words[0],2,8);
+            if ($words[1] ne "") {
+               @words = split(":",$words[1]);
+               $nsave_temaver[$nsx] = substr($words[0],2,8);
+            }
          }
       }
    }
@@ -1079,26 +1104,41 @@ sub init_txt {
       new_tnodelstm($inodetype,$inodelist,$inode);
    }
 }
+
+# There may be a better way to do this, but this was clear and worked.
+# The input $lcount must be matched up to the number of columns
+# SELECTED in the SQL.
+# [1]  OGRP_59B815CE8A3F4403  OGRP_6F783DF5FF904988  2010  2010
 sub parse_lst {
   my ($lcount,$inline) = @_;            # count of desired chunks and the input line
   my @retlist = ();                     # an array of strings to return
   my $chunk;                            # One chunk
   my $oct = 0;                          # output chunk count
   my $rest;                             # the rest of the line to process
+  chop($inline);
   $inline =~ /\]\s*(.*)/;               # skip by [NNN]  field
-  $rest = $1;
+  $rest = " " . $1 . "        ";
+  my $restpos = 0;                      # postion studied in the $rest string
 
-  # until the last cycle, we select out a blank delimited word.
-  # The last cycle we take the end of the line, minus the added blank
-  while ($oct < $lcount) {
+  # at each stage we can identify a field with values
+  #         <blank>data<blank>
+  # and a blank field
+  #         <blank><blank>
+  # for the last field, we allow imbedded blanks and logic not needed
+  while ($oct < $lcount) {         # stop when output chunk met
      $oct += 1;
      if ($oct < $lcount) {
-        $rest =~ /\s*(\S+)\s*(.*)/;      # skip by count
-        $chunk = $1;
-        $rest = $2;
+        if (substr($rest,$restpos,2) eq "  ") {               # null string case
+           $chunk = "";
+           $restpos += 2;
+        } else {
+           my $nextpos = index($rest," ",$restpos+1);
+           $chunk = substr($rest,$restpos+1,$nextpos-$restpos -1);
+           $restpos = $nextpos + 1;
+        }
      } else {
-        $chunk = $rest;
-        chop $chunk;
+        $chunk = substr($rest,$restpos+1);
+        $chunk =~ s/\s+$//;                    # strip trailing blanks
      }
      push @retlist, $chunk;
   }
@@ -1127,10 +1167,6 @@ sub init_lst {
    # that a column with embedded blanks always placed at the end. The one table TSITDESC which has
    # two such columns is retrieved with two separate SQLs.
    #
-   # The one case where a column might be blank is the TNODESAV HOSTINFO column. In that case
-   # a fixup is performed in case the third column [VERSION] is blank,
-   #
-   # There may be similar fixes in the future.
 
 
    open(KSAV, "< $opt_lst_tnodesav") || die("Could not open TNODESAV $opt_lst_tnodesav\n");
@@ -1142,16 +1178,15 @@ sub init_lst {
    foreach $oneline (@ksav_data) {
       $ll += 1;
       next if $ll < 2;
-      chop $oneline;
-      ($inode,$iproduct,$iversion) = parse_lst(3,$oneline);
+      ($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities) = parse_lst(8,$oneline);
       $inode =~ s/\s+$//;   #trim trailing whitespace
-      $iversion =~ s/\s+$//;   #trim trailing whitespace
       $iproduct =~ s/\s+$//;   #trim trailing whitespace
-      $ihostaddr = "";
-      $io4online = "Y";
-      $ireserved = "";
-      $ithrunode = "";
-      $iaffinities = "";
+      $iversion =~ s/\s+$//;   #trim trailing whitespace
+      $io4online =~ s/\s+$//;   #trim trailing whitespace
+      $ihostaddr =~ s/\s+$//;   #trim trailing whitespace
+      $ireserved =~ s/\s+$//;   #trim trailing whitespace
+      $ithrunode =~ s/\s+$//;   #trim trailing whitespace
+      $iaffinities =~ s/\s+$//;   #trim trailing whitespace
       new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities);
    }
 
@@ -1164,7 +1199,6 @@ sub init_lst {
    foreach $oneline (@klst_data) {
       $ll += 1;
       next if $ll < 2;
-      chop $oneline;
       ($inode,$inodetype,$inodelist) = parse_lst(3,$oneline);
       next if $inodetype ne "V";
       new_tnodelstv($inodetype,$inodelist,$inode);
@@ -1176,17 +1210,19 @@ sub init_lst {
    foreach $oneline (@klst_data) {
       $ll += 1;
       next if $ll < 2;
-      chop $oneline;
       ($inode,$inodetype,$inodelist) = parse_lst(3,$oneline);
       $inodelist =~ s/\s+$//;   #trim trailing whitespace
       $inode =~ s/\s+$//;   #trim trailing whitespace
-      if ($inodelist eq "") {    # *HUB has blank NODETYPE. Set to M for this calculation
-         next if $inodetype ne "*HUB";
-         $inodelist = $inodetype;
+      if (($inodetype eq "") and ($inodelist eq "*HUB")) {    # *HUB has blank NODETYPE. Set to M for this calculation
          $inodetype = "M";
          $tx = $temsx{$inode};
-         $tems_hub[$tx] = 1;
-         $hub_tems = $inode;
+         if (defined $tx) {
+            $tems_hub[$tx] = 1;
+            $hub_tems = $inode;
+         } else {
+            $hub_tems_no_tnodesav = 1;
+            $hub_tems = $inode;
+         }
       }
       next if $inodetype ne "M";
       new_tnodelstm($inodetype,$inodelist,$inode);
@@ -1247,6 +1283,9 @@ sub init {
       } elsif ( $ARGV[0] eq "-vndx") {
          shift(@ARGV);
          $opt_vndx = 1;
+      } elsif ( $ARGV[0] eq "-mndx") {
+         shift(@ARGV);
+         $opt_mndx = 1;
       } else {
          print STDERR "SITAUDIT001E Unrecognized command line option - $ARGV[0]\n";
          exit 1;
@@ -1322,7 +1361,8 @@ sub init {
    if (!defined $opt_lst) {$opt_lst = 0;}                      # default no lst input
    if (!defined $opt_subpc_warn) {$opt_subpc_warn=90;}         # default warn on 90% of maximum subnode list
    if (!defined $opt_peak_rate) {$opt_peak_rate=32;}           # default warn on 32 virtual hub table updates per second
-   if (!defined $opt_vndx) {$opt_vndx=1;}                      # default vndx off
+   if (!defined $opt_vndx) {$opt_vndx=0;}                      # default vndx off
+   if (!defined $opt_mndx) {$opt_mndx=0;}                      # default mndx off
 
    $opt_workpath =~ s/\\/\//g;                                 # convert to standard perl forward slashes
    if ($opt_workpath ne "") {
@@ -1336,7 +1376,8 @@ sub init {
       $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
       $opt_lst_tnodelst  = $opt_workpath . "QA1CNODL.DB.LST";
    }
-   $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.NDX";
+   $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.VNDX";
+   $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
 
 
    if ($opt_dpr == 1) {
@@ -1467,3 +1508,7 @@ sub gettime
 # 0.81000  : Add advisory on TEMA 6.1 level
 # 0.82000  : Alert when FTO and agents connect directly to hub TEMS
 # 0.83000  : Identify valid agent endings
+# 0.84000  : add more known agent MSLs
+#          : Handle z/OS no extension agents
+#          : Add TNODESAV product to the "might be truncated" messages
+#          : make -lst option work
