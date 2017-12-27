@@ -28,7 +28,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.94000";
+my $gVersion = "0.95000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -106,6 +106,7 @@ my @nsave = ();
 my %nsavex = ();
 my @nsave_product = ();
 my @nsave_version = ();
+my @nsave_hostaddr = ();
 my @nsave_sysmsl = ();
 my @nsave_ct = ();
 my @nsave_o4online = ();
@@ -143,6 +144,7 @@ my @tems_version = ();                   # TEMS version number
 my @tems_thrunode = ();                  # TEMS THRUNODE, when NODE=THRUNODE that is a hub TEMS
 my @tems_affinities = ();                # TEMS AFFINITIES
 my $hub_tems = "";                       # hub TEMS nodeid
+my $hub_tems_version = "";               # hub TEMS version
 my $hub_tems_no_tnodesav = 0;            # hub TEMS nodeid missingfrom TNODESAV
 my $hub_tems_ct = 0;                     # total agents managed by a hub TEMS
 
@@ -291,6 +293,68 @@ my %hnodelist = (
    KSYSPLEX => '*MVS_SYSPLEX',                                   # M5
 );
 $hnodelist{'KSNMP-MANAGER00'} ='*CUSTOM_SNMP-MANAGER00';
+
+# Following is a hard calculated collection  of how many TEMA apars are at each maintenance level.
+# ITM 6.1 FP6 was not included because I could not locate it. If anyone has a readme please let me know.
+#
+# The goal is to identify how far behind a particular customer site is compare with latest maintenance levels.
+
+# date: Date maintenance level published
+# days: Epoch days maintenance level published
+# apars: array of TEMA APAR fixes included
+
+my %mhash= (
+            '06.30.04' => {date=>'12/12/2014',days=>41983,apars=>['IV44811','IV53859','IV54581','IV56194','IV56578','IV62139','IV62138','IV60851'],},
+            '06.30.03' => {date=>'08/07/2014',days=>41856,apars=>['IV62667'],},
+            '06.30.02' => {date=>'09/13/2013',days=>41528,apars=>['IV39406','IV47538','IV47540','IV47585','IV47590','IV47591','IV47592'],},
+            '06.30.01' => {date=>'05/16/2013',days=>41408,apars=>['IV39778','IV39779'],},
+            '06.30.00' => {date=>'03/08/2013',days=>41339,apars=>[],},
+            '06.23.05' => {date=>'04/30/2014',days=>41757,apars=>['IV43114','IV46993','IV47201','IV47775','IV31825','IV52643'],},
+            '06.23.04' => {date=>'10/21/2013',days=>41566,apars=>['IV43489','IV43787','IV44858','IV40015'],},
+            '06.23.03' => {date=>'04/26/2013',days=>41388,apars=>['IV21954','IV24409','IV27955','IV32358'],},
+            '06.23.02' => {date=>'10/11/2012',days=>41191,apars=>['IV16083','IV22060','IV23043','IV23784'],},
+            '06.23.01' => {date=>'03/09/2012',days=>40975,apars=>['IV16476','IV16531','IV16532','IV10402','IV08621'],},
+            '06.23.00' => {date=>'08/18/2011',days=>40771,apars=>[],},
+            '06.22.09' => {date=>'06/29/2012',days=>41087,apars=>['IV10164','IV12849','IV00362'],},
+            '06.22.08' => {date=>'03/30/2012',days=>40996,apars=>['IV07041','IV08621','IV09296','IV10402','IV18016'],},
+            '06.22.07' => {date=>'12/15/2011',days=>40890,apars=>['IV03676','IV03943','IV04585','IV04683','IV06261','IZ96898'],},
+            '06.22.06' => {date=>'09/30/2011',days=>40844,apars=>['IV00146','IV00655','IV00722','IV01532','IV03216','IZ98187','IV06896'],},
+            '06.22.05' => {date=>'07/08/2011',days=>40730,apars=>['IZ84879','IZ89970','IZ94257','IZ95923','IZ96148','IZ97197','IV01708','IZ87796'],},
+            '06.22.04' => {date=>'04/07/2011',days=>40638,apars=>['IZ81476','IZ85796','IZ89282','IZ93258','IZ84397'],},
+            '06.22.03' => {date=>'09/28/2010',days=>40447,apars=>['IZ75365','IZ76410','IZ73219'],},
+            '06.22.02' => {date=>'05/21/2010',days=>40317,apars=>['IZ45531','IZ75244'],},
+            '06.22.01' => {date=>'11/20/2009',days=>40135,apars=>[],},
+            '06.22.00' => {date=>'09/10/2009',days=>40062,apars=>[],},
+            '06.21.04' => {date=>'12/17/2010',days=>40547,apars=>['IZ77554','IZ77981','IZ80179'],},
+            '06.21.03' => {date=>'07/21/2010',days=>40378,apars=>['IZ70928','IZ73109','IZ73633','IZ76059','IZ76984'],},
+            '06.21.02' => {date=>'04/16/2010',days=>40282,apars=>['IZ54269','IZ54895','IZ56686','IZ63949','IZ65337'],},
+            '06.21.01' => {date=>'12/10/2009',days=>40155,apars=>['IZ60115'],},
+            '06.21.00' => {date=>'11/10/2008',days=>39768,apars=>[],},
+            '06.20.03' => {date=>'05/15/2009',days=>39946,apars=>['IZ41189','IZ42154','IZ42185'],},
+            '06.20.02' => {date=>'10/30/2008',days=>39749,apars=>['IZ24933'],},
+            '06.20.01' => {date=>'05/16/2008',days=>39582,apars=>['IZ60115'],},
+            '06.20.00' => {date=>'12/14/2007',days=>39428,apars=>[],},
+            '06.10.07' => {date=>'05/20/2008',days=>39586,apars=>['IY93399','IZ00591','IZ02165','IZ11504','IZ13788','IZ16659'],},
+            '06.10.06' => {date=>'11/02/2007',days=>39386,apars=>[],},
+            '06.10.05' => {date=>'05/11/2007',days=>39211,apars=>['IY88519','IY92830','IY95114','IY95204','IY95363','IY97983','IY97984','IY97989','IY97993'],},
+            '06.10.04' => {date=>'12/14/2006',days=>39063,apars=>['IY89899','IY90352','IY91689','IY91926'],},
+            '06.10.03' => {date=>'08/18/2006',days=>38945,apars=>['IY90352','IY91296','IY91689'],},
+            '06.10.02' => {date=>'06/30/2006',days=>38896,apars=>['IY81984','IY84853','IY85392'],},
+            '06.10.01' => {date=>'03/31/2006',days=>38805,apars=>['IY82424','IY82431','IY82785'],},
+            '06.10.00' => {date=>'10/25/2005',days=>38638,apars=>[],},
+        );
+
+my %levelx = ();
+
+my $tema_total_count = 0;
+my $tema_total_good_count = 0;
+my $tema_total_deficit_count = 0;
+my $tema_total_deficit_percent = 0;
+my $tema_total_apars = 0;
+my $tema_total_days = 0;
+my $tema_total_max_days = 0;
+my $tema_total_max_apars = 0;
+
 
 # Situation Group related data
 my %group = ();                            # situation group base data, hash of hashes
@@ -497,10 +561,101 @@ if ($hub_tems_no_tnodesav == 0) {
          if (($nsave_product[$nx] ne "CQ") and ($nsave_product[$nx] ne "HD") and ($nsave_product[$nx] ne "SY")) {
             $tems_ctnok[$tx] += 1;
          }
+         # Calculate TEMA APAR Deficit numbers
+         my $agtlevel = substr($nsave_temaver[$nx],0,8);
+         my $temslevel = $tems_version[$tx];
+
+         if (($agtlevel ne "") and ($temslevel ne "")) {
+            $tema_total_count += 1;
+            if ($temslevel lt $agtlevel) {
+               $advi++;$advonline[$advi] = "Agent with TEMA at [$agtlevel] later than TEMS $tems1 at [$temslevel]";
+               $advcode[$advi] = "DATAHEALTH1043E";
+               $advimpact[$advi] = 100;
+               $advsit[$advi] = $node1;
+               next;
+            } elsif ($temslevel ge $agtlevel) {
+               my $aref = $mhash{$agtlevel};
+               if (!defined $aref) {
+                  $advi++;$advonline[$advi] = "Agent with unknown TEMA level [$agtlevel]";
+                  $advcode[$advi] = "DATAHEALTH1044E";
+                  $advimpact[$advi] = 100;
+                  $advsit[$advi] = $node1;
+                  next;
+               }
+               my $tref = $mhash{$temslevel};
+               if (!defined $tref) {
+                  $advi++;$advonline[$advi] = "TEMS with unknown version [$temslevel]";
+                  $advcode[$advi] = "DATAHEALTH1045E";
+                  $advimpact[$advi] = 100;
+                  $advsit[$advi] = $tems1;
+                  next;
+               }
+               if ($temslevel eq $agtlevel) {
+                  $tema_total_good_count += 1;
+               } else {
+                  $tema_total_deficit_count += 1;
+                  my $key = $temslevel . "|" . $agtlevel;
+                  my $level_ref = $levelx{$key};
+                  if (!defined $level_ref) {
+                     my %aparref = ();
+                     my %levelref = (
+                                       count => 0,
+                                       days => 0,
+                                       apars => 0,
+                                       aparh => \%aparref,
+                                    );
+                     $levelx{$key} = \%levelref;
+                     $level_ref    = \%levelref;
+                     foreach my $f (sort { $a cmp $b } keys %mhash) {
+                        next if $f lt $agtlevel;
+                        last if $f gt $temslevel;
+                        foreach my $h ( @{$mhash{$f}->{apars}}) {
+                             next if defined $level_ref->{aparh}{$h};
+                             $level_ref->{aparh}{$h} = 1;
+                        }
+                        $level_ref->{count} += 1;
+                     }
+                     $level_ref->{days}  += $mhash{$temslevel}->{days} - $mhash{$agtlevel}->{days};
+                     $level_ref->{apars} = scalar keys %{$level_ref->{aparh}};
+                  }
+                  $tema_total_days += $level_ref->{days};
+                  $tema_total_apars += $level_ref->{apars};
+               }
+            }
+
+            if ($temslevel ne "06.30.04") {
+               $temslevel = "06.30.04";
+               $key = $temslevel . "|" . $agtlevel;
+               my $level_ref = $levelx{$key};
+               if (!defined $level_ref) {
+                  my %aparref = ();
+                  my %levelref = (
+                                    count => 0,
+                                    days => 0,
+                                    apars => 0,
+                                    aparh => \%aparref,
+                                 );
+                  $levelx{$key} = \%levelref;
+                  $level_ref    = \%levelref;
+                  foreach my $f (sort { $a cmp $b } keys %mhash) {
+                     next if $f lt $agtlevel;
+                     last if $f gt $temslevel;
+                     foreach my $h ( @{$mhash{$f}->{apars}}) {
+                          next if defined $level_ref->{aparh}{$h};
+                          $level_ref->{aparh}{$h} = 1;
+                     }
+                     $level_ref->{count} += 1;
+                  }
+                  $level_ref->{days}  += $mhash{$temslevel}->{days} - $mhash{$agtlevel}->{days};
+                  $level_ref->{apars} = scalar keys %{$level_ref->{aparh}};
+               }
+               $tema_total_max_days +=  $level_ref->{days};
+               $tema_total_max_apars += $level_ref->{apars};
+            }
+         }
       }
    }
 }
-
 
 for ($i=0; $i<=$nsavei; $i++) {
    my $node1 = $nsave[$i];
@@ -593,7 +748,6 @@ for ($i=0; $i<=$nsavei; $i++) {
       print MDX "$node1\n";
    }
 }
-
 for ($i=0; $i<=$nlistmi; $i++) {
    my $node1 = $nlistm[$i];
    if ($nlistm_miss[$i] != 0) {
@@ -886,6 +1040,7 @@ for ($i=0;$i<=$nsavei;$i++) {
    next if $nsave_temaver[$i] eq "";
    next if substr($nsave_temaver[$i],0,3) ne "06.";
    next if substr($nsave_temaver[$i],0,2) ne substr($nsave_version[$i],0,2);
+   next if substr($nsave_version[$i],0,5) gt "06.30";
    next if substr($nsave_temaver[$i],0,5) ge substr($nsave_version[$i],0,5);
    $advi++;$advonline[$advi] = "Agent at version [$nsave_version[$i]] using TEMA at lower release version [$nsave_temaver[$i]]";
    $advcode[$advi] = "DATAHEALTH1037W";
@@ -897,10 +1052,12 @@ for ($i=0;$i<=$nsavei;$i++) {
    next if $nsave_temaver[$i] eq "";
    if ( (substr($nsave_temaver[$i],0,8) ge "06.21.00") and (substr($nsave_temaver[$i],0,8) lt "06.21.03") or
         (substr($nsave_temaver[$i],0,8) ge "06.22.00") and (substr($nsave_temaver[$i],0,8) lt "06.22.03")) {
-      $advi++;$advonline[$advi] = "Agent using TEMA at version [$nsave_temaver[$i]] in IZ76410 danger zone";
-      $advcode[$advi] = "DATAHEALTH1042E";
-      $advimpact[$advi] = 90;
-      $advsit[$advi] = $nsave[$i];
+      if ($nsave_product[$i] ne "VA") {
+         $advi++;$advonline[$advi] = "Agent [$nsave_hostaddr[$i]] using TEMA at version [$nsave_temaver[$i]] in IZ76410 danger zone";
+         $advcode[$advi] = "DATAHEALTH1042E";
+         $advimpact[$advi] = 90;
+         $advsit[$advi] = $nsave[$i];
+      }
    }
 }
 ## Check for virtual hub table update impact
@@ -993,6 +1150,36 @@ if ($hub_tems_no_tnodesav == 0) {
    }
 }
 
+my $fraction;
+my $pfraction;
+
+if ($tema_total_count > 0 ){
+   print OH "TEMA Deficit Report\n";
+   print OH "TEMA,AtLevel,Deficit,Deficit%,Days,Days/TEMA,APARs,APARs/TEMA,MaxDays,MaxDays/TEMA,MaxAPARs,MaxAPARs/TEMA\n";
+   $oneline = $tema_total_count . ",";
+   $oneline .= $tema_total_good_count . ",";
+   $oneline .= $tema_total_deficit_count . ",";
+   $fraction = ($tema_total_deficit_count*100) / $tema_total_count;
+   $pfraction = sprintf( "%.2f", $fraction);
+   $tema_total_deficit_percent = $pfraction;
+   $oneline .= $pfraction . "%,";
+   $oneline .= $tema_total_days . ",";
+   $fraction = ($tema_total_days) / $tema_total_count;
+   $oneline .= sprintf( "%.0f", $fraction) . ",";
+   $oneline .= $tema_total_apars . ",";
+   $fraction = ($tema_total_apars) / $tema_total_count;
+   $oneline .= sprintf( "%.0f", $fraction) . ",";
+   $oneline .= $tema_total_max_days . ",";
+   $fraction = ($tema_total_max_days) / $tema_total_count;
+   $oneline .= sprintf( "%.0f", $fraction) . ",";
+   $oneline .= $tema_total_max_apars . ",";
+   $fraction = ($tema_total_max_apars) / $tema_total_count;
+   $oneline .= sprintf( "%.0f", $fraction) . ",";
+   print OH "$oneline\n";
+   print OH "\n";
+}
+
+
 my $tadvi = $advi + 1;
 print OH "Advisory messages,$tadvi\n";
 
@@ -1046,7 +1233,9 @@ if ($opt_s ne "") {
            $oneline = "REFIC ";
            $oneline .= $max_impact . " ";
            $oneline .= $tadvi . " ";
-           $oneline .= "https://ibm.biz/BdFrJL";
+           $oneline .= $hub_tems_version . " ";
+           $oneline .= $tema_total_deficit_percent . "% ";
+           $oneline .= "https://ibm.biz/BdFrJL" . " ";
            print SH $oneline . "\n";
            close SH;
         }
@@ -1262,6 +1451,7 @@ sub new_tnodesav {
          }
       }
       $nsave_version[$nsx] = $iversion;
+      $nsave_hostaddr[$nsx] = $ihostaddr;
       $nsave_ct[$nsx] = 0;
       $nsave_o4online[$nsx] = $io4online;
       if (length($ireserved) == 0) {
@@ -1612,9 +1802,11 @@ sub init_txt {
          if (defined $tx) {
             $tems_hub[$tx] = 1;
             $hub_tems = $inode;
+            $hub_tems_version = $tems_version[$tx];
          } else {
             $hub_tems_no_tnodesav = 1;
             $hub_tems = $inode;
+            $hub_tems_version = "";
          }
       }
      #next if $inodetype ne "M";
@@ -1889,7 +2081,6 @@ sub init_lst {
    foreach $oneline (@ksav_data) {
       $ll += 1;
       next if $ll < 2;
-#$DB::single=2;
       ($isitname,$iautostart,$ilstdate,$ipdt) = parse_lst(4,$oneline);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
       $iautostart =~ s/\s+$//;   #trim trailing whitespace
@@ -2130,6 +2321,12 @@ sub init {
       $opt_dpr = 0;
    }
 
+   if (($opt_txt + $opt_lst) == 0) {
+      $opt_txt = 1 if -e $opt_txt_tnodelst;
+      $opt_lst = 1 if -e $opt_lst_tnodelst;
+   }
+
+
    # complain about options which must be present
    if (($opt_txt + $opt_lst) != 1) {
       print STDERR "SITINFO006E exactly one of txt/lst must be present\n";
@@ -2262,3 +2459,6 @@ sub gettime
 # 0.92000  : Check Virtual Hub Table counts against TSITDESC UADVISOR AUTOSTART settings
 # 0.93000  : Check for invalid TSITDESC.LSTDATE values
 # 0.94000  : Check IZ76410 TEMA problem case
+# 0.95000  : Refine check for lower level TEMAs
+#          : Add summary for TEMA Deficit levels, auto-detect TXT and LST options
+#          : Add hub version and fraction TEMA deficit to one line summary for PMR
