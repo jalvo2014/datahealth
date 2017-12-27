@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.10000";
+my $gVersion = "1.11000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -313,6 +313,7 @@ $hnodelist{'KSNMP-MANAGER00'} ='*CUSTOM_SNMP-MANAGER00';
 # apars: array of TEMA APAR fixes included
 
 my %mhash= (
+            '06.30.05' => {date=>'06/30/2015',days=>42183,apars=>['IV64897','IV65775','IV67576','IV69027'],},
             '06.30.04' => {date=>'12/12/2014',days=>41983,apars=>['IV44811','IV53859','IV54581','IV56194','IV56578','IV62139','IV62138','IV60851'],},
             '06.30.03' => {date=>'08/07/2014',days=>41856,apars=>['IV62667'],},
             '06.30.02' => {date=>'09/13/2013',days=>41528,apars=>['IV39406','IV47538','IV47540','IV47585','IV47590','IV47591','IV47592'],},
@@ -3354,3 +3355,4 @@ sub gettime
 # 1.08000  : Improve APAR deficit calculation, ignore A4 tema version 06.20.20
 # 1.09000  : Dislay Days/APAR in deficit calculations
 # 1.10000  : Handle divide by zero case when no agents backlevel
+# 1.11000  : Add ITM 630 FP5 APARs for TEMA deficit report
