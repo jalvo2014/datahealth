@@ -29,7 +29,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "0.82000";
+my $gVersion = "0.83000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -165,6 +165,86 @@ $vti = 5;$key="HV";$vtnode[$vti]=$key;$vtnodex{$key}=$vti;$vtnode_rate[$vti]=2;$
 
 my $snx;
 
+my %hnodelist = (
+   KSVR => '*HMC_BASE_SERVERS',                                  # SVR
+   KM6 => '*IBM_WM',                                             # M6
+   KFTE => '*IBM_WMQFTEAgent',                                   # FTE
+   KVM => '*VMWARE_VI_AGENT',                                    # VM
+   KT5 => '*EM_WRM',                                             # T5
+   KT3 => '*EM_DB',                                              # T3
+   KQS => '*IBM_KQS',                                            # QS
+   KIS => '*NETCOOL_ISM_AGENT',                                  # IS
+   KUD => '*UNIVERSAL_DATABASE',                                 # UD
+   KQ8 => '*IBM_IPAS_A',                                         # Q8
+   KQ7 => '*IBM_IIS',                                            # Q7
+   KQ5 => '*MS_CLUSTER',                                         # Q5
+   KR3 => '*IBM_RmtAIXOS',                                       # R3
+   KMSS => '*MS_SQL_SERVER',                                     # OQ
+   KORA => '*ALL_ORACLE',                                        # OR
+   KKA4 => '*OS400_OM',                                          # A4
+   KTO => '*IBM_ITCAMfT_KTO',                                    # TO
+   KIns => '*SAP_R3',                                            # SA
+   KNT => '*NT_SYSTEM',                                          # NT
+   KKT3A => '*EM_APPLICATION_DB',                                # T3
+   KESX => '*VMWARE_VI',                                         # ES
+   KTEPS => '*TEPS',                                             # CQ
+   KKSDSDE => '*SDMSESS',                                        # SD
+   KMQQSG => '*MQ_QSG',                                          # MQ
+   KKHTA => '*ITCAM_WEB_SERVER_AGENT',                           # HT
+   KR4 => '*IBM_RLinuxOS',                                       # R4
+   KTU => '*IBM_KTU',                                            # TU
+   KBN => '*IBM_KBN' ,                                           # BN
+   KOS => '*CS_K0S',                                             # OS
+     # 0S:custommq:M05 *CS_K0SM05
+   KCPIRA => '*CPIRA_MGR',                                       # CP
+   KKYNT => '*CAM_WAS_PROCESS_SERVER',                           # KY
+   KKYJT => '*CAM_J2EE_TOMCAT_SERVER',                           # KJ
+   KKHTP => '*CAM_APACHE_WEB_SERVER',                            # KH
+   KD4 => '*SERVICES_MANAGEMENT_AGENT',                          # D4
+     # D4:06c17c5e:nzxpap159-Prod-NCAL  M        *SERVICES_MANAGEMENT_AGENT_ENVIR
+   KLO => '*IBM_KLO',                                            # LO
+     # LO:nzapps5_OMPlus =>  *IBM_KLOpro
+   K07 => '*GSMA_K07',                                           # 07
+   KCONFIG => '*GENERIC_CONFIG',                                 # CF
+   KDB2 => '*MVS_DB2',                                           # D5
+   KGB => '*LOTUS_DOMINO',                                       # GB
+   KWarehouse => '*WAREHOUSE_PROXY',                             # HD
+   KIGASCUSTOM_UA00 => '*CUSTOM_IGASCUSTOM_UA00',                # IG
+   KLZ => '*LINUX_SYSTEM',                                       # LZ
+   KMVSSYS => '*MVS_SYSTEM',                                     # M5
+   KRCACFG => '*MQ_AGENT',                                       # MC
+   KMQ => '*MVS_MQM',                                            # MQ
+   KMQIRA => '*MQIRA_MGR',                                       # MQ
+   KMQESA => '*MVS_MQM',                                         # MQ
+   KKQIA => '*MQSI_AGENT',                                       # QI
+   KPH => '*HMC_BASE',                                           # PH
+   KPK => '*CEC_BASE',                                           # PK
+   KPV => '*VIOS_BASE',                                          # PV
+   KPX => '*AIX_PREMIUM',                                        # PX
+   KKQIB => '*MQSI_BROKER,*MQSI_BROKER_V7',                      # QI ???
+   KSTORAGE => '*OMEGAMONXE_SMS,*OM_SMS',                        # S3
+                                                                #    OMIICT:7VSG:STORAGE         managing agent?
+                                                                #    IRAM:OMIICMS:NADH:STORAGE   [subnode??]
+   KmySAP => '*SAP_AGENT',                                       # SA
+   KSK => '*IBM_TSM_Agent',                                      # SK
+   KSY => '*AGGREGATION_AND_PRUNING',                            # SY
+   KUAGENT00 => '*CUSTOM_UAGENT00',                              # UA
+   KKUL => '*UNIX_LOG_ALERT',                                    # UL
+   KUA  => '*UNIVERSAL',                                         # UM
+   KKUX => '*ALL_UNIX',                                          # UX
+   KVA => '*VIOS_PREMIUM',                                       # VA
+   KVL => '*OMXE_VM',                                            # VL
+   KKYJA => '*ITCAM_J2EE_AGENT',                                 # YJ
+   KKYJN => '*CAM_J2EE_NETWEAVER_SERVER',                        # YJ
+   KKYNA => '*ITCAM_WEBSPHERE_AGENT',                            # YN
+   KKYNR => '*CAM_WAS_PORTAL_SERVER',                            # YN
+   KKYNP => '*CAM_WAS_PROCESS_SERVER',                           # YN
+   KKYNS => '*CAM_WAS_SERVER',                                   # YN
+   KDSGROUP => '*MVS_DB2',                                       # D5
+   KPlexview => '*MVS_DB2',                                      # D5
+   KSYSPLEX => '*MVS_SYSPLEX',                                   # M5
+);
+$hnodelist{'KSNMP-MANAGER00'} ='*CUSTOM_SNMP-MANAGER00';
 
 # Situation Group related data
 my $gx;
@@ -356,6 +436,14 @@ for ($i=0; $i<=$nsavei; $i++) {
 for ($i=0; $i<=$nsavei; $i++) {
    my $node1 = $nsave[$i];
    next if $nsave_product[$i] eq "EM";
+   my $known_ext = 0;
+   @words = split(":",$node1);
+   if ($#words > 0) {
+      my $lastseg = $words[$#words];
+      my $keyseg = "K" . $lastseg;
+      $known_ext = 1 if defined $hnodelist{$keyseg};
+   }
+   next if $known_ext == 1;
    $nsx = $nlistvx{$node1};
    if (defined $nsx) {
       my $subn = 0;
@@ -1378,3 +1466,4 @@ sub gettime
 #          : Support workpath better
 # 0.81000  : Add advisory on TEMA 6.1 level
 # 0.82000  : Alert when FTO and agents connect directly to hub TEMS
+# 0.83000  : Identify valid agent endings
