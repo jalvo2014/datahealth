@@ -33,7 +33,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.41000";
+my $gVersion = "1.42000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -314,6 +314,7 @@ my %advcx = (
               "DATAHEALTH1099W" => "25",
               "DATAHEALTH1100W" => "25",
               "DATAHEALTH1101E" => "95",
+              "DATAHEALTH1102W" => "10",
             );
 
 my %advtextx = ();
@@ -719,6 +720,7 @@ my $opt_txt_toverride;          # TOVERRIDE txt file
 my $opt_txt_toveritem;          # TOVERITEM txt file
 my $opt_txt_teiblogt;           # TEIBLOGT txt file
 my $opt_txt_tsitstsh;           # TSITSTSH txt file
+my $opt_txt_tcheckpt;           # TCHECKPT txt file
 my $opt_lst;                    # input from .lst files
 my $opt_lst_tnodesav;           # TNODESAV lst file
 my $opt_lst_tnodelst;           # TNODELST lst file
@@ -737,6 +739,7 @@ my $opt_lst_toverride;          # TOVERRIDE lst file
 my $opt_lst_toveritem;          # TOVERITEM lst file
 my $opt_lst_teiblogt;           # TEIBLOGT lst file
 my $opt_lst_tsitstsh;           # TSITSTSH lst file
+my $opt_lst_tcheckpt;           # TCHECKPT txt file
 my $opt_log;                    # name of log file
 my $opt_ini;                    # name of ini file
 my $opt_hub;                    # externally supplied nodeid of hub TEMS
@@ -759,7 +762,8 @@ my $opt_mndx;                   # when 1 create a index for missing TNODELST NOD
 my $opt_mndx_fn;                # when opt_mndx - this is filename
 my $opt_miss;                   # when 1 create a missing.sql file
 my $opt_miss_fn;                # missing file SQL name
-my $opt_nodist;            # TGROUP names which are planned as non-distributed
+my $opt_nodist;                 # TGROUP names which are planned as non-distributed
+my $opt_fto = "";               # HUB or MIRROR
 
 # do basic initialization from parameters, ini file and standard input
 
@@ -1757,10 +1761,17 @@ for ($i=0;$i<=$obji;$i++){
          }
       } else {                                  # Neither MSL nor MSN defined
          if (defined $sx) {                     # Sit is defined
-            $advi++;$advonline[$advi] = "TOBJACCL known Situation with a unknown MSN/MSL $nodel1 distribution";
-            $advcode[$advi] = "DATAHEALTH1101E";
-            $advimpact[$advi] = $advcx{$advcode[$advi]};
-            $advsit[$advi] = $objname1;
+            if (substr($nodel1,0,1) ne "*") {
+               $advi++;$advonline[$advi] = "TOBJACCL known Situation with a unknown MSN/MSL $nodel1 distribution";
+               $advcode[$advi] = "DATAHEALTH1101E";
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
+               $advsit[$advi] = $objname1;
+            } else {
+               $advi++;$advonline[$advi] = "TOBJACCL known Situation with a unknown system generated MSL $nodel1";
+               $advcode[$advi] = "DATAHEALTH1102W";
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
+               $advsit[$advi] = $objname1;
+            }
          } else {                               # Sit not defined
             if (substr($objname1,0,3) ne "_Z_"){
                $advi++;$advonline[$advi] = "TOBJACCL unknown Situation with a unknown MSN/MSL $nodel1 distribution";
@@ -2165,7 +2176,7 @@ if ($hub_tems_no_tnodesav == 0) {
 
    # One case had 3 TEMS in FTO mode - so check for 2 or more
    if ($isFTO >= 2){
-      print OH "Fault Tolerant Option FTO enabled\n\n";
+      print OH "Fault Tolerant Option FTO enabled Status[$opt_fto]\n\n";
       if ($tems_ctnok[$hubi] > 0) {
          $advi++;$advonline[$advi] = "FTO hub TEMS has $tems_ctnok[$hubi] agents configured which is against FTO best practice";
          $advcode[$advi] = "DATAHEALTH1020W";
@@ -2665,6 +2676,7 @@ if ($opt_s ne "") {
            $oneline .= $hub_tems_version . " ";
            $oneline .= $hub_tems . " ";
            $oneline .= $hub_tems_ct . " ";
+           $oneline .= "FTO[$opt_fto]" . " ";
            $oneline .= "https://ibm.biz/BdFrJL" . " ";
            print SH $oneline . "\n";
            close SH;
@@ -3644,6 +3656,8 @@ sub init_txt {
    my $ioriginnode;
    my $iatomize;
 
+   my @kckpt_data;
+
    open(KSAV, "< $opt_txt_tnodesav") || die("Could not open TNODESAV $opt_txt_tnodesav\n");
    @ksav_data = <KSAV>;
    close(KSAV);
@@ -4077,6 +4091,24 @@ sub init_txt {
       new_tsitstsh($igbltmstmp,$ideltastat,$isitname,$inode,$ioriginnode,$iatomize);
    }
 
+   open(KCKPT, "< $opt_txt_tcheckpt") || die("Could not open TCKPT $opt_txt_tcheckpt\n");
+   @kckpt_data = <KCKPT>;
+   close(KCKPT);
+   # Get data for all TCKPT records
+   $ll = 0;
+   foreach $oneline (@kckpt_data) {
+      $ll += 1;
+      next if $ll < 4;
+      chop $oneline;
+      $oneline .= " " x 400;
+      $iname = substr($oneline,0,32);
+      $ireserved = substr($oneline,33,48);
+      $iname =~ s/\s+$//;   #trim trailing whitespace
+      $ireserved =~ s/\s+$//;   #trim trailing whitespace
+      next if $iname ne "M:STAGEII";
+      $opt_fto = $ireserved;
+   }
+
 }
 
 # There may be a better way to do this, but this was clear and worked.
@@ -4229,6 +4261,8 @@ sub init_lst {
    my $ideltastat;
    my $ioriginnode;
    my $iatomize;
+
+   my @kckpt_data;
 
    # Parsing the KfwSQLClient output has some challenges. For example
    #      [1]  OGRP_59B815CE8A3F4403  2010  Test Group 1
@@ -4562,6 +4596,23 @@ $DB::single=2;
       new_tsitstsh($igbltmstmp,$ideltastat,$isitname,$inode,$ioriginnode,$iatomize);
    }
 
+   open(KCKPT, "< $opt_lst_tcheckpt") || die("Could not open TCHECKPT $opt_lst_tcheckpt\n");
+   @kckpt_data = <KCKPT>;
+   close(KCKPT);
+   # Get data for all TCKPT records
+   $ll = 0;
+   foreach $oneline (@kckpt_data) {
+      $ll += 1;
+      next if substr($oneline,0,1) ne "[";                    # Look for starting point
+      chop $oneline;
+      $oneline .= " " x 400;
+      ($iname,$ireserved) = parse_lst(2,$oneline);
+      $iname =~ s/\s+$//;   #trim trailing whitespace
+      $ireserved =~ s/\s+$//;   #trim trailing whitespace
+      next if $iname ne "M:STAGEII";
+      $opt_fto = $ireserved;
+   }
+
 
 }
 
@@ -4743,6 +4794,7 @@ sub init {
       $opt_txt_toveritem = $opt_workpath . "QA1DOVRI.DB.TXT";
       $opt_txt_teiblogt = $opt_workpath . "QA1CEIBL.DB.TXT";
       $opt_txt_tsitstsh = $opt_workpath . "QA1CSTSH.DB.TXT";
+      $opt_txt_tcheckpt = $opt_workpath . "QA1CCKPT.DB.TXT";
    }
    if (defined $opt_lst) {
       $opt_lst_tnodesav  = $opt_workpath . "QA1DNSAV.DB.LST";
@@ -4762,6 +4814,7 @@ sub init {
       $opt_lst_toveritem = $opt_workpath . "QA1DOVRI.DB.LST";
       $opt_lst_teiblogt = $opt_workpath . "QA1CEIBL.DB.LST";
       $opt_lst_tsitstsh = $opt_workpath . "QA1CSTSH.DB.LST";
+      $opt_lst_tcheckpt = $opt_workpath . "QA1CCKPT.DB.LST";
    }
    $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.VNDX";
    $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
@@ -5011,7 +5064,9 @@ sub gettime
 # 1.38000  : Add advisory for remote TEMS higher maint level than hub TEMS
 # 1.39000  : Add Product Summary Report section
 # 1.40000  : Add check for historical data but no WPAs
-#          : Add tighter check for TOBJACCL checking, 1099W, 1100W, 1101W and revised 1030W
+# 1.41000  : Add tighter check for TOBJACCL checking, 1099W, 1100W, 1101W and revised 1030W
+# 1.42000  : Add 1102W for known situation unknown system generated MSL - not so important
+#          : Add FTO status  HUB/MIRROR in FTO message
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -6700,4 +6755,21 @@ files could help recover. See this document
 
 Sitworld: Best Practice TEMS Database Backup and Recovery
 https://ibm.biz/BdRKKH
+--------------------------------------------------------------
+
+DATAHEALTH1102W
+Text:  TOBJACCL known Situation with a unknown system generated MSL name
+
+Check: TSITDESC and TNODESAV and TNODELST checks
+
+Meaning: A situation is mentioned in the distribution table
+and the situation is known. However the distribution target
+(system generated managed system list) is unknown.
+
+This is almost certainly a case where a application support
+has been installed, the situations have been configured to
+run but no agents are currently running. This has a small
+effect on TEMS startup time but is not otherwise a problem.
+
+Recovery plan: Probably ignore issue.
 --------------------------------------------------------------
