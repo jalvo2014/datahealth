@@ -28,13 +28,15 @@
 # Identify cases where TEMA 32 bit *NE TEMA 64 bit level at a system
 # when calculating send status, subtract hub TEMS reconnects
 
+# When same system [ip address] but different hostname, advisory on unable to use remote deploy, also possible TEP issues.
+
 #use warnings::unused; # debug used to check for unused variables
 use strict;
 use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.47000";
+my $gVersion = "1.48000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -177,6 +179,7 @@ my @tems_hub = ();                       # When 1, is the hub TEMS
 my @tems_ct = ();                        # Count of managed systems
 my @tems_ctnok = ();                     # Count of managed systems excluding OK at FTO hub TEMS
 my @tems_version = ();                   # TEMS version number
+my @tems_o4online = ();                  # TEMS online status
 my @tems_arch = ();                      # TEMS architecture
 my @tems_thrunode = ();                  # TEMS THRUNODE, when NODE=THRUNODE that is a hub TEMS
 my @tems_affinities = ();                # TEMS AFFINITIES
@@ -320,6 +323,8 @@ my %advcx = (
               "DATAHEALTH1103W" => "90",
               "DATAHEALTH1104E" => "100",
               "DATAHEALTH1105E" => "100",
+              "DATAHEALTH1106W" => "90",
+              "DATAHEALTH1107W" => "96",
             );
 
 my %advtextx = ();
@@ -675,6 +680,7 @@ my %eibnodex = ();
 
 my $hdonline = 0;
 my $uadhist = 0;
+my $obj_oplog = 0;
 
 my %eventx = ();
 my $eventx_start = -1;
@@ -1026,13 +1032,15 @@ for ($i=0; $i<=$nsavei; $i++) {
 }
 
 for (my $i=0;$i<=$temsi;$i++) {
-   if ($tems_thrunode[$i] eq $tems[$i]) {
-      # The following test is how a hub TEMS is distinguished from a remote TEMS
-      # This checks an affinity capability flag which indicates the policy microscope
-      # is available. I tried many ways and failed before finding this.
-      if (substr($tems_affinities[$i],40,1) eq "O") {
-         $isFTO += 1;
-         $FTOver{$tems[$i]} = $tems_version[$i];
+   if ($tems_o4online[$i] eq "Y") {
+      if ($tems_thrunode[$i] eq $tems[$i]) {
+         # The following test is how a hub TEMS is distinguished from a remote TEMS
+         # This checks an affinity capability flag which indicates the policy microscope
+         # is available. I tried many ways and failed before finding this.
+         if (substr($tems_affinities[$i],40,1) eq "O") {
+            $isFTO += 1;
+            $FTOver{$tems[$i]} = $tems_version[$i];
+         }
       }
    }
 }
@@ -1495,7 +1503,15 @@ for ($i=0;$i<=$siti;$i++) {
          }
       }
       if ($sit_autostart[$i] eq "*SYN") {            # count Uadvisor historical sits
-            $uadhist += 1 if index($sit_pdt[$i],"TRIGGER") != -1;
+         $uadhist += 1 if index($sit_pdt[$i],"TRIGGER") != -1;
+         if ($sit[$i] eq "UADVISOR_O4SRV_OPLOG") {
+            if ($obj_oplog > 0) {
+               $advi++;$advonline[$advi] = "Agent Operation Log Historical Data Collection can cause communications instability";
+               $advcode[$advi] = "DATAHEALTH1107W";
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
+               $advsit[$advi] = $sit[$i];
+            }
+         }
       }
    }
    next if $sit_ct[$i] == 1;
@@ -2057,7 +2073,6 @@ for ($i=0;$i<=$obji;$i++) {
          foreach my $f (keys %{$nlist_agents[$nlx]}) {
             $mx = $magentx{$f};    # is this a subnode agent
             if (defined $mx) {
-$DB::single=2;
                $thru = $magent_tems[$mx];
             } else {
                $vlx = $nlistvx{$f};
@@ -2365,6 +2380,34 @@ if ($eventx_ct > 0) {
          $advsit[$advi] = "sitrate";
       }
    }
+}
+my $ipr_ct = 0;
+my $iprerr_ct = 0;
+foreach my $f (keys %ipx) {
+   my $ip_ref = $ipx{$f};
+   my $hcount = scalar keys %{$ip_ref->{hostname}};
+   if ($hcount > 1) {
+      my %hostx;
+      foreach my $g (keys %{$ip_ref->{hostname}}) {
+         my $iagents = $ip_ref->{hostname}{$g};
+         foreach my $h (keys %{$iagents}) {
+            my $vsx = $nlistvx{$h};
+            next if !defined $vsx;
+            next if $nlistv_tems[$vsx] eq "";
+            $hostx{$g}{$h} = 1;
+         }
+      }
+      $hcount = scalar keys %hostx;
+      if ($hcount > 1) {
+         $iprerr_ct += 1;
+      }
+   }
+}
+if ($iprerr_ct > 0) {
+   $advi++;$advonline[$advi] = "Systems [$iprerr_ct] with agents that disagree on hostname - see following Multiple Hostname report";
+   $advcode[$advi] = "DATAHEALTH1106W";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = "TEMS";
 }
 
 $tadvi = $advi + 1;
@@ -2707,6 +2750,44 @@ if ($tema_multi > 0) {
    }
 }
 
+foreach my $f (keys %ipx) {
+   my $ip_ref = $ipx{$f};
+   my $hcount = scalar keys %{$ip_ref->{hostname}};
+   if ($hcount > 1) {
+      my %hostx;
+      foreach my $g (keys %{$ip_ref->{hostname}}) {
+         my $iagents = $ip_ref->{hostname}{$g};
+         foreach my $h (keys %{$iagents}) {
+            my $vsx = $nlistvx{$h};
+            next if !defined $vsx;
+            next if $nlistv_tems[$vsx] eq "";
+            $hostx{$g}{$h} = 1;
+         }
+      }
+      $hcount = scalar keys %hostx;
+      if ($hcount > 1) {
+         $iprerr_ct += 1;
+         if ($ipr_ct == 0) {
+            $ipr_ct = 1;
+            print OH "\n";
+            print OH "Multiple hostname report\n";
+            print OH "IP_Address,Hostname,Agents,\n";
+         }
+         foreach my $g (keys %hostx) {
+            my $iagents = $hostx{$g};
+            my $pagents = "";
+            foreach my $h (keys %{$iagents}) {
+               $pagents .= $h . " ";
+            }
+            $oneline = $f . ",";
+            $oneline .= $g . ",";
+            $oneline .= "(" . $pagents . ")";
+            print OH "$oneline\n";
+         }
+      }
+   }
+}
+
 if ($advi != -1) {
    print OH "\n";
    print OH "Advisory Trace, Meaning and Recovery suggestions follow\n\n";
@@ -3045,6 +3126,11 @@ sub new_tobjaccl {
    }
   $obj_ct[$ox] += 1;
   $tobjaccl{$iobjname} = 1;
+  if ($iobjclass == 5140) {
+     if ($iobjname eq "UADVISOR_O4SRV_OPLOG") {
+        $obj_oplog += 1;
+     }
+  }
 }
 
 sub new_tsitdesc {
@@ -3198,6 +3284,7 @@ sub new_tnodesav {
          $tems_ct[$tx] = 0;
          $tems_ctnok[$tx] = 0;
          $tems_version[$tx] = $iversion;
+         $tems_o4online[$tx] = $io4online;
          $tems_arch[$tx] = $arch;
          $tems_thrunode[$tx] = $ithrunode;
          $tems_affinities[$tx] = $iaffinities;
@@ -3263,15 +3350,15 @@ sub new_tnodesav {
          # which can mess up Portal Client Navigator displays badly
          # ip.pipe:#172.17.117.34[10055]<NM>CNWDC4AHMAAA</NM>
          if (index($ihostaddr,"[") != -1) {
-            $ihostaddr =~ /(\S+?)\[(.*)/;
-#           $ihostaddr =~ /\((\S+?)\)\[(.*)/ if !defined $1;   # IPV6 style
+            $ihostaddr =~ /:(\S+?)\[(.*)/;
+            $ihostaddr =~ /\((\S+?)\)\[(.*)/ if !defined $1;   # IPV6 style
             my $isysip = $1;
             my $hrest = $2;
             if (defined $isysip) {
                if (defined $hrest) {
                   if (index($hrest,"<NM") != -1) {
                      $hrest =~ /\<NM\>(\S+)\</;
-                    my $isysname = $1;
+                     my $isysname = $1;
                      if (defined $isysname) {
                         my $sysname_ref = $sysnamex{$isysname};
                         if (!defined $sysname_ref) {
@@ -3311,6 +3398,7 @@ sub new_tnodesav {
                                  level => {},
                                  agents => {},
                                  arch => {},
+                                 hostname => {},
                               );
                   $ip_ref = \%ipref;
                   $ipx{$isysip}  = \%ipref;
@@ -3329,6 +3417,21 @@ sub new_tnodesav {
                      }
                   }
                }
+               # count the number of :'s in the agent name
+               my $inode = $nsave[$nsx];
+               my $tnode = $nsave[$nsx];
+               $tnode =~ s/[^:]//g;
+               my $ncolons = length($tnode);
+               my $ihostname = "";
+               my @wnodes = split(":",$inode);
+               if ($ncolons == 0) {
+                  $ihostname = $inode;
+               } elsif ($ncolons == 1) {
+                  $ihostname = $wnodes[0];
+               } elsif ($ncolons == 2) {
+                  $ihostname = $wnodes[1];
+               }
+               $ip_ref->{hostname}{$ihostname}{$inode} = 1;
             }
          }
       }
@@ -4349,9 +4452,10 @@ sub init_lst {
       $ll += 1;
       next if substr($oneline,0,1) ne "[";                    # Look for starting point
       chop $oneline;
-      # KfwSQLClient /e "SELECT NODE,O4ONLINE,PRODUCT,VERSION,HOSTADDR,RESERVED,THRUNODE,AFFINITIES FROM O4SRV.TNODESAV" >QA1DNSAV.DB.LST
+      # KfwSQLClient /e "SELECT NODE,O4ONLINE,PRODUCT,VERSION,HOSTADDR,RESERVED,THRUNODE,HOSTINFO,AFFINITIES FROM O4SRV.TNODESAV" >QA1DNSAV.DB.LST
       #[1]  BNSF:TOIFVCTR2PW:VM  Y  VM  06.22.01  ip.spipe:#10.121.54.28[11853]<NM>TOIFVCTR2PW</NM>  A=00:WIX64;C=06.22.09.00:WIX64;G=06.22.09.00:WINNT;  REMOTE_catrste050bnsxa  000100000000000000000000000000000G0003yw0a7
       ($inode,$io4online,$iproduct,$iversion,$ihostaddr,$ireserved,$ithrunode,$ihostinfo,$iaffinities) = parse_lst(9,$oneline);
+
       $inode =~ s/\s+$//;   #trim trailing whitespace
       $iproduct =~ s/\s+$//;   #trim trailing whitespace
       $iversion =~ s/\s+$//;   #trim trailing whitespace
@@ -4420,11 +4524,9 @@ sub init_lst {
       next if substr($oneline,0,1) ne "[";                    # Look for starting point
       chop $oneline;
       # KfwSQLClient /e "SELECT SITNAME,AUTOSTART,LSTDATE,REEV_DAYS,REEV_TIME,SITINFO,PDT FROM O4SRV.TSITDESC" >QA1CSITF.DB.LST
-$DB::single=2;
       ($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$isitinfo,$ipdt) = parse_lst(7,$oneline);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
       $iautostart =~ s/\s+$//;   #trim trailing whitespace
-$DB::single=2;
       $isitinfo =~ s/\s+$//;   #trim trailing whitespace
       $ipdt = substr($oneline,33,1);  #???#
       new_tsitdesc($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$isitinfo,$ipdt);
@@ -5141,12 +5243,18 @@ sub gettime
 # 1.45000  : Correct logic advisory T3 agent
 # 1.46000  : Advisory if managing agent is same as agent.
 # 1.47000  : Handle datahealth.pl running on a Linux/Unix perl
+#          : Correct 1075W logic, should ignore protocol
+#          : Add report on mixed up hostnames from same system
+# 1.48000  : Add advisory when Agent Operation Log data is collected.
+#          : Don't check TEMS for hub-ness if TEMS is offline
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
 __END__
 DATAHEALTH1001E
 Text: Node present in node status but missing in TNODELST Type V records
+
+Handle datahealth.pl running on a Linux/Unix perl; Correct 1075W logic, should ignore protocol; Add report on mixed up hostnames from same system;
 
 Check: For every NODE in TNODESAV, there must be a TNODELST
 NODETYPE=V with matching TNODELST column
@@ -6893,4 +7001,42 @@ instability in a remote TEMS including crashes.
 
 Recovery plan: Work with IBM Support to eliminate the false
 TNODELIST NODETYPE=V object.
+--------------------------------------------------------------
+
+DATAHEALTH1106W
+Text:  Systems [$iprerr_ct] with agents that disagree on hostname
+
+Check: TNODESAV and TNODELST check
+
+Meaning: The hostname is always a part of the agent name.
+Usually the hostname command is used but this can be configured
+using the CTIRA_HOSTNAME environment variable. When there are
+differences, this can prevent remote deploy from working. It
+may also be a symptom of accidental duplicate agent names.
+
+Recovery plan: Reconfigure the agents such that their agent name
+includes the comparable hostname values.
+--------------------------------------------------------------
+
+DATAHEALTH1107W
+Text:  Agent Operation Log Historical Data Collection can cause communications instability
+
+Check: TSITDESC and TOBJACCL check
+
+Meaning: Historical Data Collection for Agent Operation Log
+[in the CCC Logs section] is rare. In a recent case this caused
+communications instability and effective outage of a remote TEMS.
+The agent(s) involved were at ITM 622 or earlier [6+ years old at
+the time of this writing].
+
+If you are seeing the symptoms of high numbers of offline agents,
+and you are collecting Agent Operation Log, please turn off that
+historical data collection and observe for increased stabilty.
+
+In most people's opinion, that collected data is not terribly
+worthwhile because the data collected is mostly for the use of
+IBM Support diagnostics. The format is not publicly documented.
+
+Recovery plan: Consider turning off historical data collection
+of the CCC Logs - Agent Operation Logs.
 --------------------------------------------------------------
