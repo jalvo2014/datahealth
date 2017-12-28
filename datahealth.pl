@@ -34,7 +34,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.46000";
+my $gVersion = "1.47000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -686,13 +686,14 @@ my %epochx;
 while (<main::DATA>)
 {
   $advline = $_;
+  $advline =~ s/\x0d//g if $gWin == 0;
   if ($advkey eq "") {
      chomp $advline;
      $advkey = $advline;
      next;
   }
-  if (length($advline) >= 15) {
-     if (substr($advline,0,10) eq "DATAHEALTH") {
+  if (length($advline) >= 14) {
+     if ((substr($advline,0,10) eq "DATAHEALTH") or (substr($advline,0,10) eq "DATAREPORT")){
         $advtextx{$advkey} = $advtext;
         chomp $advline;
         $advkey = $advline;
@@ -5139,6 +5140,7 @@ sub gettime
 #          : Advisory if more than one T3 agent.
 # 1.45000  : Correct logic advisory T3 agent
 # 1.46000  : Advisory if managing agent is same as agent.
+# 1.47000  : Handle datahealth.pl running on a Linux/Unix perl
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
