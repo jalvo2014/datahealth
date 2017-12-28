@@ -33,7 +33,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.36000";
+my $gVersion = "1.37000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -2490,7 +2490,7 @@ if ($danger_IV30473 > 0) {
 if ($tema_multi > 0) {
    print OH "\n";
    print OH "Systems with Multiple TEMA levels\n";
-   print OH "IP_Address,Agent,TEMAver,\n";
+   print OH "IP_Address,Agent,TEMAver,TEMAarch,\n";
    foreach my $f (keys %ipx) {
       my $ip_ref =$ipx{$f};
       next if $ip_ref->{count} < 2;
@@ -2498,6 +2498,7 @@ if ($tema_multi > 0) {
          $oneline = $f . ",";
          $oneline .= $g . ",";
          $oneline .= $ip_ref->{agents}{$g} . ",";
+         $oneline .= $ip_ref->{arch}{$g} . ",";
          print OH "$oneline\n";
       }
    }
@@ -3057,7 +3058,7 @@ sub new_tnodesav {
                if (defined $hrest) {
                   if (index($hrest,"<NM") != -1) {
                      $hrest =~ /\<NM\>(\S+)\</;
-                     my $isysname = $1;
+                    my $isysname = $1;
                      if (defined $isysname) {
                         my $sysname_ref = $sysnamex{$isysname};
                         if (!defined $sysname_ref) {
@@ -3094,17 +3095,25 @@ sub new_tnodesav {
                if (!defined $ip_ref) {
                   my %ipref = (
                                  count => 0,
-                                 common => {},
+                                 level => {},
                                  agents => {},
+                                 arch => {},
                               );
                   $ip_ref = \%ipref;
                   $ipx{$isysip}  = \%ipref;
                }
                if ($nsave_common[$nsx] ne "") {
-                  if (!defined $ip_ref->{common}{$nsave_common[$nsx]}) {
-                     $ip_ref->{count} += 1;
-                     $ip_ref->{common}{$nsave_common[$nsx]} = 1;
-                     $ip_ref->{agents}{$inode} = $nsave_common[$nsx];
+                  my $tema_level = $nsave_common[$nsx];
+                  $tema_level =~ /(\S+):(\S+)/;
+                  $tema_level = $1;
+                  my $tema_arch = $2;
+                  if (defined $tema_level) {
+                     if (!defined $ip_ref->{level}{$tema_level}) {
+                        $ip_ref->{count} += 1;
+                        $ip_ref->{level}{$tema_level} = 1;
+                        $ip_ref->{agents}{$inode} = $tema_level;
+                        $ip_ref->{arch}{$inode} = $tema_arch;
+                     }
                   }
                }
             }
@@ -4861,6 +4870,7 @@ sub gettime
 #          : Move Agent in APAR danger details to trailing reports
 #          : Add advisory on multiple TEMA levels on one system
 #          : Reduce impact of DATAHEALTH1023 to 0, more annoyance than actual issue
+# 1.37000  : Better logic on multiple TEMA report
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
