@@ -26,6 +26,7 @@
 # The pure event situation of the Extended Oracle Database agent does not fire on the subnode where the subnode ID is longer than or equal to 25 characters.
 # https://eclient.lenexa.ibm.com:9445/search/?fetch=source/TechNote/1430630
 # Identify cases where TEMA 32 bit *NE TEMA 64 bit level at a system
+# when calculating send status, subtract hub TEMS reconnects
 
 #use warnings::unused; # debug used to check for unused variables
 use strict;
@@ -33,7 +34,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.45000";
+my $gVersion = "1.46000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -318,6 +319,7 @@ my %advcx = (
               "DATAHEALTH1102W" => "10",
               "DATAHEALTH1103W" => "90",
               "DATAHEALTH1104E" => "100",
+              "DATAHEALTH1105E" => "100",
             );
 
 my %advtextx = ();
@@ -1582,12 +1584,12 @@ if ($ms_offline_sitmon_hour > 0) {
 
 if ($kds_per_sec > 30) {
    if ($kds_per_sec > 200) {
-      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $kds_per_sec dangerously high";
+      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $kds_per_sec agents/sec dangerously high";
       $advcode[$advi] = "DATAHEALTH1087E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
    } else {
-      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $kds_per_sec somewhat high";
+      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $kds_per_sec agents/sec somewhat high";
       $advcode[$advi] = "DATAHEALTH1086W";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
@@ -1596,12 +1598,12 @@ if ($kds_per_sec > 30) {
 
 if ($sitmon_per_sec > 30) {
    if ($sitmon_per_sec > 100) {
-      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $sitmon_per_sec dangerously high";
+      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $sitmon_per_sec agents/sec dangerously high";
       $advcode[$advi] = "DATAHEALTH1089E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
    } else {
-      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $kds_per_sec somewhat high";
+      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $kds_per_sec agents/sec somewhat high";
       $advcode[$advi] = "DATAHEALTH1088W";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
@@ -1689,6 +1691,16 @@ for ($i=0;$i<=$nlistvi;$i++) {
       if ($opt_miss == 1) {
          my $key = "DATAHEALTH1025E" . " " . $thru1;
          $miss{$key} = 1;
+      }
+   }
+   if ($nlistv[$i] eq $thru1) {
+      if (defined $nsx) {
+         if ($nsave_product[$nsx] ne "EM") {
+            $advi++;$advonline[$advi] = "TNODELST Type V Node is same as Thrunode - illegal";
+            $advcode[$advi] = "DATAHEALTH1105E";
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
+            $advsit[$advi] = $nlistv[$i];
+         }
       }
    }
    $invalid_node = 0;
@@ -3058,10 +3070,14 @@ sub new_tsitdesc {
       }
       if (length($ireev_time) != 6){
          if ($ireev_time ne "0") {
-            $advi++;$advonline[$advi] = "Situation with invalid sampling time [$ireev_time]";
-            $advcode[$advi] = "DATAHEALTH1072W";
-            $advimpact[$advi] = $advcx{$advcode[$advi]};
-            $advsit[$advi] = $isitname;
+            if ($ireev_time ne " 0") {
+               if ($ireev_time ne " 00") {
+                  $advi++;$advonline[$advi] = "Situation with invalid sampling time [$ireev_time]";
+                  $advcode[$advi] = "DATAHEALTH1072W";
+                  $advimpact[$advi] = $advcx{$advcode[$advi]};
+                  $advsit[$advi] = $isitname;
+               }
+            }
          }
       }
       if ((length($ireev_days) >= 1) and (length($ireev_days) <= 3) ) {
@@ -5121,7 +5137,8 @@ sub gettime
 # 1.43000  : HOSTINFO to Agent summary
 # 1.44000  : Advisory on MS_Offline with zero sampling interval
 #          : Advisory if more than one T3 agent.
-# 1.4500   : Correct logic advisory T3 agent
+# 1.45000  : Correct logic advisory T3 agent
+# 1.46000  : Advisory if managing agent is same as agent.
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -6843,7 +6860,7 @@ TEMS instability or crash.
 Recovery plan: Stop the situation and re-author it correctly.
 --------------------------------------------------------------
 
-DATAHEALTH1104W
+DATAHEALTH1104E
 Text:  This ITM has count AMC [:T3] agents and only one is allowed
 
 Check: TNODESAV check
@@ -6857,4 +6874,21 @@ for more details see https://goo.gl/8Lqr9Z
 
 Recovery plan: Eliminate the extra T3 agents or set up
 separate ITM environments to host them.
+--------------------------------------------------------------
+
+DATAHEALTH1105E
+Text:  TNODELST Type V Node is same as Thrunode - illegal
+
+Check: TNODELST check
+
+Meaning: Each node will have a managing node. Often that
+is a hub or remote TEMS. However it could be a product
+like Tivoli Log Agent which has a managing node xxx:LO and
+potentially many subnode agents LO:sssss.
+
+Node same as thrunode is illegal has has seen to create
+instability in a remote TEMS including crashes.
+
+Recovery plan: Work with IBM Support to eliminate the false
+TNODELIST NODETYPE=V object.
 --------------------------------------------------------------
