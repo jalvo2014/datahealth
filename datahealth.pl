@@ -32,7 +32,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.33000";
+my $gVersion = "1.34000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -1818,6 +1818,26 @@ if ($event_ct > 0) {
    if ($top20 != 0) {
       print OH "Total,$eventx_dur seconds,\n";
    }
+}
+
+# check for ghost situation event status
+foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                      $a cmp $b
+                    } keys %eventx) {
+   next if defined $sitx{$eventx{$f}->{sitname}};
+   my $pnodes;
+   for my $g (keys %{$eventx{$f}->{nodes}}) {
+      $pnodes .= $g . " ";
+   }
+
+   $advi++;$advonline[$advi] = "Situation undefined but Events arriving from nodes[$pnodes]";
+   $advcode[$advi] = "DATAHEALTH1085W";
+   $advimpact[$advi] = 95;
+   $advsit[$advi] = $f;
+}
+$eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
+if ($top20 != 0) {
+   print OH "Total,$eventx_dur seconds,\n";
 }
 
 if ($tema_total_eos > 0 ) {
@@ -4171,3 +4191,4 @@ sub gettime
 # 1.31000  : Add more information on rapidly occuring situation events
 # 1.32000  : Add FP7 data
 # 1.33000  : end End of Service alerts and report
+# 1.34000  : Add advisory for ghost situations, event status history even though deleted situation
