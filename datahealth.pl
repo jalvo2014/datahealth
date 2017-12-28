@@ -33,7 +33,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.39000";
+my $gVersion = "1.41000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -310,6 +310,10 @@ my %advcx = (
               "DATAHEALTH1095W" => "100",
               "DATAHEALTH1096W" => "60",
               "DATAHEALTH1097W" => "50",
+              "DATAHEALTH1098E" => "100",
+              "DATAHEALTH1099W" => "25",
+              "DATAHEALTH1100W" => "25",
+              "DATAHEALTH1101E" => "95",
             );
 
 my %advtextx = ();
@@ -662,6 +666,9 @@ my @tci_id = ();
 my @tci_calid = ();
 
 my %eibnodex = ();
+
+my $hdonline = 0;
+my $uadhist = 0;
 
 my %eventx = ();
 my $eventx_start = -1;
@@ -1073,6 +1080,7 @@ for ($i=0; $i<=$nsavei; $i++) {
 
    next if $nsave_product[$i] eq "CF";      # TEMS Configuration Managed System does not have TEMA - skip most tests
    if ($nsave_product[$i] eq "HD") {        # WPA should only connect to hub TEMS
+      $hdonline += 1;
       $nsx = $nlistvx{$node1};
       if (defined $nsx) {
          my $thrunode1 = $nlistv_thrunode[$nsx];
@@ -1451,7 +1459,9 @@ for ($i=0;$i<=$siti;$i++) {
             }
          }
       }
-
+      if ($sit_autostart[$i] eq "*SYN") {            # count Uadvisor historical sits
+            $uadhist += 1 if index($sit_pdt[$i],"TRIGGER") != -1;
+      }
    }
    next if $sit_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TSITDESC duplicate nodes";
@@ -1720,8 +1730,47 @@ for ($i=0;$i<=$obji;$i++){
    my $objname1 = $obj_objname[$i];
    my $nodel1 = $obj_nodel[$i];
    my $class1 = $obj_objclass[$i];
+   $sx = $sitx{$objname1};
+   if (defined $sx) {
+      next if $sit_autostart[$sx] eq "*NO";
+   }
+   $mx = $nlistx{$nodel1};
+   $nsx = $nsavex{$nodel1};
    if ($class1 == 5140) {
-      next if defined $nlistx{$nodel1};         # if known as a MSL, no check for node status
+      if (defined $mx) {                        # MSL defined
+         if (!defined $sx) {                    # Sit not defined
+            if (substr($objname1,0,3) ne "_Z_"){
+               $advi++;$advonline[$advi] = "TOBJACCL Unknown Situation with a known MSL $nodel1 distribution";
+               $advcode[$advi] = "DATAHEALTH1099W";
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
+               $advsit[$advi] = $objname1;
+            }
+         }
+      } elsif (defined $nsx) {                  # MSN defined
+         if (!defined $sx) {                    # Sit not defined
+            if (substr($objname1,0,3) ne "_Z_"){
+                  $advi++;$advonline[$advi] = "TOBJACCL Unknown Situation with a known MSN $nodel1 distribution";
+                  $advcode[$advi] = "DATAHEALTH1100W";
+                  $advimpact[$advi] = $advcx{$advcode[$advi]};
+                  $advsit[$advi] = $objname1;
+            }
+         }
+      } else {                                  # Neither MSL nor MSN defined
+         if (defined $sx) {                     # Sit is defined
+            $advi++;$advonline[$advi] = "TOBJACCL known Situation with a unknown MSN/MSL $nodel1 distribution";
+            $advcode[$advi] = "DATAHEALTH1101E";
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
+            $advsit[$advi] = $objname1;
+         } else {                               # Sit not defined
+            if (substr($objname1,0,3) ne "_Z_"){
+               $advi++;$advonline[$advi] = "TOBJACCL unknown Situation with a unknown MSN/MSL $nodel1 distribution";
+               $advcode[$advi] = "DATAHEALTH1030W";
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
+               $advsit[$advi] = $objname1;
+            }
+         }
+      }
+      next if defined $mx;         # if known as a MSL, no check for node status
       my $nodist = 0;
       if ($opt_nodist ne "") {
          if (substr($nodel1,0,length($opt_nodist)) eq $opt_nodist){
@@ -1733,7 +1782,7 @@ for ($i=0;$i<=$obji;$i++){
       }
       next if $nodist == 1;
       if (substr($nodel1,0,1) eq "*") {
-         $advi++;$advonline[$advi] = "TOBJACCL Nodel $nodel1 Apparent MSL but missing from TNODELST";
+         $advi++;$advonline[$advi] = "TOBJACCL Nodel $nodel1 System Generated MSL but missing from TNODELST";
          $advcode[$advi] = "DATAHEALTH1029W";
          $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $obj[$i];
@@ -1745,18 +1794,11 @@ for ($i=0;$i<=$obji;$i++){
          }
          next;
       }
-      $nsx = $nsavex{$nodel1};
-      if (!defined $nsx) {
-         $advi++;$advonline[$advi] = "TOBJACCL Node or MSL [$nodel1] missing from TNODESAV or TNODELST";
-         $advcode[$advi] = "DATAHEALTH1030W";
-         $advimpact[$advi] = $advcx{$advcode[$advi]};
-         $advsit[$advi] = $obj[$i];
-         if ($opt_miss == 1) {
-            my $pick = $obj[$i];
-            $pick =~ /.*\|.*\|(.*)/;
-            my $key = "DATAHEALTH1030W" . " " . $1;
-            $miss{$key} = 1;
-         }
+      if ($opt_miss == 1) {
+         my $pick = $obj[$i];
+         $pick =~ /.*\|.*\|(.*)/;
+         my $key = "DATAHEALTH1030W" . " " . $1;
+         $miss{$key} = 1;
       }
    } elsif ($class1 == 2010) {
       next if defined $groupx{$objname1};       # if item being distributed is known as a situation group, good
@@ -1997,18 +2039,13 @@ $DB::single=2;
             $tx = $temsx{$thru};
             if (defined $tx) {
                foreach my $s (keys %sum_sits) {
-$DB::single=2;
                   $sx =  $sitx{$s};
                   next if !defined $sx;
-$DB::single=2;
                   if (!defined $tems_sits[$tx]{$s}) {
-$DB::single=2;
                      $tems_sits[$tx]{$s} = 1;
                      if ($sit_reeval[$sx] == 0) {
-$DB::single=2;
                         $tems_puresit[$tx] += 1;
                      } else {
-$DB::single=2;
                         $tems_sampsit[$tx] += 1;
                         $tems_sampload[$tx] += (3600)/$sit_reeval[$sx];
                      }
@@ -2156,6 +2193,17 @@ if ($tema_total_eos > 0) {
          $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = "eos";
       }
+   }
+}
+
+
+# check on case with historical data collection but no WPAs running
+if ($uadhist > 0) {
+   if ($hdonline == 0) {
+      $advi++;$advonline[$advi] = "UADVISOR Historical Situations enabled [$uadhist] but no online WPAs seen";
+      $advcode[$advi] = "DATAHEALTH1098E";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "TEMS";
    }
 }
 
@@ -4962,6 +5010,8 @@ sub gettime
 # 1.37000  : Better logic on multiple TEMA report
 # 1.38000  : Add advisory for remote TEMS higher maint level than hub TEMS
 # 1.39000  : Add Product Summary Report section
+# 1.40000  : Add check for historical data but no WPAs
+#          : Add tighter check for TOBJACCL checking, 1099W, 1100W, 1101W and revised 1030W
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -5528,7 +5578,7 @@ Recovery plan: Review entry and delete if no longer needed.
 --------------------------------------------------------------
 
 DATAHEALTH1030W
-Text:  TOBJACCL Node missing in Node Status
+Text:  "TOBJACCL unknown Situation with a unknown MSN/MSL name distribution
 
 Check: TOBJACCL.OBJNAME values should be present in TNODESAV
 
@@ -6573,4 +6623,81 @@ are at different release levels. Many such case will appear
 to work but can fail under extreme circumstances.
 
 Recovery plan: Update the hub TEMS.
+--------------------------------------------------------------
+
+DATAHEALTH1098E
+Text:  UADVISOR Historical Situations enabled [count] but no online WPAs seen
+
+Check: TNODESAV and TSITDESC checks
+
+Meaning: This means uadvisor historical data situations are
+collecting data at agents [or TEMS] however no Warehouse
+Proxy Agents are online. This means that historical data
+will collect at the agents [or TEMS] can can trigger an
+out of disk storage condition.
+
+Recovery plan: Install some WPAs or turn off historical data
+collection.
+--------------------------------------------------------------
+
+DATAHEALTH1099W
+Text:  TOBJACCL Unknown Situation with a known MSL name distribution
+
+Check: TSITDESC and TNODESAV and TNODELST checks
+
+Meaning: A situation is mentioned in the distribution table
+TOBJACCL with a known managed system list - however the
+situation is not defined.
+
+This suggests a situation might be missing and not running
+as it would be expected to. However if it was not supposed to be
+running there is no effect.
+
+
+Recovery plan: Review the conditions and see what was planned.
+IBM Support can help you eliminate any false records.
+collection.
+--------------------------------------------------------------
+
+DATAHEALTH1100W
+Text:  TOBJACCL Unknown Situation with a known MSN name distribution";
+
+Check: TSITDESC and TNODESAV and TNODELST checks
+
+Meaning: A situation is mentioned in the distribution table
+TOBJACCL with a known managed system name list - however the
+situation is not defined.
+
+This suggests a situation might be missing and not running
+as it would be expected to. However if it was not supposed to be
+running there is no effect.
+
+
+Recovery plan: Review the conditions and see what was planned.
+IBM Support can help you eliminate any false records.
+collection.
+--------------------------------------------------------------
+
+DATAHEALTH1101E
+Text:  TOBJACCL known Situation with a unknown MSN/MSL $nodel1 distribution
+
+Check: TSITDESC and TNODESAV and TNODELST checks
+
+Meaning: A situation is mentioned in the distribution table
+and the situation is known. However the distribution target
+(managed system list or managed system name) is unknown.
+
+This strongly suggest that a situation should be running but is
+is not. On one occasion a database file condition caused the
+temporary loss of thousands of Managed System List objects
+and then result was that many many situations were not running
+as expected. That is a severe condition.
+
+
+Recovery plan: Work with IBM Support to recover from this
+severe condition. Having a good backup of the TEMS database
+files could help recover. See this document
+
+Sitworld: Best Practice TEMS Database Backup and Recovery
+https://ibm.biz/BdRKKH
 --------------------------------------------------------------
