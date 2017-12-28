@@ -30,7 +30,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.30000";
+my $gVersion = "1.31000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -832,16 +832,13 @@ for ($i=0; $i<=$nsavei; $i++) {
          if (defined $thrunode1) {
             my $tx = $temsx{$thrunode1};
             if (defined $tx) {
-#$DB::single=2;
                if ($thrunode1 ne $hub_tems) {
                   $advi++;$advonline[$advi] = "CF Agent connected to $thrunode1 which is not the hub TEMS";
                   $advcode[$advi] = "DATAHEALTH1076W";
                   $advimpact[$advi] = 50;
                   $advsit[$advi] = $node1;
                } else {
-#$DB::single=2;
                   if ($isFTO >= 2) {
-#$DB::single=2;
                      $advi++;$advonline[$advi] = "CF Agent not supported in FTO mode";
                      $advcode[$advi] = "DATAHEALTH1077E";
                      $advimpact[$advi] = 100;
@@ -1469,9 +1466,7 @@ for ($i=0;$i<=$obji;$i++){
       $advcode[$advi] = "DATAHEALTH1035W";
       $advimpact[$advi] = 0;
       $advsit[$advi] = $nodel1;
-$DB::single=2;
       if ($opt_miss == 1) {
-$DB::single=2;
          my $pick = $nodel1;
          $pick =~ /.*\|.*\|(.*)/;
          my $key = "DATAHEALTH1035W" . " " . $1;
@@ -1746,8 +1741,12 @@ foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
    my $sit_dur = get_epoch($sit_last) - get_epoch($sit_start) + 1;
    my $sit_rate = ($eventx{$f}->{count}*60)/$sit_dur;
    my $psit_rate = sprintf("%.2f",$sit_rate);
-   if ($sit_rate > 5) {
-      $advi++;$advonline[$advi] = "Situation Event arriving $psit_rate per minute";
+   if ($sit_rate > 3) {
+      my $pnodes;
+      for my $g (keys %{$eventx{$f}->{nodes}}) {
+         $pnodes .= $g . " ";
+      }
+      $advi++;$advonline[$advi] = "Situation Event arriving $psit_rate per minute from nodes[$pnodes] Atomize[$eventx{$f}->{atomize}]";
       $advcode[$advi] = "DATAHEALTH1074W";
       $advimpact[$advi] = 90;
       $advsit[$advi] = $eventx{$f}->{sitname};
@@ -2590,6 +2589,7 @@ sub new_tsitstsh {
       my %sitref = (
                       sitname => $isitname,
                       atomize => $iatomize,
+                      nodes => {},
                       count => 0,
                       open  => 0,
                       close => 0,
@@ -2603,16 +2603,17 @@ sub new_tsitstsh {
       my $sx = $sitx{$isitname};
       $sit_ref->{reeval} = $sit_reeval[$sx] if defined $sx;
    }
-    $sit_ref->{count} += 1;
-    $sit_ref->{open} += 1 if $ideltastat eq "Y";
-    $sit_ref->{close} += 1 if $ideltastat eq "N";
+   $sit_ref->{nodes}{$ioriginnode} = 1;
+   $sit_ref->{count} += 1;
+   $sit_ref->{open} += 1 if $ideltastat eq "Y";
+   $sit_ref->{close} += 1 if $ideltastat eq "N";
 
-    if ($igbltmstmp < $sit_ref->{start}) {
-       $sit_ref->{start} = $igbltmstmp;
-    }
-    if ($igbltmstmp > $sit_ref->{last}) {
-       $sit_ref->{last} = $igbltmstmp;
-    }
+   if ($igbltmstmp < $sit_ref->{start}) {
+      $sit_ref->{start} = $igbltmstmp;
+   }
+   if ($igbltmstmp > $sit_ref->{last}) {
+      $sit_ref->{last} = $igbltmstmp;
+   }
     if ($eventx_start == -1) {
        $eventx_start = $igbltmstmp;
        $eventx_last = $igbltmstmp;
@@ -4067,3 +4068,4 @@ sub gettime
 # 1.29000  : Advisory when CF is on remotes or in FTO environment
 #          : Advisory when WPA not configured to hub TEMS
 # 1.30000  : Advisory when agent has invalid affinities
+# 1.31000  : Add more information on rapidly occuring situation events
