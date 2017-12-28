@@ -23,6 +23,8 @@
 #  QA1DAPPL     TAPPLPROPS  ??
 #  QA1CSPRD     TUSER       ??
 #  STSH - multi-row events... 001->998
+# The pure event situation of the Extended Oracle Database agent does not fire on the subnode where the subnode ID is longer than or equal to 25 characters.
+# https://eclient.lenexa.ibm.com:9445/search/?fetch=source/TechNote/1430630
 
 #use warnings::unused; # debug used to check for unused variables
 use strict;
@@ -30,7 +32,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.31000";
+my $gVersion = "1.32000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -328,11 +330,12 @@ $hnodelist{'KSNMP-MANAGER00'} ='*CUSTOM_SNMP-MANAGER00';
 # The goal is to identify how far behind a particular customer site is compare with latest maintenance levels.
 
 # date: Date maintenance level published
-# days: Epoch days maintenance level published
+# days: Number of days since 1 Jan 1900
 # apars: array of TEMA APAR fixes included
 
 my %mhash= (
-            '06.30.06' => {date=>'12/10/2015',days=>42346,apars=>['IV66841','IV69144','IV70115','IV73766','IV76109','IV79364'],},
+            '06.30.07' => {date=>'01/07/2017',days=>42742,apars=>['IV78703','IV81217'],},
+            '06.30.06' => {date=>'12/10/2016',days=>42346,apars=>['IV66841','IV69144','IV70115','IV73766','IV76109','IV79364'],},
             '06.30.05' => {date=>'06/30/2015',days=>42183,apars=>['IV64897','IV65775','IV67576','IV69027'],},
             '06.30.04' => {date=>'12/12/2014',days=>41983,apars=>['IV44811','IV53859','IV54581','IV56194','IV56578','IV62139','IV62138','IV60851'],},
             '06.30.03' => {date=>'08/07/2014',days=>41856,apars=>['IV62667'],},
@@ -1764,12 +1767,29 @@ foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
    $oneline .=  $pnodes . ",";
    print OH "$oneline\n";
 }
+$eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
 if ($top20 != 0) {
-   $eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
    print OH "Total,$eventx_dur seconds,\n";
 }
-
 print OH "\n";
+
+my $eventx_ct = 0;
+foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                      $a cmp $b
+                    } keys %eventx) {
+   $eventx_ct += $eventx{$f}->{count};
+}
+#$DB::single=2;
+my $sit_rate = ($eventx_ct*60)/$eventx_dur;
+my $psit_rate = sprintf("%.2f",$sit_rate);
+if ($sit_rate > 60) {
+#$DB::single=2;
+   $advi++;$advonline[$advi] = "Situation Status Events arriving $psit_rate per minute";
+   $advcode[$advi] = "DATAHEALTH1080W";
+   $advimpact[$advi] = 95;
+   $advsit[$advi] = "sitrate";
+}
+#$DB::single=2;
 
 my $tadvi = $advi + 1;
 print OH "Advisory messages,$tadvi\n";
@@ -2095,7 +2115,6 @@ sub new_tgroupi {
         $advsit[$advi] = $iobjname;
      }
   } else {
-$DB::single=2;
      die "Unknown TGROUPI objclass $groupi_detail_ref->{objclass} working on $igrpclass $iid $iobjclass $iobjname";
   }
 }
@@ -4069,3 +4088,4 @@ sub gettime
 #          : Advisory when WPA not configured to hub TEMS
 # 1.30000  : Advisory when agent has invalid affinities
 # 1.31000  : Add more information on rapidly occuring situation events
+# 1.32000  : Add FP7 data
