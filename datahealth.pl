@@ -33,7 +33,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.38000";
+my $gVersion = "1.39000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -131,6 +131,7 @@ my @nsave = ();
 my %nsavex = ();
 my @nsave_product = ();
 my @nsave_version = ();
+my @nsave_subversion = ();
 my @nsave_hostaddr = ();
 my @nsave_sysmsl = ();
 my @nsave_ct = ();
@@ -207,6 +208,8 @@ my @magent_subct = ();                   # count of subnode agents
 my @magent_sublen = ();                  # length of subnode agent list
 my @magent_tems_version = ();            # version of managing agent TEMS
 my @magent_tems = ();                    # TEMS name where managing agent reports
+
+my %pcx;                                 # Product Summary hash
 
 # allow user to set impact
 my %advcx = (
@@ -938,6 +941,55 @@ if ($hub_tems_no_tnodesav == 0) {
          $tema_total_max_apars += $level_ref->{apars};
 #        print "adding $level_ref->{apars} for $node1 $agtlevel\n";
       }
+   }
+}
+
+# calculate Agent Summary Report Section
+my $npc_ct = 0;
+for ($i=0; $i<=$nsavei; $i++) {
+   my $node1 = $nsave[$i];
+   my $npc = $nsave_product[$i];
+   next if $npc eq "";
+   my $nversion = $nsave_version[$i];
+   $nversion .= "." . $nsave_subversion[$i] if $nsave_subversion[$i] ne "";
+   my $ntema = $nsave_temaver[$i];
+   $npc_ct += 1;
+   my $pc_ref = $pcx{$npc};
+   if (!defined $pc_ref) {
+      my %pcref = (
+                      count => 0,
+                      versions => {},
+                      temas => {},
+                  );
+      $pc_ref = \%pcref;
+      $pcx{$npc} = \%pcref;
+   }
+   $pc_ref->{count} += 1;
+
+   # Calculate Agent versions
+   if ($nversion ne "") {
+      my $version_ref = $pc_ref->{versions}{$nversion};
+      if (!defined $version_ref) {
+         my %versionref = (
+                             count => 0,
+                          );
+        $version_ref = \%versionref;
+        $pc_ref->{versions}{$nversion} = \%versionref;
+      }
+      $pc_ref->{versions}{$nversion}->{count} += 1;
+   }
+
+   # Calculate Agent TEMA versions
+   if ($ntema ne "") {
+      my $tema_ref = $pc_ref->{temas}{$ntema};
+      if (!defined $tema_ref) {
+         my %temaref = (
+                          count => 0,
+                       );
+        $tema_ref = \%temaref;
+        $pc_ref->{temas}{$ntema} = \%temaref;
+      }
+      $pc_ref->{temas}{$ntema}->{count} += 1;
    }
 }
 
@@ -2195,7 +2247,6 @@ foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
                     } keys %eventx) {
    $eventx_ct += $eventx{$f}->{count};
 }
-#$DB::single=2;
 if ($eventx_ct > 0) {
    if ($eventx_dur >1) {
       my $sit_rate = ($eventx_ct*60)/$eventx_dur;
@@ -2284,6 +2335,32 @@ if ($tema_total_count > 0 ){
    $fraction = ($tema_total_max_apars) / $tema_total_count;
    $oneline = sprintf( "%.0f", $fraction) . ",Average APARS TEMA version less than latest TEMS version,";
    print OH "$oneline\n";
+}
+
+if ($npc_ct > 0 ) {
+   print OH "\n";
+   print OH "Product Summary Report\n";
+   print OH "Product[Agent],Count,Versions,TEMAs,\n";
+   foreach my $f (sort { $a cmp $b } keys %pcx) {
+      my $pc_ref = $pcx{$f};
+      $oneline = $f . "," . $pc_ref->{count} . ",";
+      my $pversions = "";
+      foreach my $g  (sort { $a cmp $b } keys %{$pc_ref->{versions}}) {
+         my $version_ref = $pc_ref->{versions}{$g};
+         $pversions .= $g . "(" . $version_ref->{count} . ") ";
+      }
+      $pversions = substr($pversions,0,-1) if $pversions ne "";
+      $oneline .= "Versions[" . $pversions . "],";
+      my $ptemas = "";
+      foreach my $g  (sort { $a cmp $b } keys %{$pc_ref->{temas}}) {
+         my $tema_ref = $pc_ref->{temas}{$g};
+         $ptemas .= $g . "(" . $tema_ref->{count} . ") ";
+      }
+      $ptemas = substr($ptemas,0,-1) if $ptemas ne "";
+      $oneline .= "TEMAs[" . $ptemas . "],";
+      print OH "$oneline\n";
+   }
+
 }
 
 
@@ -2951,6 +3028,7 @@ sub new_tnodesav {
          }
       }
       $nsave_version[$nsx] = $iversion;
+      $nsave_subversion[$nsx] = "";
       $nsave_hostaddr[$nsx] = $ihostaddr;
       $nsave_ct[$nsx] = 0;
       $nsave_o4online[$nsx] = $io4online;
@@ -2964,6 +3042,9 @@ sub new_tnodesav {
          $nsave_common[$nsx] = "";
          # found one agent with RESERVED == A=00:ls3246;;;
          if ($#words > 0) {
+            if ($words[0] ne "") {
+               $nsave_subversion[$nsx] = substr($words[0],2,2);
+            }
             if ($words[1] ne "") {
                $nsave_common[$nsx] = substr($words[1],2);
                @words = split(":",$words[1]);
@@ -3654,7 +3735,6 @@ sub init_txt {
       new_tname($iid,$ilstdate,$ifullname);
    }
 
-#$DB::single=2;
    open(KOBJ, "< $opt_txt_tobjaccl") || die("Could not open TOBJACCL $opt_txt_tobjaccl\n");
    @kobj_data = <KOBJ>;
    close(KOBJ);
@@ -3674,7 +3754,6 @@ sub init_txt {
       $inodel =~ s/\s+$//;   #trim trailing whitespace
       $ilstdate = substr($oneline,75,16);
       $ilstdate =~ s/\s+$//;   #trim trailing whitespace
-#$DB::single=2;
       next if ($iobjclass != 5140) and ($iobjclass != 2010);
       new_tobjaccl($iobjclass,$iobjname,$inodel,$ilstdate);
    }
@@ -4719,7 +4798,6 @@ EndOFHelp
 exit;
 }
 sub get_epoch {
-#$DB::single=2;
    use POSIX;
    my $itm_stamp = shift;
    my $unixtime = $epochx{$itm_stamp};
@@ -4883,6 +4961,7 @@ sub gettime
 #          : Reduce impact of DATAHEALTH1023 to 0, more annoyance than actual issue
 # 1.37000  : Better logic on multiple TEMA report
 # 1.38000  : Add advisory for remote TEMS higher maint level than hub TEMS
+# 1.39000  : Add Product Summary Report section
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
