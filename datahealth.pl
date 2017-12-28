@@ -33,7 +33,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.43000";
+my $gVersion = "1.44000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -316,6 +316,8 @@ my %advcx = (
               "DATAHEALTH1100W" => "25",
               "DATAHEALTH1101E" => "95",
               "DATAHEALTH1102W" => "10",
+              "DATAHEALTH1103W" => "90",
+              "DATAHEALTH1104E" => "100",
             );
 
 my %advtextx = ();
@@ -1534,8 +1536,15 @@ for ($i=0;$i<=$siti;$i++) {
    if (index($sit_pdt[$i],"ManagedSystem.Status") != -1) {
       if($sit[$i] ne "TEMS_Busy") {
          if ($sit_autostart[$i] eq "*YES") {
-            $ms_offline_kds_hour += 3600/$sit_reeval[$i];
-            $ms_offline_sitmon_hour += 3600/$sit_reeval[$i] if $sit_persist[$i] > 1;
+            if ($sit_reeval[$i] > 0 ) {
+               $ms_offline_kds_hour += 3600/$sit_reeval[$i];
+               $ms_offline_sitmon_hour += 3600/$sit_reeval[$i] if $sit_persist[$i] > 1;
+            } else {
+               $advi++;$advonline[$advi] = "MS_Offline type situation with 0 sampling rate - cannot work correctly";
+               $advcode[$advi] = "DATAHEALTH1103W";
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
+               $advsit[$advi] = $sit[$i];
+            }
          }
       }
    }
@@ -1735,6 +1744,17 @@ for ($i=0;$i<=$nlisti;$i++) {
       $advcode[$advi] = "DATAHEALTH1052W";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlist[$i];
+   }
+}
+
+# check for more than one T3 agent
+my $pc_ref = $pcx{"T3"};
+if (defined $pc_ref) {
+   if ($pc_ref->{count} > 1) {
+      $advi++;$advonline[$advi] = "This ITM has $pc_ref->{count} T3 agents and only one is allowed";
+      $advcode[$advi] = "DATAHEALTH1104E";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "TEMS";
    }
 }
 
@@ -5100,6 +5120,8 @@ sub gettime
 # 1.42000  : Add 1102W for known situation unknown system generated MSL - not so important
 #          : Add FTO status  HUB/MIRROR in FTO message
 # 1.43000  : HOSTINFO to Agent summary
+# 1.44000  : Advisory on MS_Offline with zero sampling interval
+#          : Advisory if more than one T3 agent.
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -6805,4 +6827,34 @@ run but no agents are currently running. This has a small
 effect on TEMS startup time but is not otherwise a problem.
 
 Recovery plan: Probably ignore issue.
+--------------------------------------------------------------
+
+DATAHEALTH1103W
+Text:  MS_Offline type situation with 0 sampling rate - cannot work correctly
+
+Check: TSITDESC
+
+Meaning: A MS_Offline type situation is inherently a
+sampled situation. This alerts to cases where the
+sampling interval is zero. At the best the situation
+will not fire as expected. At the worst it could cause
+TEMS instability or crash.
+
+Recovery plan: Stop the situation and re-author it correctly.
+--------------------------------------------------------------
+
+DATAHEALTH1104W
+Text:  This ITM has count T3 agents and only one is allowed
+
+Check: TNODESAV check
+
+Meaning: The T3 agent is and central control for
+ITMCAM for Transactions. By that product design there
+must be only one T3 agent in an ITM environment. If this
+is violated the product will not work as expected.
+
+for more details see https://goo.gl/8Lqr9Z
+
+Recovery plan: Eliminate the extra T3 agents or set up
+separate ITM environments to host them.
 --------------------------------------------------------------
