@@ -25,6 +25,7 @@
 #  STSH - multi-row events... 001->998
 # The pure event situation of the Extended Oracle Database agent does not fire on the subnode where the subnode ID is longer than or equal to 25 characters.
 # https://eclient.lenexa.ibm.com:9445/search/?fetch=source/TechNote/1430630
+# Identify cases where TEMA 32 bit *NE TEMA 64 bit level at a system
 
 #use warnings::unused; # debug used to check for unused variables
 use strict;
@@ -32,7 +33,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.35000";
+my $gVersion = "1.36000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -71,6 +72,18 @@ sub new_tobjaccl;                        # process the TOBJACCL records
 sub fill_tnodelstv;                      # reprocess new TNODELST NODETYPE=V data
 sub valid_lstdate;                       # validate the LSTDATE
 sub get_epoch;                           # convert from ITM timestamp to epoch seconds
+sub sitgroup_get_sits;                   # calculate situations associated with Situation Group
+
+my @grp;
+my %grpx = ();
+my @grp_sit = ();
+my @grp_grp = ();
+my @grp_name = ();
+my %sum_sits;
+my $gx;
+my $grpi = -1;
+
+my %ipx;
 
 my $sitdata_start_time = gettime();     # formated current time for report
 
@@ -108,6 +121,7 @@ my $nlx;
 my $nlisti = -1;
 my @nlist = ();
 my %nlistx = ();
+my @nlist_agents = ();
 
 
 # TNODESAV record data                  Disk copy of INODESTS [mostly]
@@ -123,6 +137,7 @@ my @nsave_ct = ();
 my @nsave_o4online = ();
 my @nsave_affinities = ();
 my @nsave_temaver = ();
+my @nsave_common = ();
 
 my $nsave_online = 0;
 my $nsave_offline = 0;
@@ -162,6 +177,10 @@ my @tems_version = ();                   # TEMS version number
 my @tems_arch = ();                      # TEMS architecture
 my @tems_thrunode = ();                  # TEMS THRUNODE, when NODE=THRUNODE that is a hub TEMS
 my @tems_affinities = ();                # TEMS AFFINITIES
+my @tems_sampload = ();                  # Sampled Situaton dataserver load
+my @tems_sampsit = ();                   # Sampled Situation Count
+my @tems_puresit = ();                   # Pure Situation Count
+my @tems_sits = ();                      # Situations hash
 my $hub_tems = "";                       # hub TEMS nodeid
 my $hub_tems_version = "";               # hub TEMS version
 my $hub_tems_no_tnodesav = 0;            # hub TEMS nodeid missing from TNODESAV
@@ -187,6 +206,7 @@ my %magentx = ();                        # hash from managing agent name to inde
 my @magent_subct = ();                   # count of subnode agents
 my @magent_sublen = ();                  # length of subnode agent list
 my @magent_tems_version = ();            # version of managing agent TEMS
+my @magent_tems = ();                    # TEMS name where managing agent reports
 
 # allow user to set impact
 my %advcx = (
@@ -212,7 +232,7 @@ my %advcx = (
               "DATAHEALTH1020W" => "80",
               "DATAHEALTH1021E" => "105",
               "DATAHEALTH1022E" => "105",
-              "DATAHEALTH1023E" => "25",
+              "DATAHEALTH1023W" => "00",
               "DATAHEALTH1024E" => "90",
               "DATAHEALTH1025E" => "0",
               "DATAHEALTH1026E" => "50",
@@ -281,6 +301,11 @@ my %advcx = (
               "DATAHEALTH1089E" => "100",
               "DATAHEALTH1090W" => "80",
               "DATAHEALTH1091W" => "95",
+              "DATAHEALTH1092W" => "85",
+              "DATAHEALTH1093W" => "75",
+              "DATAHEALTH1094W" => "95",
+              "DATAHEALTH1095W" => "100",
+              "DATAHEALTH1096W" => "60",
             );
 
 my %advtextx = ();
@@ -1055,7 +1080,7 @@ for ($i=0; $i<=$nsavei; $i++) {
          next if $known_ext == 1;
          $advi++;$advonline[$advi] = "Node Name at 32 characters and might be truncated - product[$product1]";
          $advcode[$advi] = "DATAHEALTH1013W";
-         $advimpact[$advi] = 10;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $node1;
       } else {
          next if length($node1) < 31;
@@ -1151,7 +1176,6 @@ sub valid_lstdate {
       $advimpact[$advi] = $advcx{$advcode[$advi]};
      $advimpact[$advi] = $advcx{$advcode[$advi]};
                $advimpact[$advi] = $advcx{$advcode[$advi]};
-               $advimpact[$advi] = 10;
                $advsit[$advi] = "$itable";
             }
          }
@@ -1327,7 +1351,6 @@ for ($i=0;$i<=$nsavei;$i++) {
       $advi++;$advonline[$advi] = "TNODESAV invalid node name";
       $advcode[$advi] = "DATAHEALTH1016E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
-      $advimpact[$advi] = 50;
       $advsit[$advi] = $nsave[$i];
    }
 
@@ -1397,7 +1420,7 @@ for ($i=0;$i<=$nami;$i++) {
    next if defined $sitx{$nam[$i]};
    next if substr($nam[$i],0,8) eq "UADVISOR";
    $advi++;$advonline[$advi] = "TNAME ID index missing in TSITDESC";
-   $advcode[$advi] = "DATAHEALTH1023E";
+   $advcode[$advi] = "DATAHEALTH1023W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $nam[$i];
 }
@@ -1435,12 +1458,9 @@ for ($i=0;$i<=$siti;$i++) {
    }
    $sit_autostart_total += 1 if $sit_autostart[$i] eq "*YES";
 }
-$DB::single=2;
 if ($nsave_online > 0){
-$DB::single=2;
    my $sit_ratio_percent = int(($sit_autostart_total*100)/$nsave_online);
    if ($sit_ratio_percent > 100) {
-$DB::single=2;
       $advi++;$advonline[$advi] = "Autostarted Situation to Online Agent ratio[$sit_ratio_percent%] - dangerously high";
       $advcode[$advi] = "DATAHEALTH1091W";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
@@ -1533,6 +1553,20 @@ foreach my $f (keys %sysnamex) {
    $advcode[$advi] = "DATAHEALTH1075W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $f;
+}
+
+my $tema_multi = 0;
+foreach my $f (keys %ipx) {
+   my $ip_ref =$ipx{$f};
+   next if $ip_ref->{count} < 2;
+   $tema_multi += 1;
+}
+
+if ($tema_multi > 0) {
+   $advi++;$advonline[$advi] = "Systems [$tema_multi] running agents with multiple TEMA levels - see later report";
+   $advcode[$advi] = "DATAHEALTH1096W";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = "TEMA";
 }
 
 for ($i=0;$i<=$nlistvi;$i++) {
@@ -1710,25 +1744,48 @@ for ($i=0;$i<=$nsavei;$i++) {
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $nsave[$i];
 }
-## Check for TEMA level in IZ76410 danger zone
+
+## Check for TEMA level in danger zones
+my $danger_IZ76410 = 0;
+my $danger_IV18016 = 0;
+my $danger_IV30473 = 0;
 for ($i=0;$i<=$nsavei;$i++) {
    next if $nsave_temaver[$i] eq "";
    if ( (substr($nsave_temaver[$i],0,8) ge "06.21.00") and (substr($nsave_temaver[$i],0,8) lt "06.21.03") or
         (substr($nsave_temaver[$i],0,8) ge "06.22.00") and (substr($nsave_temaver[$i],0,8) lt "06.22.03")) {
-      if ($nsave_product[$i] ne "VA") {
-         $advi++;$advonline[$advi] = "Agent [$nsave_hostaddr[$i]] using TEMA at version [$nsave_temaver[$i]] in IZ76410 danger zone";
-         $advcode[$advi] = "DATAHEALTH1042E";
-         $advimpact[$advi] = $advcx{$advcode[$advi]};
-         $advsit[$advi] = $nsave[$i];
-      }
+      $danger_IZ76410 += 1 if $nsave_product[$i] ne "VA";
    }
    if ( (substr($nsave_temaver[$i],0,8) eq "06.22.07") or (substr($nsave_temaver[$i],0,8) eq "06.23.01")) {
-      $advi++;$advonline[$advi] = "Agent [$nsave_hostaddr[$i]] using TEMA at version [$nsave_temaver[$i]] in IV18016 danger zone";
-      $advcode[$advi] = "DATAHEALTH1090W";
-      $advimpact[$advi] = $advcx{$advcode[$advi]};
-      $advsit[$advi] = $nsave[$i];
+      $danger_IV18016 += 1;
    }
+   if ( ((substr($nsave_temaver[$i],0,8) ge "06.22.07") and (substr($nsave_temaver[$i],0,8) le "06.22.09")) or
+        ((substr($nsave_temaver[$i],0,8) ge "06.23.00") and (substr($nsave_temaver[$i],0,8) le "06.23.02"))) {
+      $danger_IV30473 += 1;
+   }
+
 }
+
+if ($danger_IZ76410 > 0) {
+   $advi++;$advonline[$advi] = "Agents[$danger_IZ76410] using TEMA in IZ76410 danger zone - see following report";
+   $advcode[$advi] = "DATAHEALTH1042E";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = "APAR";
+}
+
+if ($danger_IV18016 > 0) {
+   $advi++;$advonline[$advi] = "Agents[$danger_IV18016] using TEMA in IV18016 danger zone - see following report";
+   $advcode[$advi] = "DATAHEALTH1090W";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = "APAR";
+}
+
+if ($danger_IV30473 > 0) {
+   $advi++;$advonline[$advi] = "Agents[$danger_IV30473] using TEMA in IV30473 danger zone - see following report";
+   $advcode[$advi] = "DATAHEALTH1093W";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = "APAR";
+}
+
 ## Check for virtual hub table update impact
 my $peak_rate = 0;
 for ($i=0;$i<=$vti;$i++) {
@@ -1749,7 +1806,7 @@ if ($peak_rate > $opt_peak_rate) {
    }
    $advi++;$advonline[$advi] = "Virtual Hub Table updates peak $peak_rate per second more then nominal $opt_peak_rate -  per hour [$vtnode_tot_hr] - total agents $vtnode_tot_ct";
    $advcode[$advi] = "DATAHEALTH1018W";
-   $advimpact[$advi] = 90;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = "total";
 }
 
@@ -1761,6 +1818,155 @@ for ($i=0;$i<=$mlisti;$i++) {
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $mlist[$i];
 }
+
+# Following logic estimates the dataserver load per TEMS based on number of situations.
+# Load Step 1: calculate the situation distribution
+# Load Step 2: Calculate the dataserver load
+# Load Step 3: Produce advisory messages
+# A post advisory report is created based on this calculated data.
+
+# look through each TOBJACCL row
+for ($i=0;$i<=$obji;$i++) {
+   next if ($obj_objclass[$i] ne "5140") and ($obj_objclass[$i] ne "2010");         # ignore if not situation or sitgroup distribution
+   my $sitone = $obj_objname[$i];               # situation being looked at or Sitgroup
+
+   next if substr($sitone,0,8) eq "UADVISOR";
+   next if substr($sitone,0,3) eq "_Z_";
+   my $node1 = $obj_nodel[$i];                  # distribution
+   $sx = $sitx{$sitone};
+   $gx = $grpx{$sitone};
+   $nlx = $nlistx{$node1};
+   # For each agent in found, determine thrunode/TEMS. Add to thrunode count, sampled count, pure count, sampled impact
+   # handle subnode agents via the managing agent
+   my $thru = "";
+   if (defined $sx) {             # Situation name
+      if (defined $nlx) {         # a MSL distribution
+         # read out the agents associated with this MSL
+         foreach my $f (keys %{$nlist_agents[$nlx]}) {
+            $mx = $magentx{$f};    # is this a subnode agent
+            if (defined $mx) {
+               $thru = $magent_tems[$mx];
+            } else {
+               $vlx = $nlistvx{$f};
+               if (defined $vlx) {
+                  $thru = $nlistv_tems[$vlx];
+               }
+            }
+            if ($thru ne "") {
+               $tx = $temsx{$thru};
+               if (defined $tx) {
+                  if (!defined $tems_sits[$tx]{$sitone}) {
+                     $tems_sits[$tx]{$sitone} = 1;
+                     if ($sit_reeval[$sx] == 0) {
+                        $tems_puresit[$tx] += 1;
+                     } else {
+                        $tems_sampsit[$tx] += 1;
+                        $tems_sampload[$tx] += (3600)/$sit_reeval[$sx];
+                     }
+                  }
+               }
+            }
+         }
+      } else {                    # a MSN distribution
+         $mx = $magentx{$node1};    # is this a subnode agent
+         if (defined $mx) {
+            $thru = $magent_tems[$mx];
+         } else {
+            $vlx = $nlistvx{$node1};
+            if (defined $vlx) {
+               $thru = $nlistv_tems[$vlx];
+            }
+         }
+         if ($thru ne "") {
+            $tx = $temsx{$thru};
+            if (defined $tx) {
+               if (!defined $tems_sits[$tx]{$sitone}) {
+                  $tems_sits[$tx]{$sitone} = 1;
+                  if (defined $tx) {
+                     if ($sit_reeval[$sx] == 0) {
+                        $tems_puresit[$tx] += 1;
+                     } else {
+                        $tems_sampsit[$tx] += 1;
+                        $tems_sampload[$tx] += (3600)/$sit_reeval[$sx];
+                     }
+                  }
+               }
+            }
+         }
+      }
+   } elsif (defined $gx) {        # Sitgroup Identification
+      # determine the associated situations
+      %sum_sits = ();
+      sitgroup_get_sits($gx);
+      if (defined $nlx) {         # a MSL distribution
+         # read out the agents associated with this MSL
+         foreach my $f (keys %{$nlist_agents[$nlx]}) {
+            $mx = $magentx{$f};    # is this a subnode agent
+            if (defined $mx) {
+$DB::single=2;
+               $thru = $magent_tems[$mx];
+            } else {
+               $vlx = $nlistvx{$f};
+               if (defined $vlx) {
+                  $thru = $nlistv_tems[$vlx];
+               }
+            }
+            if ($thru ne "") {
+               $tx = $temsx{$thru};
+               if (defined $tx) {
+                  foreach my $s (keys %sum_sits) {
+                     $sx =  $sitx{$s};
+                     next if !defined $sx;
+                     if (!defined $tems_sits[$tx]{$s}) {
+                        $tems_sits[$tx]{$s} = 1;
+                        if ($sit_reeval[$sx] == 0) {
+                           $tems_puresit[$tx] += 1;
+                        } else {
+                           $tems_sampsit[$tx] += 1;
+                           $tems_sampload[$tx] += (3600)/$sit_reeval[$sx];
+                        }
+                     }
+                  }
+               }
+            }
+         }
+      } else {                    # a MSN distribution
+         $mx = $magentx{$node1};    # is this a subnode agent
+         if (defined $mx) {
+            $thru = $magent_tems[$mx];
+         } else {
+            $vlx = $nlistvx{$node1};
+            if (defined $vlx) {
+               $thru = $nlistv_tems[$vlx];
+            }
+         }
+         if ($thru ne "") {
+            $tx = $temsx{$thru};
+            if (defined $tx) {
+               foreach my $s (keys %sum_sits) {
+$DB::single=2;
+                  $sx =  $sitx{$s};
+                  next if !defined $sx;
+$DB::single=2;
+                  if (!defined $tems_sits[$tx]{$s}) {
+$DB::single=2;
+                     $tems_sits[$tx]{$s} = 1;
+                     if ($sit_reeval[$sx] == 0) {
+$DB::single=2;
+                        $tems_puresit[$tx] += 1;
+                     } else {
+$DB::single=2;
+                        $tems_sampsit[$tx] += 1;
+                        $tems_sampload[$tx] += (3600)/$sit_reeval[$sx];
+                     }
+                  }
+               }
+            }
+         }
+      }
+   }
+}
+
 
 if ($opt_nohdr == 0) {
    print OH "ITM Database Health Report $gVersion\n";
@@ -1803,7 +2009,6 @@ if ($hub_tems_no_tnodesav == 0) {
             $advi++;$advonline[$advi] = "End of Service TEMS $tems[$i] maint[$tems_version[$i]] date[$tlevel_ref->{date}]";
             $advcode[$advi] = "DATAHEALTH1083W";
             $advimpact[$advi] = $advcx{$advcode[$advi]};
-            $advimpact[$advi] = 75;
             $advsit[$advi] = "eos";
          } else {
             $advi++;$advonline[$advi] = "Future End of Service TEMS tems[$i] maint[$tems_version[$i]] date[$tlevel_ref->{date}]";
@@ -1817,6 +2022,26 @@ if ($hub_tems_no_tnodesav == 0) {
       my $nx = $nsavex{$node1};
       if (defined $nx) {
          $poffline = "Online" if $nsave_o4online[$nx] eq "Y";
+      }
+      my $sit_rate = $tems_sampload[$i]/3600;
+      my $psit_rate = sprintf("%.2f",$sit_rate);
+      if ($sit_rate > 4) {
+         $advi++;$advonline[$advi] = "TEMS Dataserver SQL Situation Load $psit_rate per second more than 4.00/second";
+         $advcode[$advi] = "DATAHEALTH1092W";
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
+         $advsit[$advi] = "$tems[$i]";
+      }
+      my $sit_total = $tems_sampsit[$i] + $tems_puresit[$i];
+      if ($sit_total > 2000) {
+         if ($tems[$i] eq $hub_tems) {
+            $advi++;$advonline[$advi] = "HUB TEMS Dataserver SQL Situation Startup total $sit_total more than 2000";
+            $advcode[$advi] = "DATAHEALTH1095W";
+         } else {
+            $advi++;$advonline[$advi] = "TEMS Dataserver SQL Situation Startup total $sit_total more than 2000";
+            $advcode[$advi] = "DATAHEALTH1094W";
+        }
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
+         $advsit[$advi] = "$tems[$i]";
       }
       print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],\n";
    }
@@ -1963,15 +2188,16 @@ foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
 }
 #$DB::single=2;
 if ($eventx_ct > 0) {
-   my $sit_rate = ($eventx_ct*60)/$eventx_dur;
-   my $psit_rate = sprintf("%.2f",$sit_rate);
-   if ($sit_rate > 60) {
-      $advi++;$advonline[$advi] = "Situation Status Events arriving $psit_rate per minute";
-      $advcode[$advi] = "DATAHEALTH1080W";
-      $advimpact[$advi] = $advcx{$advcode[$advi]};
-      $advsit[$advi] = "sitrate";
+   if ($eventx_dur >1) {
+      my $sit_rate = ($eventx_ct*60)/$eventx_dur;
+      my $psit_rate = sprintf("%.2f",$sit_rate);
+      if ($sit_rate > 60) {
+         $advi++;$advonline[$advi] = "Situation Status Events arriving $psit_rate per minute";
+         $advcode[$advi] = "DATAHEALTH1080W";
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
+         $advsit[$advi] = "sitrate";
+      }
    }
-
 }
 
 $tadvi = $advi + 1;
@@ -2131,6 +2357,7 @@ if ($tema_total_eos > 0 ) {
 }
 print OH "\n";
 
+
 # Calculate for same agent inserted into TNODELST multiple times more then most common
 # This is an important signal about identically named agents on different systems.
 $top20 = 0;
@@ -2202,6 +2429,78 @@ if ($eventx_last != -1) {
 }
 if ($top20 != 0) {
    print OH "Total,$eventx_dur seconds,\n";
+}
+
+print OH "\n";
+print OH "TEMS Situation Load Impact Report\n";
+print OH "Hub,$hub_tems,$hub_tems_ct\n";
+print OH ",TEMSnodeid,Count,Status,Version,Arch,SampSit,SampLoad/s,PureSit,\n";
+for (my $i=0;$i<=$temsi;$i++) {
+   my $poffline = "Offline";
+   my $node1 = $tems[$i];
+   my $nx = $nsavex{$node1};
+   if (defined $nx) {
+      $poffline = "Online" if $nsave_o4online[$nx] eq "Y";
+   }
+   my $sit_rate = $tems_sampload[$i]/3600;
+   my $psit_rate = sprintf("%.2f",$sit_rate);
+   print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_sampsit[$i],$psit_rate,$tems_puresit[$i],\n";
+}
+
+if ($danger_IZ76410 > 0) {
+   print OH "\n";
+   print OH "TEMA Agent(s) in APAR IZ76410 danger\n";
+   print OH "Agent,Hostaddr,TEMAver,\n";
+
+   for ($i=0;$i<=$nsavei;$i++) {
+      next if $nsave_temaver[$i] eq "";
+      if ( (substr($nsave_temaver[$i],0,8) ge "06.21.00") and (substr($nsave_temaver[$i],0,8) lt "06.21.03") or
+           (substr($nsave_temaver[$i],0,8) ge "06.22.00") and (substr($nsave_temaver[$i],0,8) lt "06.22.03")) {
+         print OH "$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n" if $nsave_product[$i] ne "VA";
+      }
+   }
+}
+
+if ($danger_IV18016 > 0) {
+   print OH "\n";
+   print OH "TEMA Agent(s) in APAR IV18016 danger\n";
+   print OH "Agent,Hostaddr,TEMAver,\n";
+
+   for ($i=0;$i<=$nsavei;$i++) {
+      next if $nsave_temaver[$i] eq "";
+      if ( (substr($nsave_temaver[$i],0,8) eq "06.22.07") or (substr($nsave_temaver[$i],0,8) eq "06.23.01")) {
+         print OH "$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n";
+      }
+   }
+}
+
+if ($danger_IV30473 > 0) {
+   print OH "\n";
+   print OH "TEMA Agent(s) in APAR IV30473 danger\n";
+   print OH "Agent,Hostaddr,TEMAver,\n";
+   for ($i=0;$i<=$nsavei;$i++) {
+      next if $nsave_temaver[$i] eq "";
+      if ( ((substr($nsave_temaver[$i],0,8) ge "06.22.07") and (substr($nsave_temaver[$i],0,8) le "06.22.09")) or
+           ((substr($nsave_temaver[$i],0,8) ge "06.23.00") and (substr($nsave_temaver[$i],0,8) le "06.23.02"))) {
+         print OH "$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n";
+      }
+   }
+}
+
+if ($tema_multi > 0) {
+   print OH "\n";
+   print OH "Systems with Multiple TEMA levels\n";
+   print OH "IP_Address,Agent,TEMAver,\n";
+   foreach my $f (keys %ipx) {
+      my $ip_ref =$ipx{$f};
+      next if $ip_ref->{count} < 2;
+      foreach my $g (keys %{$ip_ref->{agents}}) {
+         $oneline = $f . ",";
+         $oneline .= $g . ",";
+         $oneline .= $ip_ref->{agents}{$g} . ",";
+         print OH "$oneline\n";
+      }
+   }
 }
 
 if ($advi != -1) {
@@ -2283,6 +2582,29 @@ if ($advi != -1) {
    $exit_code = ($max_impact > 0);
 }
 exit $exit_code;
+
+# sitgroup_get_sits calculates the sum of all situations which are in this group or
+# further groups in the DAG [Directed Acyclic Graph] that composes the
+# situation groups. Result is returned in the global hash sum_sits which the caller manages.
+
+# $grp_grp is an array
+# $grp_grp[$base_node] is one scalar instance
+# The instance is actually a hash of values, so we reference that by forcing it
+#   %{$grp_grp[$base_node]} and that way the hash can be worked on.
+
+sub sitgroup_get_sits
+{
+   my $base_node = shift;     # input index
+
+   while( my ($refsit, $refval) = each %{$grp_sit[$base_node]}) {    # capture the situations into global hash.
+      $sum_sits{$refsit} = 1;
+   }
+   while( my ($refgrp, $refval) = each %{$grp_grp[$base_node]}) {    # for groups, call recursively
+      my $refgx = $grpx{$refgrp};
+      next if !defined $refgx;
+      sitgroup_get_sits($refgx);
+   }
+}
 
 # TOVERITEM - Specifics of Situation Override detals
 # Capture 4 columns from the Situation Overide Item table and store for later analysis
@@ -2425,8 +2747,20 @@ sub new_tgroup {
       $group_detail_ref = \%igroup;
       $group{$key} = \%igroup;
    }
-  $group_detail_ref->{count} += 1;
-  $groupx{$iid} = 1;
+   $group_detail_ref->{count} += 1;
+   $groupx{$iid} = 1;
+   if ($igrpclass eq '2010') {
+      $gx = $grpx{$iid};
+      if (!defined $gx) {
+         $grpi++;
+         $gx = $grpi;
+         $grp[$gx] = $iid;
+         $grpx{$iid} = $gx;
+         $grp_name[$gx] = $igrpname;
+         $grp_sit[$gx] = {};
+         $grp_grp[$gx] = {};
+      }
+   }
 }
 
 sub new_tgroupi {
@@ -2445,40 +2779,47 @@ sub new_tgroupi {
       $groupi_detail_ref = \%igroupi;
       $groupi{$key} = \%igroupi;
    }
-  $groupi_detail_ref->{count} += 1;
-  my $gkey = $igrpclass . "|" . $iid;
-  my $group_ref = $group{$gkey};
-  if (!defined $group_ref) {
-     $advi++;$advonline[$advi] = "TGROUPI $key unknown TGROUP ID";
-     $advcode[$advi] = "DATAHEALTH1031E";
-     $advimpact[$advi] = $advcx{$advcode[$advi]};
-     $advsit[$advi] = $iid;
-  }
-  if ($groupi_detail_ref->{objclass} == 2010) {
-     my $groupref = $groupi_detail_ref->{objclass};
-    $gkey = "2010" . "|" . $iid;
-     my $group_ref = $group{$gkey};
-     if (!defined $group_ref) {
-        $advi++;$advonline[$advi] = "TGROUPI $key unknown Group $iobjname";
-        $advcode[$advi] = "DATAHEALTH1032E";
+   $groupi_detail_ref->{count} += 1;
+   my $gkey = $igrpclass . "|" . $iid;
+   my $group_ref = $group{$gkey};
+   if (!defined $group_ref) {
+      $advi++;$advonline[$advi] = "TGROUPI $key unknown TGROUP ID";
+      $advcode[$advi] = "DATAHEALTH1031E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
-        $advimpact[$advi] = $advcx{$advcode[$advi]};
-        $advsit[$advi] = $iobjname;
-     } else {
-        $group_ref->{indirect} = 1;
-     }
-  } elsif ($groupi_detail_ref->{objclass} == 5140) {
-     my $sit1 = $groupi_detail_ref->{objname};
-     if (!defined $sitx{$sit1}) {
-        $advi++;$advonline[$advi] = "TGROUPI $key unknown Situation $iobjname";
-        $advcode[$advi] = "DATAHEALTH1033E";
-      $advimpact[$advi] = $advcx{$advcode[$advi]};
-        $advimpact[$advi] = $advcx{$advcode[$advi]};
-        $advsit[$advi] = $iobjname;
-     }
-  } else {
-     die "Unknown TGROUPI objclass $groupi_detail_ref->{objclass} working on $igrpclass $iid $iobjclass $iobjname";
-  }
+      $advsit[$advi] = $iid;
+   }
+   if ($groupi_detail_ref->{objclass} == 2010) {
+      my $groupref = $groupi_detail_ref->{objclass};
+      $gkey = "2010" . "|" . $iid;
+      my $group_ref = $group{$gkey};
+      if (!defined $group_ref) {
+         $advi++;$advonline[$advi] = "TGROUPI $key unknown Group $iobjname";
+         $advcode[$advi] = "DATAHEALTH1032E";
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
+         $advsit[$advi] = $iobjname;
+      } else {
+         $group_ref->{indirect} = 1;
+      }
+   } elsif ($groupi_detail_ref->{objclass} == 5140) {
+      my $sit1 = $groupi_detail_ref->{objname};
+      if (!defined $sitx{$sit1}) {
+         $advi++;$advonline[$advi] = "TGROUPI $key unknown Situation $iobjname";
+         $advcode[$advi] = "DATAHEALTH1033E";
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
+         $advsit[$advi] = $iobjname;
+      }
+   } else {
+       die "Unknown TGROUPI objclass $groupi_detail_ref->{objclass} working on $igrpclass $iid $iobjclass $iobjname";
+   }
+   if ($igrpclass eq '2010') {
+      if (($iobjclass eq '5140') or ($iobjclass eq '2010')) {
+         $gx = $grpx{$iid};
+         if (defined $gx) {
+            $grp_sit[$gx]->{$iobjname} = 1 if $iobjclass eq '5140';
+            $grp_grp[$gx]->{$iobjname} = 1 if $iobjclass eq '2010';
+         }
+      }
+   }
 }
 
 sub new_tobjaccl {
@@ -2603,15 +2944,18 @@ sub new_tnodesav {
       $nsave_hostaddr[$nsx] = $ihostaddr;
       $nsave_ct[$nsx] = 0;
       $nsave_o4online[$nsx] = $io4online;
+      $nsave_common[$nsx] = "";
       if (length($ireserved) == 0) {
          $nsave_temaver[$nsx] = "";
       } else {
          my @words;
          @words = split(";",$ireserved);
          $nsave_temaver[$nsx] = "";
+         $nsave_common[$nsx] = "";
          # found one agent with RESERVED == A=00:ls3246;;;
          if ($#words > 0) {
             if ($words[1] ne "") {
+               $nsave_common[$nsx] = substr($words[1],2);
                @words = split(":",$words[1]);
                $nsave_temaver[$nsx] = substr($words[0],2,8);
             }
@@ -2643,6 +2987,9 @@ sub new_tnodesav {
          $tems_arch[$tx] = $arch;
          $tems_thrunode[$tx] = $ithrunode;
          $tems_affinities[$tx] = $iaffinities;
+         $tems_sampload[$tx] = 0;
+         $tems_sampsit[$tx] = 0;
+         $tems_puresit[$tx] = 0;
       }
    }
    my $arch = "";
@@ -2702,39 +3049,63 @@ sub new_tnodesav {
          # which can mess up Portal Client Navigator displays badly
          # ip.pipe:#172.17.117.34[10055]<NM>CNWDC4AHMAAA</NM>
          if (index($ihostaddr,"[") != -1) {
-            $ihostaddr =~ /\#(\S+)\[.*\<NM\>(\S+)\</;
+            $ihostaddr =~ /(\S+?)\[(.*)/;
+#           $ihostaddr =~ /\((\S+?)\)\[(.*)/ if !defined $1;   # IPV6 style
             my $isysip = $1;
-            my $isysname = $2;
+            my $hrest = $2;
             if (defined $isysip) {
-               if (defined $isysname) {
-                  my $sysname_ref = $sysnamex{$isysname};
-                  if (!defined $sysname_ref) {
-                     my %sysnameref = (
-                                         count => 0,
-                                         ipcount => 0,
-                                         sysipx => {},
-                                      );
-                     $sysnamex{$isysname} = \%sysnameref;
-                     $sysname_ref = \%sysnameref;
+               if (defined $hrest) {
+                  if (index($hrest,"<NM") != -1) {
+                     $hrest =~ /\<NM\>(\S+)\</;
+                     my $isysname = $1;
+                     if (defined $isysname) {
+                        my $sysname_ref = $sysnamex{$isysname};
+                        if (!defined $sysname_ref) {
+                           my %sysnameref = (
+                                               count => 0,
+                                               ipcount => 0,
+                                               sysipx => {},
+                                            );
+                           $sysnamex{$isysname} = \%sysnameref;
+                           $sysname_ref = \%sysnameref;
+                        }
+                        $sysname_ref->{count} += 1;
+                        my $sysip_ref = $sysname_ref->{sysipx}{$isysip};
+                        if (!defined $sysip_ref) {
+                           my %sysipref = (
+                                             count => 0,
+                                             instance => {},
+                                          );
+                           $sysname_ref->{sysipx}{$isysip} = \%sysipref;
+                           $sysip_ref = \%sysipref;
+                           $sysname_ref->{ipcount} += 1;
+                        }
+                        $sysip_ref->{count} += 1;
+                        my %sysip_node_ref = (
+                                                hostaddr => $ihostaddr,
+                                                thrunode => $ithrunode,
+                                                affinities => $iaffinities,
+                                            );
+                        $sysip_ref->{instance}{$inode} = \%sysip_node_ref;
+                     }
                   }
-                  $sysname_ref->{count} += 1;
-                  my $sysip_ref = $sysname_ref->{sysipx}{$isysip};
-                  if (!defined $sysip_ref) {
-                     my %sysipref = (
-                                       count => 0,
-                                       instance => {},
-                                    );
-                     $sysname_ref->{sysipx}{$isysip} = \%sysipref;
-                     $sysip_ref = \%sysipref;
-                     $sysname_ref->{ipcount} += 1;
+               }
+               my $ip_ref = $ipx{$isysip};
+               if (!defined $ip_ref) {
+                  my %ipref = (
+                                 count => 0,
+                                 common => {},
+                                 agents => {},
+                              );
+                  $ip_ref = \%ipref;
+                  $ipx{$isysip}  = \%ipref;
+               }
+               if ($nsave_common[$nsx] ne "") {
+                  if (!defined $ip_ref->{common}{$nsave_common[$nsx]}) {
+                     $ip_ref->{count} += 1;
+                     $ip_ref->{common}{$nsave_common[$nsx]} = 1;
+                     $ip_ref->{agents}{$inode} = $nsave_common[$nsx];
                   }
-                  $sysip_ref->{count} += 1;
-                  my %sysip_node_ref = (
-                                          hostaddr => $ihostaddr,
-                                          thrunode => $ithrunode,
-                                          affinities => $iaffinities,
-                                      );
-                  $sysip_ref->{instance}{$inode} = \%sysip_node_ref;
                }
             }
          }
@@ -2774,6 +3145,7 @@ sub new_tnodelstv {
          $magent_subct[$mx] = 0;
          $magent_sublen[$mx] = 0;
          $magent_tems_version[$mx] = "";
+         $magent_tems[$mx] = "";
       }
       $magent_subct[$mx] += 1;
       # the actual limit is the names in a list with single blank delimiter
@@ -2813,6 +3185,7 @@ sub fill_tnodelstv {
        $tx = $temsx{$mthrunode};
        next if !defined $tx;
        $magent_tems_version[$mx] = $tems_version[$tx];
+       $magent_tems[$mx] = $mthrunode;
    }
 
 
@@ -2886,6 +3259,7 @@ my ($inodetype,$inodelist,$inode,$ilstdate) = @_;
       $nlist[$nlx] = $inodelist;
       $nlistx{$inodelist} = $nlx;
    }
+   $nlist_agents[$nlx]{$inode} = 1;
 
    # record the agent oriented data. During processing we will record data about
    # various missing cases.
@@ -3168,12 +3542,16 @@ sub init_txt {
       $ll += 1;
       next if $ll < 5;
       chop $oneline;
-      $inodetype = substr($oneline,33,1);
-      next if $inodetype ne "V";
-      $inodelist = substr($oneline,42,32);
-      $inodelist =~ s/\s+$//;   #trim trailing whitespace
       $inode = substr($oneline,0,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
+      $inodetype = substr($oneline,33,1);
+      $inodelist = substr($oneline,42,32);
+      $inodelist =~ s/\s+$//;   #trim trailing whitespace
+      if ($inodelist eq "*HUB") {
+         $inodetype = "V" if $inodetype eq " ";
+         $inodelist = $inode;
+      }
+      next if $inodetype ne "V";
       $ilstdate = substr($oneline,75,16);
       $ilstdate =~ s/\s+$//;   #trim trailing whitespace
       new_tnodelstv($inodetype,$inodelist,$inode,$ilstdate);
@@ -3225,15 +3603,15 @@ sub init_txt {
       $isitname =~ s/\s+$//;   #trim trailing whitespace
       $iautostart = substr($oneline,33,4);
       $iautostart =~ s/\s+$//;   #trim trailing whitespace
-      $ilstdate = substr($oneline,43,16);
+      $ilstdate = substr($oneline,38,16);
       $ilstdate =~ s/\s+$//;   #trim trailing whitespace
-      $ireev_days = substr($oneline,60,3);
+      $ireev_days = substr($oneline,55,3);
       $ireev_days =~ s/\s+$//;   #trim trailing whitespace
-      $ireev_time = substr($oneline,70,6);
+      $ireev_time = substr($oneline,59,6);
       $ireev_time =~ s/\s+$//;   #trim trailing whitespace
-      $isitinfo = substr($oneline,80,128);
+      $isitinfo = substr($oneline,68,128);
       $isitinfo =~ s/\s+$//;   #trim trailing whitespace
-      $ipdt = substr($oneline,209);
+      $ipdt = substr($oneline,197);
       $ipdt =~ s/\s+$//;   #trim trailing whitespace
       new_tsitdesc($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$isitinfo,$ipdt);
    }
@@ -3258,6 +3636,7 @@ sub init_txt {
       new_tname($iid,$ilstdate,$ifullname);
    }
 
+#$DB::single=2;
    open(KOBJ, "< $opt_txt_tobjaccl") || die("Could not open TOBJACCL $opt_txt_tobjaccl\n");
    @kobj_data = <KOBJ>;
    close(KOBJ);
@@ -3277,6 +3656,7 @@ sub init_txt {
       $inodel =~ s/\s+$//;   #trim trailing whitespace
       $ilstdate = substr($oneline,75,16);
       $ilstdate =~ s/\s+$//;   #trim trailing whitespace
+#$DB::single=2;
       next if ($iobjclass != 5140) and ($iobjclass != 2010);
       new_tobjaccl($iobjclass,$iobjname,$inodel,$ilstdate);
    }
@@ -4319,7 +4699,7 @@ EndOFHelp
 exit;
 }
 sub get_epoch {
-$DB::single=2;
+#$DB::single=2;
    use POSIX;
    my $itm_stamp = shift;
    my $unixtime = $epochx{$itm_stamp};
@@ -4475,9 +4855,15 @@ sub gettime
 #          : add advisories related to too many MS_Offline type situations
 #          : Do not do advisory on Sampling Time "0"
 #          : Restructure report sequence so advisory comes a just after TEMS summary
+# 1.36000  : Report on situation derived dataserver workload
+#          : Add advisory on KDEB_INTERFACELIST APAR level issue
+#          : Add two advisoreies on too many situations clogging up TEMS startup
+#          : Move Agent in APAR danger details to trailing reports
+#          : Add advisory on multiple TEMA levels on one system
+#          : Reduce impact of DATAHEALTH1023 to 0, more annoyance than actual issue
 # Following is the embedded "DATA" file used to explain
-# advisories the the report. It replicates text in
-# Appendix 2 of TEMS Audit Users Guide.docx
+# advisories the the report. It replaces text in that used
+# to be in TEMS Audit Users Guide.docx
 __END__
 DATAHEALTH1001E
 Text: Node present in node status but missing in TNODELST Type V records
@@ -4946,7 +5332,7 @@ Recovery plan:   Open a PMR and work with IBM Support on how to
 resolve this issue.
 --------------------------------------------------------------
 
-DATAHEALTH1023E
+DATAHEALTH1023W
 
 Text:  TNAME ID index missing in TSITDESC
 
@@ -5940,4 +6326,131 @@ Recovery plan: Reduce the number of situations by using MSLs to
 distribute a single situation to multuple agents. If this logic
 is absolutely necessary, create multuple hub TEMSes to manage
 the workload.
+--------------------------------------------------------------
+
+DATAHEALTH1092W
+Text:  TEMS Dataserver SQL Situation Load $psit_rate per second more than 4.00/second
+
+Check: Check for too many situations running
+
+Meaning: Hub and remote TEMS can become unstable if too many
+situations are running. The TEMS dataserver - SQL processor -
+evaluates at each sampling interval. In one case a hub TEMS
+failed when processing evaluations at 12 per second. The
+problem level depends on many factors including how powerful
+the system is running the TEMS.
+
+This is a new area of interest and so is more of a warning than
+a predicted error case.
+
+Recovery plan: Reduce the number of situations by using MSLs to
+distribute a single situation to multuple agents. Also you can
+increase the sampling intervals and create remote TEMSes to
+spread out the workload.
+--------------------------------------------------------------
+
+DATAHEALTH1093W
+Text:  Agent [agent name] using TEMA at version [version] in IV30473 danger zone
+
+Check: Check for agent level
+
+Meaning: At ITM maintenance levels 622 FP7-FP7 and 623 GA-FP2
+a defect was present which cause problems using the
+KDEB_INTERFACELIST and KDEB_INTERFACELIST_IPV6 controls.
+
+Anytime these are present and used to force exclusive bind
+
+KDEB_INTERFACELIST=!xxx.xxx.xxx
+
+that usage must be coordinated for all ITM processes. For
+example all processes must use exclusive bind OR all processes
+must use non-exclusive bind. If usage is accidentally mixed
+severe problems are caused which cause TEMS disruption and
+lack of monitoring.
+
+This has always been true, and is true at the latest levels.
+
+At the problematic maintenance levels, changes were introduced
+which would create exclusive binds when not intended. For example
+
+KDEB_INTERFACELIST=xxx.xxx.xxx
+
+would be treated exactly like
+
+KDEB_INTERFACELIST=!xxx.xxx.xxx
+
+Thus you could get severe problems without indending them.
+
+Recovery plan: Review the ITM processes to see if that environment
+variable is being used at the agents. If not you can ignore the
+issue. If so you have choices:
+
+Best practice is to upgrade the OS Agent to a
+more recent level to avoid the issue.
+
+If that is impossible update the uses of KDEB_INTERFACELIST so
+they are coordinated amoung all uses... all exclusive or all
+non-exclusive.
+--------------------------------------------------------------
+
+DATAHEALTH1094W
+Text:  TEMS Dataserver SQL Situation Startup total $sit_total more than 2000
+
+Check: Check for too many situations running
+
+Meaning: When a TEMS starts up, autostart situations must
+be compiled and delivered to the online agents. If there
+are a large number, this can take such a long time that
+the TEMS loses contact with hub TEMS. On a remote TEMS
+contact is eventually restored, however the condition is
+abnormal and should be avoided.
+
+Recovery plan: Reduce the number of situations or create
+remote TEMSes to spread out the workload.
+--------------------------------------------------------------
+
+DATAHEALTH1095W
+Text:  HUB TEMS Dataserver SQL Situation Startup total $sit_total more than 2000
+
+Check: Check for too many situations running
+
+Meaning: When a TEMS starts up, autostart situations must
+be compiled and delivered to the online agents. If there
+are a large number, this can take such a long time that
+the TEMS loses contact with hub TEMS. On a hub TEMS
+contact is never restored and the hub TEMS is effectively
+disabled.
+
+One case where this condition was fully diagnosed the
+environment was a hub TEMS [no remote TEMS] with 700 agents
+and 7500 autostated.
+
+Recovery plan: Reduce the number of situations or create
+remote TEMSes to spread out the workload.
+--------------------------------------------------------------
+
+DATAHEALTH1096W
+Text:  Systems [count] running agents with multiple TEMA levels - see later report
+
+Check: TNODESAV check for agent TEMA levels
+
+Meaning: Each ITM agent requires an Agent Support library
+TEMA and usually these share the OS Agent TEMS. When there
+are multiple levels, that usually reflects 32-bit agents
+with 64-bit OS agents. The 32-bit TEMAs are not updated
+when 64-bit OS Agents are upgraded.
+
+This can also be cases where agents are installed in different
+installation directories.
+
+The impact is that some agents are running back level TEMA
+levels and thus are exposed to known defects.
+
+Recovery plan: Correct the issue. The following command
+
+tacmd updateFramework
+
+can be used to upgrade all TEMAs including 32-bit.
+
+Consult IBM Support if there are questions.
 --------------------------------------------------------------
