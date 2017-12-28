@@ -24,6 +24,7 @@
 #  QA1CSPRD     TUSER       ??
 #  QA1CEIBL   check for duplicate inserts - high rate
 #  STSH - multi-row events... 001->998
+#  Duplicate SYSTEM_NAME in HOSTADDR <NM> tags, problems in TEPS
 
 #use warnings::unused; # debug used to check for unused variables
 use strict;
@@ -31,7 +32,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.26000";
+my $gVersion = "1.27000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -822,6 +823,12 @@ for ($i=0; $i<=$nsavei; $i++) {
    my $node1 = $nsave[$i];
    next if $nsave_product[$i] eq "EM";
    next if $nsave_product[$i] eq "CF";      # TEMS Configuration Managed System does not have TEMA - skip most tests
+   if (index($node1,"::MQ") !=  -1) {
+      $advi++;$advonline[$advi] = "MQ Agent name has missing hostname qualifier";
+      $advcode[$advi] = "DATAHEALTH1073W";
+      $advimpact[$advi] = 25;
+      $advsit[$advi] = $node1;
+   }
    $nsx = $nlistvx{$node1};
    next if defined $nsx;
    if (index($node1,":") !=  -1) {
@@ -1633,7 +1640,7 @@ print OH "\n" if $top20 > 0;
 $top20 = 0;
 $eventx_dur = 0;
 print OH "Top 20 Situation Event Report\n";
-print OH "Situation,Count,Open,Close,Nodes,Interval,Atomize\n";
+print OH "Situation,Count,Open,Close,NodeCount,Interval,Atomize,Rate,Nodes\n";
 foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
                       $a cmp $b
                     } keys %eventx) {
@@ -1647,6 +1654,28 @@ foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
    $oneline .=  $ncount . ",";
    $oneline .=  $eventx{$f}->{reeval} . ",";
    $oneline .=  $eventx{$f}->{atomize} . ",";
+   my $sit_start = $eventx{$f}->{start};
+   my $sit_last = $eventx{$f}->{last};
+   my $sit_dur = get_epoch($sit_last) - get_epoch($sit_start) + 1;
+   my $sit_rate = ($eventx{$f}->{count}*60)/$sit_dur;
+   my $psit_rate = sprintf("%.2f",$sit_rate);
+   if ($sit_rate > 5) {
+      $advi++;$advonline[$advi] = "Situation Event arriving $psit_rate per minute";
+      $advcode[$advi] = "DATAHEALTH1074W";
+      $advimpact[$advi] = 90;
+      $advsit[$advi] = $eventx{$f}->{sitname};
+   }
+   $oneline .=  $psit_rate . ",";
+   my $pnodes = "";
+   my $cnodes = 0;
+   foreach my $g (keys %{$eventx{$f}->{origin}}) {
+      $cnodes += 1;
+      last if $cnodes > 3;
+      my $onenode = $g;
+      $onenode =~ s/\s+//g;
+      $pnodes .= $onenode . ";";
+   }
+   $oneline .=  $pnodes . ",";
    print OH "$oneline\n";
 }
 if ($top20 != 0) {
@@ -2984,17 +3013,20 @@ sub init_txt {
    foreach $oneline (@kstsh_data) {
       $ll += 1;
       next if $ll < 5;
+print STDERR "working on line $ll\n";
+#$DB::single=2 if $ll >= 408;
       chop $oneline;
       $oneline .= " " x 400;
       $igbltmstmp = substr($oneline,0,16);
       $igbltmstmp =~ s/\s+$//;   #trim trailing whitespace
+      next if substr($igbltmstmp,0,1) ne "1";
       $ideltastat = substr($oneline,17,1);
       $ideltastat =~ s/\s+$//;   #trim trailing whitespace
       $isitname = substr($oneline,19,32);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
       $inode = substr($oneline,52,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
-      $ioriginnode = substr($oneline,75,32);
+      $ioriginnode = substr($oneline,85,32);
       $ioriginnode =~ s/\s+$//;   #trim trailing whitespace
       $iatomize = substr($oneline,118,128);
       $iatomize =~ s/\s+$//;   #trim trailing whitespace
@@ -3008,51 +3040,72 @@ sub init_txt {
 # SELECTED in the SQL.
 # [1]  OGRP_59B815CE8A3F4403  OGRP_6F783DF5FF904988  2010  2010
 
+# Parse for KfwSQLClient SQL capture version 0.95000
+
 sub parse_lst {
-  my ($lcount,$inline) = @_;            # count of desired chunks and the input line
+  my ($lcount,$inline,$cref) = @_;            # count of desired chunks and the input line
   my @retlist = ();                     # an array of strings to return
   my $chunk = "";                       # One chunk
   my $oct = 1;                          # output chunk count
   my $rest;                             # the rest of the line to process
   $inline =~ /\]\s*(.*)/;               # skip by [NNN]  field
-$DB::single=2 if !defined $1;
   $rest = " " . $1 . "        ";
+  my $fixed;
   my $lenrest = length($rest);          # length of $rest string
   my $restpos = 0;                      # postion studied in the $rest string
   my $nextpos = 0;                      # floating next position in $rest string
 
-  # at each stage we can identify a field with values
-  #         <blank>data<blank>
-  # and a blank field
-  #         <blank><blank>
-  # We allow a single embedded blank as part of the field
-  #         data<blank>data
-  # for the last field, we allow imbedded blanks and logic not needed
+  # KwfSQLClient logic wraps each column with a leading and trailing blank
+  # simple case:  <blank>data<blank><blank>data1<blank>
+  # data with embedded blank: <blank>data<blank>data<blank><data1>data1<blank>
+  #     every separator is always at least two blanks, so a single blank is always embedded
+  # data with trailing blank: <blank>data<blank><blank><blank>data1<blank>
+  #     given the rules has to be leading or trailing blank and chose trailing on data
+  # data followed by a null data item: <blank>data<blank><blank><blank><blank>
+  #                                                            ||
+  # data with longer then two blanks embedded must be placed on end, or handled with a cref hash.
+  #
+  # $restpos always points within the string, always on the blank delimiter at the end
+  #
+  # The %cref hash specifies chunks that are of guaranteed fixed size... passed in by caller
   while ($restpos < $lenrest) {
-     if ($oct < $lcount) {
-        if (substr($rest,$restpos,2) eq "  ") {               # null string case
-           $chunk = "";
-           $oct += 1;
-           push @retlist, $chunk;                 # record null data chunk
-           $restpos += 2;
-        } else {
-           $nextpos = index($rest," ",$restpos+1);
-           if (substr($rest,$nextpos,2) eq "  ") {
-              $chunk .= substr($rest,$restpos+1,$nextpos-$restpos-1);
-              push @retlist, $chunk;                 # record null data chunk
-              $chunk = "";
-              $oct += 1;
-              $restpos = $nextpos + 1;
-           } else {
-              $chunk .= substr($rest,$restpos+1,$nextpos-$restpos);
-              $restpos = $nextpos;
-           }
-        }
-     } else {
+     $fixed = $cref->{$oct};                   #
+     if (defined $fixed) {
+        $chunk = substr($rest,$restpos+1,$fixed);
+        push @retlist, $chunk;                 # record null data chunk
+        $restpos += 2 + $fixed;
+        $chunk = "";
+        $oct += 1;
+        next;
+     }
+     if ($oct >= $lcount) {                                   # handle last item
         $chunk = substr($rest,$restpos+1);
         $chunk =~ s/\s+$//;                    # strip trailing blanks
         push @retlist, $chunk;                 # record last data chunk
         last;
+     }
+     if ((substr($rest,$restpos,3) eq "   ") and (substr($rest,$restpos+3,1) ne " ")) {          # following null entry
+        $chunk = "";
+        $oct += 1;
+        push @retlist, $chunk;                 # record null data chunk
+        $restpos += 2;
+        next;
+     }
+     if ((substr($rest,$restpos,2) eq "  ") and (substr($rest,$restpos+2,1) ne " ")) {            # trailing blank on previous chunk so ignore
+        $restpos += 1;
+        next;
+     }
+
+     $nextpos = index($rest," ",$restpos+1);
+     if (substr($rest,$nextpos,2) eq "  ") {
+        $chunk .= substr($rest,$restpos+1,$nextpos-$restpos-1);
+        push @retlist, $chunk;                 # record new chunk
+        $chunk = "";                           # prepare for new chunk
+        $oct += 1;
+        $restpos = $nextpos + 1;
+     } else {
+        $chunk .= substr($rest,$restpos+1,$nextpos-$restpos); # record new chunk fragment
+        $restpos = $nextpos;
      }
   }
   return @retlist;
@@ -3878,4 +3931,6 @@ sub gettime
 # 1.23000  : Handle CF/:CONFIG differently since managed system does not use a TEMA
 # 1.24000  : Correct for different Windows KfwSQLClient output formats
 # 1.25000  : Handle KfwSQLClient output better
-# 1.26000  : no logic changes, relabel for internal usage clarification
+# 1.26000  : Advisory on missing MQ hostname qualifier
+# 1.27000  : Calculate rate of event arrivals
+#          : parse_lst 0.95000
