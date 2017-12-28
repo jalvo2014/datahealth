@@ -33,7 +33,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.44000";
+my $gVersion = "1.45000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -1421,7 +1421,9 @@ foreach my $f (sort { $a cmp $b } keys %pcyx) {
 
 
 
+my $t3_count = 0;
 for ($i=0;$i<=$nsavei;$i++) {
+   $t3_count += 1 if substr($nsave[$i],-3,3) eq ":T3";
    $invalid_node = 0;
    if (index("\.\ \*\#",substr($nsave[$i],0,1)) != -1) {
       $invalid_node = 1;
@@ -1468,6 +1470,14 @@ for ($i=0;$i<=$nsavei;$i++) {
    $advcode[$advi] = "DATAHEALTH1007E";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $nsave[$i];
+}
+
+# Advisory on more than one T3 agent
+if ($t3_count > 1) {
+   $advi++;$advonline[$advi] = "This ITM has $t3_count AMC [:T3] agents and only one is allowed";
+   $advcode[$advi] = "DATAHEALTH1104E";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = "TEMS";
 }
 
 for ($i=0;$i<=$siti;$i++) {
@@ -1744,17 +1754,6 @@ for ($i=0;$i<=$nlisti;$i++) {
       $advcode[$advi] = "DATAHEALTH1052W";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlist[$i];
-   }
-}
-
-# check for more than one T3 agent
-my $pc_ref = $pcx{"T3"};
-if (defined $pc_ref) {
-   if ($pc_ref->{count} > 1) {
-      $advi++;$advonline[$advi] = "This ITM has $pc_ref->{count} T3 agents and only one is allowed";
-      $advcode[$advi] = "DATAHEALTH1104E";
-      $advimpact[$advi] = $advcx{$advcode[$advi]};
-      $advsit[$advi] = "TEMS";
    }
 }
 
@@ -5122,6 +5121,7 @@ sub gettime
 # 1.43000  : HOSTINFO to Agent summary
 # 1.44000  : Advisory on MS_Offline with zero sampling interval
 #          : Advisory if more than one T3 agent.
+# 1.4500   : Correct logic advisory T3 agent
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -6844,7 +6844,7 @@ Recovery plan: Stop the situation and re-author it correctly.
 --------------------------------------------------------------
 
 DATAHEALTH1104W
-Text:  This ITM has count T3 agents and only one is allowed
+Text:  This ITM has count AMC [:T3] agents and only one is allowed
 
 Check: TNODESAV check
 
