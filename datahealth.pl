@@ -22,9 +22,7 @@
 ## todos
 #  QA1DAPPL     TAPPLPROPS  ??
 #  QA1CSPRD     TUSER       ??
-#  QA1CEIBL   check for duplicate inserts - high rate
 #  STSH - multi-row events... 001->998
-#  Duplicate SYSTEM_NAME in HOSTADDR <NM> tags, problems in TEPS
 
 #use warnings::unused; # debug used to check for unused variables
 use strict;
@@ -32,7 +30,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.27000";
+my $gVersion = "1.28000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -131,6 +129,8 @@ my @hsave_sav = ();
 my @hsave_ndx = ();
 my @hsave_ct = ();
 my @hsave_thrundx = ();
+
+my %sysnamex = ();
 
 # TOBJACCL data
 my %tobjaccl = ();
@@ -822,6 +822,24 @@ if ($tems_packages > 510) {
 for ($i=0; $i<=$nsavei; $i++) {
    my $node1 = $nsave[$i];
    next if $nsave_product[$i] eq "EM";
+   if (index($node1,"::CONFIG") !=  -1) {
+      $nsx = $nlistvx{$node1};
+      if (defined $nsx) {
+         my $thrunode1 = $nlistv_thrunode[$nsx];
+         if (defined $thrunode1) {
+            my $tx = $temsx{$thrunode1};
+            if (defined $tx) {
+               if ($thrunode1 ne $hub_tems) {
+                  $advi++;$advonline[$advi] = "CF Agent connected to $thrunode1 which is not the hub TEMS";
+                  $advcode[$advi] = "DATAHEALTH1076W";
+                  $advimpact[$advi] = 50;
+                  $advsit[$advi] = $node1;
+               }
+            }
+         }
+      }
+   }
+
    next if $nsave_product[$i] eq "CF";      # TEMS Configuration Managed System does not have TEMA - skip most tests
    if (index($node1,"::MQ") !=  -1) {
       $advi++;$advonline[$advi] = "MQ Agent name has missing hostname qualifier";
@@ -1238,6 +1256,25 @@ for ($i=0;$i<=$hsavei;$i++) {
    $advcode[$advi] = "DATAHEALTH1010W";
    $advimpact[$advi] = 80;
    $advsit[$advi] = $hsave[$i];
+}
+
+foreach my $f (keys %sysnamex) {
+   my $sysname_ref = $sysnamex{$f};
+   next if $sysname_ref->{ipcount} == 1;
+   my $pagents = "";
+   foreach my $g (keys %{$sysname_ref->{sysipx}}) {
+      my $sysip_ref = $sysname_ref->{sysipx}{$g};
+      foreach my $h (keys %{$sysip_ref->{instance}}) {
+         my $sysname_node_ref = $sysip_ref->{instance}{$h};
+         $pagents .= $h . "|";
+         $pagents .= $sysname_node_ref->{thrunode} . "|";
+         $pagents .= $sysname_node_ref->{hostaddr} . ",";
+      }
+   }
+   $advi++;$advonline[$advi] = "TNODESAV duplicate $sysname_ref->{ipcount} SYSTEM_NAMEs in [$pagents]";
+   $advcode[$advi] = "DATAHEALTH1075W";
+   $advimpact[$advi] = 60;
+   $advsit[$advi] = $f;
 }
 
 for ($i=0;$i<=$nlistvi;$i++) {
@@ -2224,6 +2261,47 @@ sub new_tnodesav {
          # record the node indexes of each duplicate
          $hsave_ndx[$hsx] .= $nsx . " ";
          $hsave_ct[$hsx] += 1;
+
+         # track uses of duplicate SYSTEM_NAME across different IP addresses
+         # which can mess up Portal Client Navigator displays badly
+         # ip.pipe:#172.17.117.34[10055]<NM>CNWDC4AHMAAA</NM>
+         if (index($ihostaddr,"[") != -1) {
+            $ihostaddr =~ /\#(\S+)\[.*\<NM\>(\S+)\</;
+            my $isysip = $1;
+            my $isysname = $2;
+            if (defined $isysip) {
+               if (defined $isysname) {
+                  my $sysname_ref = $sysnamex{$isysname};
+                  if (!defined $sysname_ref) {
+                     my %sysnameref = (
+                                         count => 0,
+                                         ipcount => 0,
+                                         sysipx => {},
+                                      );
+                     $sysnamex{$isysname} = \%sysnameref;
+                     $sysname_ref = \%sysnameref;
+                  }
+                  $sysname_ref->{count} += 1;
+                  my $sysip_ref = $sysname_ref->{sysipx}{$isysip};
+                  if (!defined $sysip_ref) {
+                     my %sysipref = (
+                                       count => 0,
+                                       instance => {},
+                                    );
+                     $sysname_ref->{sysipx}{$isysip} = \%sysipref;
+                     $sysip_ref = \%sysipref;
+                     $sysname_ref->{ipcount} += 1;
+                  }
+                  $sysip_ref->{count} += 1;
+                  my %sysip_node_ref = (
+                                          hostaddr => $ihostaddr,
+                                          thrunode => $ithrunode,
+                                          affinities => $iaffinities,
+                                      );
+                  $sysip_ref->{instance}{$inode} = \%sysip_node_ref;
+               }
+            }
+         }
       }
    }
 }
@@ -3013,8 +3091,7 @@ sub init_txt {
    foreach $oneline (@kstsh_data) {
       $ll += 1;
       next if $ll < 5;
-print STDERR "working on line $ll\n";
-#$DB::single=2 if $ll >= 408;
+#print STDERR "working on line $ll\n";
       chop $oneline;
       $oneline .= " " x 400;
       $igbltmstmp = substr($oneline,0,16);
@@ -3934,3 +4011,5 @@ sub gettime
 # 1.26000  : Advisory on missing MQ hostname qualifier
 # 1.27000  : Calculate rate of event arrivals
 #          : parse_lst 0.95000
+# 1.28000  : Advisory on duplicate SYSTEM NAMES
+#          : Advisory when ::CONFIG agents not connected to hub TEMS.
