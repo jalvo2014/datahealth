@@ -31,7 +31,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.24000";
+my $gVersion = "1.25000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -3877,3 +3877,4 @@ sub gettime
 #          : correct some titles and add some event related times
 # 1.23000  : Handle CF/:CONFIG differently since managed system does not use a TEMA
 # 1.24000  : Correct for different Windows KfwSQLClient output formats
+# 1.25000  : Handle KfwSQLClient output better
