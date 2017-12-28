@@ -33,7 +33,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.37000";
+my $gVersion = "1.38000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -306,6 +306,7 @@ my %advcx = (
               "DATAHEALTH1094W" => "95",
               "DATAHEALTH1095W" => "100",
               "DATAHEALTH1096W" => "60",
+              "DATAHEALTH1097W" => "50",
             );
 
 my %advtextx = ();
@@ -2015,6 +2016,14 @@ if ($hub_tems_no_tnodesav == 0) {
             $advcode[$advi] = "DATAHEALTH1084W";
             $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advsit[$advi] = "eos";
+         }
+      }
+      if ($tems[$i] ne $hub_tems) {
+         if (substr($tems_version[$i],0,5) gt substr($hub_tems_version,0,5)) {
+            $advi++;$advonline[$advi] = "Remote TEMS $tems[$i] maint[$tems_version[$i]] is later level than Hub TEMS $hub_tems maint[$hub_tems_version]";
+            $advcode[$advi] = "DATAHEALTH1097W";
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
+            $advsit[$advi] = "TEMS";
          }
       }
       my $poffline = "Offline";
@@ -4161,9 +4170,11 @@ sub init_lst {
          if (defined $tx) {
             $tems_hub[$tx] = 1;
             $hub_tems = $inode;
+            $hub_tems_version = $tems_version[$tx];
          } else {
             $hub_tems_no_tnodesav = 1;
             $hub_tems = $inode;
+            $hub_tems_version = "";
          }
       }
       next if $inodetype ne "M";
@@ -4871,6 +4882,7 @@ sub gettime
 #          : Add advisory on multiple TEMA levels on one system
 #          : Reduce impact of DATAHEALTH1023 to 0, more annoyance than actual issue
 # 1.37000  : Better logic on multiple TEMA report
+# 1.38000  : Add advisory for remote TEMS higher maint level than hub TEMS
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -6463,4 +6475,23 @@ tacmd updateFramework
 can be used to upgrade all TEMAs including 32-bit.
 
 Consult IBM Support if there are questions.
+--------------------------------------------------------------
+
+DATAHEALTH1097W
+Text:  Remote TEMS nodeid maint[level] is later level than Hub TEMS nodeid maint[level]
+
+Check: TNODESAV and TNODELST checks
+
+Meaning: In general hub TEMS levels can be lower than
+remote TEMS levels. However there is less customer experience
+in that environment. In one recent case of a z/OS remote
+TEMS at ITM 630 FP6 and a Windows hub TEMS at ITM 622 FP9
+a SQL failure was observed as the remote TEMS was updating the
+hub TEMS. The issue is rare and so impact level set low.
+
+The issue is more problematical if the hub and remote TEMSes are
+are at different release levels. Many such case will appear
+to work but can fail under extreme circumstances.
+
+Recovery plan: Update the hub TEMS.
 --------------------------------------------------------------
