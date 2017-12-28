@@ -30,7 +30,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.28000";
+my $gVersion = "1.29000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -829,11 +829,21 @@ for ($i=0; $i<=$nsavei; $i++) {
          if (defined $thrunode1) {
             my $tx = $temsx{$thrunode1};
             if (defined $tx) {
+#$DB::single=2;
                if ($thrunode1 ne $hub_tems) {
                   $advi++;$advonline[$advi] = "CF Agent connected to $thrunode1 which is not the hub TEMS";
                   $advcode[$advi] = "DATAHEALTH1076W";
                   $advimpact[$advi] = 50;
                   $advsit[$advi] = $node1;
+               } else {
+#$DB::single=2;
+                  if ($isFTO >= 2) {
+#$DB::single=2;
+                     $advi++;$advonline[$advi] = "CF Agent not supported in FTO mode";
+                     $advcode[$advi] = "DATAHEALTH1077E";
+                     $advimpact[$advi] = 100;
+                     $advsit[$advi] = $node1;
+                 }
                }
             }
          }
@@ -841,6 +851,23 @@ for ($i=0; $i<=$nsavei; $i++) {
    }
 
    next if $nsave_product[$i] eq "CF";      # TEMS Configuration Managed System does not have TEMA - skip most tests
+   if ($nsave_product[$i] eq "HD") {        # WPA should only connect to hub TEMS
+      $nsx = $nlistvx{$node1};
+      if (defined $nsx) {
+         my $thrunode1 = $nlistv_thrunode[$nsx];
+         if (defined $thrunode1) {
+            my $tx = $temsx{$thrunode1};
+            if (defined $tx) {
+               if ($thrunode1 ne $hub_tems) {
+                  $advi++;$advonline[$advi] = "WPA connected to $thrunode1 which is not the hub TEMS";
+                  $advcode[$advi] = "DATAHEALTH1078E";
+                  $advimpact[$advi] = 100;
+                  $advsit[$advi] = $node1;
+               }
+            }
+         }
+      }
+   }
    if (index($node1,"::MQ") !=  -1) {
       $advi++;$advonline[$advi] = "MQ Agent name has missing hostname qualifier";
       $advcode[$advi] = "DATAHEALTH1073W";
@@ -4013,3 +4040,5 @@ sub gettime
 #          : parse_lst 0.95000
 # 1.28000  : Advisory on duplicate SYSTEM NAMES
 #          : Advisory when ::CONFIG agents not connected to hub TEMS.
+# 1.29000  : Advisory when CF is on remotes or in FTO environment
+#          : Advisory when WPA not configured to hub TEMS
