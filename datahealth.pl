@@ -32,7 +32,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.32000";
+my $gVersion = "1.33000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -160,7 +160,7 @@ my @tems_thrunode = ();                  # TEMS THRUNODE, when NODE=THRUNODE tha
 my @tems_affinities = ();                # TEMS AFFINITIES
 my $hub_tems = "";                       # hub TEMS nodeid
 my $hub_tems_version = "";               # hub TEMS version
-my $hub_tems_no_tnodesav = 0;            # hub TEMS nodeid missingfrom TNODESAV
+my $hub_tems_no_tnodesav = 0;            # hub TEMS nodeid missing from TNODESAV
 my $hub_tems_ct = 0;                     # total agents managed by a hub TEMS
 
 my %tepsx;
@@ -386,6 +386,12 @@ my %klevelx = ( '06.30' => 1,
                 '06.10' => 1,
               );
 
+my %eoslevelx = ( '06.22' => {date=>'04/28/2018',count=>0,future=>1},
+                  '06.21' => {date=>'09/30/2015',count=>0,future=>0},
+                  '06.20' => {date=>'09/30/2015',count=>0,future=>0},
+                  '06.10' => {date=>'04/30/2012',count=>0,future=>0},
+                );
+
 my $tema_total_count = 0;
 my $tema_total_good_count = 0;
 my $tema_total_post_count = 0;
@@ -395,6 +401,8 @@ my $tema_total_apars = 0;
 my $tema_total_days = 0;
 my $tema_total_max_days = 0;
 my $tema_total_max_apars = 0;
+my $tema_total_eos = 0;
+
 
 my $tems_packages = 0;
 my $tems_packages_nominal = 500;
@@ -718,6 +726,11 @@ if ($hub_tems_no_tnodesav == 0) {
                $tema_total_deficit_count += 1;
             } else {
                $tema_total_post_count += 1;
+            }
+            my $tlevelref = $eoslevelx{substr($agtlevel,0,5)};
+            if (defined $tlevelref) {
+               $tlevelref->{count} += 1;
+               $tema_total_eos += 1;
             }
             my $key = $temslevel . "|" . $agtlevel;
             my $level_ref = $levelx{$key};
@@ -1581,6 +1594,21 @@ if ($hub_tems_no_tnodesav == 0) {
          $advimpact[$advi] = 75;
          $advsit[$advi] = $tems[$i];
       }
+      my $tlevel = substr($tems_version[$i],0,5);
+      my $tlevel_ref = $eoslevelx{$tlevel};
+      if (defined $tlevel_ref) {
+         if ($tlevel_ref->{future} == 0) {
+            $advi++;$advonline[$advi] = "End of Service TEMS $tems[$i] maint[$tems_version[$i]] date[$tlevel_ref->{date}]";
+            $advcode[$advi] = "DATAHEALTH1083W";
+            $advimpact[$advi] = 75;
+            $advsit[$advi] = "eos";
+         } else {
+            $advi++;$advonline[$advi] = "Future End of Service TEMS tems[$i] maint[$tems_version[$i]] date[$tlevel_ref->{date}]";
+            $advcode[$advi] = "DATAHEALTH1084W";
+            $advimpact[$advi] = 55;
+            $advsit[$advi] = "eos";
+         }
+      }
       my $poffline = "Offline";
       my $node1 = $tems[$i];
       my $nx = $nsavex{$node1};
@@ -1664,6 +1692,23 @@ if ($tema_total_count > 0 ){
    print OH "$oneline\n";
    print OH "\n";
 }
+if ($tema_total_eos > 0) {
+   foreach my $f (sort { $a cmp $b } keys %eoslevelx) {
+      my $tlevel_ref = $eoslevelx{$f};
+      next if $tlevel_ref->{count} == 0;
+      if ($tlevel_ref->{future} == 0) {
+         $advi++;$advonline[$advi] = "End of Service agents maint[$f] count[$tlevel_ref->{count}] date[$tlevel_ref->{date}]";
+         $advcode[$advi] = "DATAHEALTH1081W";
+         $advimpact[$advi] = 75;
+         $advsit[$advi] = "eos";
+      } else {
+         $advi++;$advonline[$advi] = "Future End of Service agents maint[$f] count[$tlevel_ref->{count}] date[$tlevel_ref->{date}]";
+         $advcode[$advi] = "DATAHEALTH1082W";
+         $advimpact[$advi] = 55;
+         $advsit[$advi] = "eos";
+      }
+   }
+}
 
 print OH "Top 20 most recently added or changed Situations\n";
 print OH "LSTDATE,Situation,Formula\n";
@@ -1721,58 +1766,94 @@ foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
 }
 print OH "\n" if $top20 > 0;
 
+my $event_ct = keys %eventx;
 
 $top20 = 0;
 $eventx_dur = 0;
 print OH "Top 20 Situation Event Report\n";
 print OH "Situation,Count,Open,Close,NodeCount,Interval,Atomize,Rate,Nodes\n";
-foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
-                      $a cmp $b
-                    } keys %eventx) {
-   $top20 += 1;
-   last if $top20 > 20;
-   $oneline = $eventx{$f}->{sitname} . ",";
-   $oneline .=  $eventx{$f}->{count} . ",";
-   $oneline .=  $eventx{$f}->{open} . ",";
-   $oneline .=  $eventx{$f}->{close} . ",";
-   my $ncount = keys %{$eventx{$f}->{origin}};
-   $oneline .=  $ncount . ",";
-   $oneline .=  $eventx{$f}->{reeval} . ",";
-   $oneline .=  $eventx{$f}->{atomize} . ",";
-   my $sit_start = $eventx{$f}->{start};
-   my $sit_last = $eventx{$f}->{last};
-   my $sit_dur = get_epoch($sit_last) - get_epoch($sit_start) + 1;
-   my $sit_rate = ($eventx{$f}->{count}*60)/$sit_dur;
-   my $psit_rate = sprintf("%.2f",$sit_rate);
-   if ($sit_rate > 3) {
-      my $pnodes;
-      for my $g (keys %{$eventx{$f}->{nodes}}) {
-         $pnodes .= $g . " ";
+if ($event_ct > 0) {
+   foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                         $a cmp $b
+                       } keys %eventx) {
+      $top20 += 1;
+      last if $top20 > 20;
+      $oneline = $eventx{$f}->{sitname} . ",";
+      $oneline .=  $eventx{$f}->{count} . ",";
+      $oneline .=  $eventx{$f}->{open} . ",";
+      $oneline .=  $eventx{$f}->{close} . ",";
+      my $ncount = keys %{$eventx{$f}->{origin}};
+      $oneline .=  $ncount . ",";
+      $oneline .=  $eventx{$f}->{reeval} . ",";
+      $oneline .=  $eventx{$f}->{atomize} . ",";
+      my $sit_start = $eventx{$f}->{start};
+      my $sit_last = $eventx{$f}->{last};
+      my $sit_dur = get_epoch($sit_last) - get_epoch($sit_start) + 1;
+      my $sit_rate = ($eventx{$f}->{count}*60)/$sit_dur;
+      my $psit_rate = sprintf("%.2f",$sit_rate);
+      if ($sit_rate > 3) {
+         my $pnodes;
+         for my $g (keys %{$eventx{$f}->{nodes}}) {
+            $pnodes .= $g . " ";
+         }
+         $advi++;$advonline[$advi] = "Situation Event arriving $psit_rate per minute in $sit_dur second(s) from nodes[$pnodes] Atomize[$eventx{$f}->{atomize}]";
+         $advcode[$advi] = "DATAHEALTH1074W";
+         $advimpact[$advi] = 90;
+         $advsit[$advi] = $eventx{$f}->{sitname};
       }
-      $advi++;$advonline[$advi] = "Situation Event arriving $psit_rate per minute from nodes[$pnodes] Atomize[$eventx{$f}->{atomize}]";
-      $advcode[$advi] = "DATAHEALTH1074W";
-      $advimpact[$advi] = 90;
-      $advsit[$advi] = $eventx{$f}->{sitname};
+      $oneline .=  $psit_rate . ",";
+      my $pnodes = "";
+      my $cnodes = 0;
+      foreach my $g (keys %{$eventx{$f}->{origin}}) {
+         $cnodes += 1;
+         last if $cnodes > 3;
+         my $onenode = $g;
+         $onenode =~ s/\s+//g;
+         $pnodes .= $onenode . ";";
+      }
+      $oneline .=  $pnodes . ",";
+      print OH "$oneline\n";
    }
-   $oneline .=  $psit_rate . ",";
-   my $pnodes = "";
-   my $cnodes = 0;
-   foreach my $g (keys %{$eventx{$f}->{origin}}) {
-      $cnodes += 1;
-      last if $cnodes > 3;
-      my $onenode = $g;
-      $onenode =~ s/\s+//g;
-      $pnodes .= $onenode . ";";
+   $eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
+   if ($top20 != 0) {
+      print OH "Total,$eventx_dur seconds,\n";
    }
-   $oneline .=  $pnodes . ",";
-   print OH "$oneline\n";
 }
-$eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
-if ($top20 != 0) {
-   print OH "Total,$eventx_dur seconds,\n";
+
+if ($tema_total_eos > 0 ) {
+   print OH "\n";
+   print OH "End of Service TEMAs\n";
+   print OH "Node,Maint,Type,Date\n";
+   for ($i=0; $i<=$nsavei; $i++) {
+      my $node1 = $nsave[$i];
+      my $tlevel = substr($nsave_temaver[$i],0,5);
+      next if $tlevel eq "";
+      my $tlevel_ref = $eoslevelx{$tlevel};
+      next if !defined $tlevel_ref;
+      next if $tlevel_ref->{future} == 1;
+      $oneline = $node1 . ",";
+      $oneline .= $nsave_temaver[$i] . ",";
+      $oneline .= "EOS" . ",";
+      $oneline .= $tlevel_ref->{date} . ",";
+      print OH "$oneline\n";
+   }
+   for ($i=0; $i<=$nsavei; $i++) {
+      my $node1 = $nsave[$i];
+      my $tlevel = substr($nsave_temaver[$i],0,5);
+      next if $tlevel eq "";
+      my $tlevel_ref = $eoslevelx{$tlevel};
+      next if !defined $tlevel_ref;
+      next if $tlevel_ref->{future} == 0;
+      $oneline = $node1 . ",";
+      $oneline .= $nsave_temaver[$i] . ",";
+      $oneline .= "FutureEOS" . ",";
+      $oneline .= $tlevel_ref->{date} . ",";
+      print OH "$oneline\n";
+   }
 }
 print OH "\n";
 
+my $tadvi = 0;
 my $eventx_ct = 0;
 foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
                       $a cmp $b
@@ -1780,18 +1861,19 @@ foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
    $eventx_ct += $eventx{$f}->{count};
 }
 #$DB::single=2;
-my $sit_rate = ($eventx_ct*60)/$eventx_dur;
-my $psit_rate = sprintf("%.2f",$sit_rate);
-if ($sit_rate > 60) {
-#$DB::single=2;
-   $advi++;$advonline[$advi] = "Situation Status Events arriving $psit_rate per minute";
-   $advcode[$advi] = "DATAHEALTH1080W";
-   $advimpact[$advi] = 95;
-   $advsit[$advi] = "sitrate";
-}
-#$DB::single=2;
+if ($eventx_ct > 0) {
+   my $sit_rate = ($eventx_ct*60)/$eventx_dur;
+   my $psit_rate = sprintf("%.2f",$sit_rate);
+   if ($sit_rate > 60) {
+      $advi++;$advonline[$advi] = "Situation Status Events arriving $psit_rate per minute";
+      $advcode[$advi] = "DATAHEALTH1080W";
+      $advimpact[$advi] = 95;
+      $advsit[$advi] = "sitrate";
+   }
 
-my $tadvi = $advi + 1;
+}
+
+$tadvi = $advi + 1;
 print OH "Advisory messages,$tadvi\n";
 
 if ($advi != -1) {
@@ -1857,7 +1939,6 @@ if ($opt_event == 1){
          print OH "$oneline\n";
       }
    }
-   print OH "\n";
 }
 
 if ($opt_s ne "") {
@@ -4089,3 +4170,4 @@ sub gettime
 # 1.30000  : Advisory when agent has invalid affinities
 # 1.31000  : Add more information on rapidly occuring situation events
 # 1.32000  : Add FP7 data
+# 1.33000  : end End of Service alerts and report
