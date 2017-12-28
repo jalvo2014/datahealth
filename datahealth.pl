@@ -30,7 +30,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.29000";
+my $gVersion = "1.30000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -118,6 +118,7 @@ my @nsave_hostaddr = ();
 my @nsave_sysmsl = ();
 my @nsave_ct = ();
 my @nsave_o4online = ();
+my @nsave_affinities = ();
 my @nsave_temaver = ();
 
 # TNODESAV HOSTADDR duplications
@@ -194,6 +195,8 @@ my %FTOver = ();
 
 my $test_node;
 my $invalid_node;
+my $invalid_affinities;
+
 
 my $key;
 my $vtx;                                 # index
@@ -1191,6 +1194,26 @@ for ($i=0;$i<=$nsavei;$i++) {
       $advimpact[$advi] = 25;
       $advsit[$advi] = $nsave[$i];
    }
+   $invalid_affinities = 0;
+   # first check on dynamic affinities
+   # dynamicAffinityRule = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_. "
+   if ((substr($nsave_affinities[$i],0,1) eq "%") or (substr($nsave_affinities[$i],0,1) eq "%")) {
+      if (substr($nsave_affinities[$i],1) =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_\. //c) {
+         $invalid_affinities = 1;
+      }
+   # second check on static affinities
+   # affinityRule = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789#*"
+   } else {
+      if ($nsave_affinities[$i] =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789#\*//c) {
+         $invalid_affinities = 1;
+      }
+   }
+   if ($invalid_affinities == 1) {
+      $advi++;$advonline[$advi] = "TNODESAV invalid affinities [$nsave_affinities[$i]] for node";
+      $advcode[$advi] = "DATAHEALTH1079E";
+      $advimpact[$advi] = 50;
+      $advsit[$advi] = $nsave[$i];
+   }
    next if $nsave_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODESAV duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1007E";
@@ -2179,6 +2202,7 @@ sub new_tnodesav {
       $nsavex{$inode} = $nsx;
       $nsave_sysmsl[$nsx] = 0;
       $nsave_product[$nsx] = $iproduct;
+      $nsave_affinities[$nsx] = $iaffinities;
       if ($iversion ne "") {
          my $tversion = $iversion;
          $tversion =~ s/[0-9\.]+//g;
@@ -4042,3 +4066,4 @@ sub gettime
 #          : Advisory when ::CONFIG agents not connected to hub TEMS.
 # 1.29000  : Advisory when CF is on remotes or in FTO environment
 #          : Advisory when WPA not configured to hub TEMS
+# 1.30000  : Advisory when agent has invalid affinities
