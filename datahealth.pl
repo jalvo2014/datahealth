@@ -33,7 +33,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.42000";
+my $gVersion = "1.43000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -133,6 +133,7 @@ my @nsave_product = ();
 my @nsave_version = ();
 my @nsave_subversion = ();
 my @nsave_hostaddr = ();
+my @nsave_hostinfo = ();
 my @nsave_sysmsl = ();
 my @nsave_ct = ();
 my @nsave_o4online = ();
@@ -964,6 +965,7 @@ for ($i=0; $i<=$nsavei; $i++) {
    my $nversion = $nsave_version[$i];
    $nversion .= "." . $nsave_subversion[$i] if $nsave_subversion[$i] ne "";
    my $ntema = $nsave_temaver[$i];
+   my $ninfo = $nsave_hostinfo[$i];
    $npc_ct += 1;
    my $pc_ref = $pcx{$npc};
    if (!defined $pc_ref) {
@@ -971,6 +973,7 @@ for ($i=0; $i<=$nsavei; $i++) {
                       count => 0,
                       versions => {},
                       temas => {},
+                      info => {},
                   );
       $pc_ref = \%pcref;
       $pcx{$npc} = \%pcref;
@@ -1001,6 +1004,19 @@ for ($i=0; $i<=$nsavei; $i++) {
         $pc_ref->{temas}{$ntema} = \%temaref;
       }
       $pc_ref->{temas}{$ntema}->{count} += 1;
+   }
+
+   # Calculate Agent HOSTINFO versions
+   if ($ninfo ne "") {
+      my $info_ref = $pc_ref->{info}{$ninfo};
+      if (!defined $info_ref) {
+         my %inforef = (
+                          count => 0,
+                       );
+        $info_ref = \%inforef;
+        $pc_ref->{info}{$ninfo} = \%inforef;
+      }
+      $pc_ref->{info}{$ninfo}->{count} += 1;
    }
 }
 
@@ -2403,6 +2419,7 @@ if ($npc_ct > 0 ) {
    foreach my $f (sort { $a cmp $b } keys %pcx) {
       my $pc_ref = $pcx{$f};
       $oneline = $f . "," . $pc_ref->{count} . ",";
+
       my $pversions = "";
       foreach my $g  (sort { $a cmp $b } keys %{$pc_ref->{versions}}) {
          my $version_ref = $pc_ref->{versions}{$g};
@@ -2410,6 +2427,7 @@ if ($npc_ct > 0 ) {
       }
       $pversions = substr($pversions,0,-1) if $pversions ne "";
       $oneline .= "Versions[" . $pversions . "],";
+
       my $ptemas = "";
       foreach my $g  (sort { $a cmp $b } keys %{$pc_ref->{temas}}) {
          my $tema_ref = $pc_ref->{temas}{$g};
@@ -2417,6 +2435,14 @@ if ($npc_ct > 0 ) {
       }
       $ptemas = substr($ptemas,0,-1) if $ptemas ne "";
       $oneline .= "TEMAs[" . $ptemas . "],";
+
+      my $pinfo = "";
+      foreach my $g  (sort { $a cmp $b } keys %{$pc_ref->{info}}) {
+         my $info_ref = $pc_ref->{info}{$g};
+         $pinfo .= $g . "(" . $info_ref->{count} . ") ";
+      }
+      $pinfo = substr($pinfo,0,-1) if $pinfo ne "";
+      $oneline .= "INFOs[" . $pinfo . "],";
       print OH "$oneline\n";
    }
 
@@ -3066,7 +3092,7 @@ sub new_tname {
 
 
 sub new_tnodesav {
-   my ($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities) = @_;
+   my ($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$ihostinfo,$iaffinities) = @_;
    $nsx = $nsavex{$inode};
    if (!defined $nsx) {
       $nsavei++;
@@ -3090,6 +3116,7 @@ sub new_tnodesav {
       $nsave_version[$nsx] = $iversion;
       $nsave_subversion[$nsx] = "";
       $nsave_hostaddr[$nsx] = $ihostaddr;
+      $nsave_hostinfo[$nsx] = $ihostinfo;
       $nsave_ct[$nsx] = 0;
       $nsave_o4online[$nsx] = $io4online;
       $nsave_common[$nsx] = "";
@@ -3590,6 +3617,7 @@ sub init_txt {
    my $iproduct;
    my $iversion;
    my $ihostaddr;
+   my $ihostinfo;
    my $ireserved;
    my $ithrunode;
    my $iaffinities;
@@ -3688,9 +3716,11 @@ sub init_txt {
       $ireserved =~ s/\s+$//;   #trim trailing whitespace
       $ithrunode = substr($oneline,380,32);
       $ithrunode =~ s/\s+$//;   #trim trailing whitespace
-      $iaffinities = substr($oneline,413,43);
+      $ihostinfo = substr($oneline,413,16);
+      $ihostinfo =~ s/\s+$//;   #trim trailing whitespace
+      $iaffinities = substr($oneline,430,43);
       $iaffinities =~ s/\s+$//;   #trim trailing whitespace
-      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities);
+      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$ihostinfo,$iaffinities);
    }
 
    open(KLST, "<$opt_txt_tnodelst") || die("Could not open TNODELST $opt_txt_tnodelst\n");
@@ -4197,6 +4227,7 @@ sub init_lst {
    my $iproduct;
    my $iversion;
    my $ihostaddr;
+   my $ihostinfo;
    my $io4online;
    my $ireserved;
    my $ithrunode;
@@ -4284,7 +4315,7 @@ sub init_lst {
       chop $oneline;
       # KfwSQLClient /e "SELECT NODE,O4ONLINE,PRODUCT,VERSION,HOSTADDR,RESERVED,THRUNODE,AFFINITIES FROM O4SRV.TNODESAV" >QA1DNSAV.DB.LST
       #[1]  BNSF:TOIFVCTR2PW:VM  Y  VM  06.22.01  ip.spipe:#10.121.54.28[11853]<NM>TOIFVCTR2PW</NM>  A=00:WIX64;C=06.22.09.00:WIX64;G=06.22.09.00:WINNT;  REMOTE_catrste050bnsxa  000100000000000000000000000000000G0003yw0a7
-      ($inode,$io4online,$iproduct,$iversion,$ihostaddr,$ireserved,$ithrunode,$iaffinities) = parse_lst(8,$oneline);
+      ($inode,$io4online,$iproduct,$iversion,$ihostaddr,$ireserved,$ithrunode,$ihostinfo,$iaffinities) = parse_lst(9,$oneline);
       $inode =~ s/\s+$//;   #trim trailing whitespace
       $iproduct =~ s/\s+$//;   #trim trailing whitespace
       $iversion =~ s/\s+$//;   #trim trailing whitespace
@@ -4292,10 +4323,11 @@ sub init_lst {
       $ihostaddr =~ s/\s+$//;   #trim trailing whitespace
       $ireserved =~ s/\s+$//;   #trim trailing whitespace
       $ithrunode =~ s/\s+$//;   #trim trailing whitespace
+      $ihostinfo =~ s/\s+$//;   #trim trailing whitespace
       $iaffinities =~ s/\s+$//;   #trim trailing whitespace
       $nsave_offline += ($io4online eq "N");
       $nsave_online += ($io4online eq "Y");
-      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities);
+      new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$ihostinfo,$iaffinities);
    }
 
    open(KLST, "<$opt_lst_tnodelst") || die("Could not open TNODELST $opt_lst_tnodelst\n");
@@ -5067,6 +5099,7 @@ sub gettime
 # 1.41000  : Add tighter check for TOBJACCL checking, 1099W, 1100W, 1101W and revised 1030W
 # 1.42000  : Add 1102W for known situation unknown system generated MSL - not so important
 #          : Add FTO status  HUB/MIRROR in FTO message
+# 1.43000  : HOSTINFO to Agent summary
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
