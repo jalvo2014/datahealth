@@ -32,7 +32,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.34000";
+my $gVersion = "1.35000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -54,6 +54,7 @@ my $oneline;
 my $sx;
 my $i;
 my $tlstdate;                            # tomorrow date expressed in ITM Stamp
+my $top20;
 
 # forward declarations of subroutines
 
@@ -123,6 +124,9 @@ my @nsave_o4online = ();
 my @nsave_affinities = ();
 my @nsave_temaver = ();
 
+my $nsave_online = 0;
+my $nsave_offline = 0;
+
 # TNODESAV HOSTADDR duplications
 my $hsx;
 my $hsavei = -1;
@@ -183,6 +187,107 @@ my %magentx = ();                        # hash from managing agent name to inde
 my @magent_subct = ();                   # count of subnode agents
 my @magent_sublen = ();                  # length of subnode agent list
 my @magent_tems_version = ();            # version of managing agent TEMS
+
+# allow user to set impact
+my %advcx = (
+              "DATAHEALTH1001E" => "100",
+              "DATAHEALTH1002E" => "90",
+              "DATAHEALTH1003I" => "0",
+              "DATAHEALTH1004I" => "0",
+              "DATAHEALTH1005W" => "75",
+              "DATAHEALTH1006W" => "75",
+              "DATAHEALTH1007E" => "105",
+              "DATAHEALTH1008E" => "105",
+              "DATAHEALTH1009E" => "105",
+              "DATAHEALTH1010W" => "80",
+              "DATAHEALTH1011E" => "105",
+              "DATAHEALTH1012E" => "105",
+              "DATAHEALTH1013W" => "10",
+              "DATAHEALTH1014W" => "10",
+              "DATAHEALTH1015W" => "9",
+              "DATAHEALTH1016E" => "50",
+              "DATAHEALTH1017E" => "50",
+              "DATAHEALTH1018W" => "90",
+              "DATAHEALTH1019W" => "10",
+              "DATAHEALTH1020W" => "80",
+              "DATAHEALTH1021E" => "105",
+              "DATAHEALTH1022E" => "105",
+              "DATAHEALTH1023E" => "25",
+              "DATAHEALTH1024E" => "90",
+              "DATAHEALTH1025E" => "0",
+              "DATAHEALTH1026E" => "50",
+              "DATAHEALTH1027E" => "50",
+              "DATAHEALTH1028E" => "105",
+              "DATAHEALTH1029W" => "0",
+              "DATAHEALTH1030W" => "0",
+              "DATAHEALTH1031E" => "50",
+              "DATAHEALTH1032E" => "50",
+              "DATAHEALTH1033E" => "50",
+              "DATAHEALTH1034W" => "10",
+              "DATAHEALTH1035W" => "0",
+              "DATAHEALTH1036E" => "25",
+              "DATAHEALTH1037W" => "25",
+              "DATAHEALTH1038E" => "105",
+              "DATAHEALTH1039E" => "100",
+              "DATAHEALTH1040E" => "100",
+              "DATAHEALTH1041W" => "10",
+              "DATAHEALTH1042E" => "90",
+              "DATAHEALTH1043E" => "100",
+              "DATAHEALTH1044E" => "100",
+              "DATAHEALTH1045E" => "100",
+              "DATAHEALTH1046W" => "90",
+              "DATAHEALTH1047E" => "20",
+              "DATAHEALTH1048E" => "110",
+              "DATAHEALTH1049W" => "25",
+              "DATAHEALTH1050W" => "25",
+              "DATAHEALTH1051W" => "25",
+              "DATAHEALTH1052W" => "25",
+              "DATAHEALTH1053E" => "20",
+              "DATAHEALTH1054E" => "105",
+              "DATAHEALTH1055E" => "10",
+              "DATAHEALTH1056E" => "100",
+              "DATAHEALTH1057E" => "100",
+              "DATAHEALTH1058E" => "105",
+              "DATAHEALTH1059E" => "105",
+              "DATAHEALTH1060E" => "20",
+              "DATAHEALTH1061E" => "75",
+              "DATAHEALTH1062E" => "75",
+              "DATAHEALTH1063W" => "10",
+              "DATAHEALTH1064W" => "50",
+              "DATAHEALTH1065W" => "10",
+              "DATAHEALTH1066W" => "10",
+              "DATAHEALTH1067E" => "110",
+              "DATAHEALTH1068E" => "90",
+              "DATAHEALTH1069E" => "100",
+              "DATAHEALTH1070W" => "50",
+              "DATAHEALTH1071W" => "20",
+              "DATAHEALTH1072W" => "20",
+              "DATAHEALTH1073W" => "25",
+              "DATAHEALTH1074W" => "90",
+              "DATAHEALTH1075W" => "60",
+              "DATAHEALTH1076W" => "50",
+              "DATAHEALTH1077E" => "100",
+              "DATAHEALTH1078E" => "100",
+              "DATAHEALTH1079E" => "50",
+              "DATAHEALTH1080W" => "95",
+              "DATAHEALTH1081W" => "75",
+              "DATAHEALTH1082W" => "55",
+              "DATAHEALTH1083W" => "75",
+              "DATAHEALTH1084W" => "55",
+              "DATAHEALTH1085W" => "95",
+              "DATAHEALTH1086W" => "90",
+              "DATAHEALTH1087E" => "100",
+              "DATAHEALTH1088W" => "100",
+              "DATAHEALTH1089E" => "100",
+              "DATAHEALTH1090W" => "80",
+              "DATAHEALTH1091W" => "95",
+            );
+
+my %advtextx = ();
+my $advkey = "";
+my $advtext = "";
+my $advline;
+my %advgotx = ();
 
 my $advi = -1;
 my @advonline = ();
@@ -475,6 +580,7 @@ my @sit_history_export   = ();             # If History collection file, how man
 my $sit_distribution = 0;                  # when 1, distributions are present
 my @sit_lstdate = ();
 
+my $sit_autostart_total = 0;
 my $sit_tems_alert = 0;
 my $sit_tems_alert_run = 0;
 my $sit_tems_alert_dist = 0;
@@ -534,6 +640,27 @@ my $eventx_last = -1;
 my $eventx_dur;
 
 my %epochx;
+
+while (<main::DATA>)
+{
+  $advline = $_;
+  if ($advkey eq "") {
+     chomp $advline;
+     $advkey = $advline;
+     next;
+  }
+  if (length($advline) >= 15) {
+     if (substr($advline,0,10) eq "DATAHEALTH") {
+        $advtextx{$advkey} = $advtext;
+        chomp $advline;
+        $advkey = $advline;
+        $advtext = "";
+        next;
+     }
+  }
+  $advtext .= $advline;
+}
+$advtextx{$advkey} = $advtext;
 
 # option and ini file variables variables
 
@@ -650,14 +777,14 @@ if ($opt_miss == 1) {
 if ($hub_tems_no_tnodesav == 1) {
    $advi++;$advonline[$advi] = "HUB TEMS $hub_tems is present in TNODELST but missing from TNODESAV";
    $advcode[$advi] = "DATAHEALTH1011E";
-   $advimpact[$advi] = 105;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $hub_tems;
 }
 
 if ($nlistvi == -1) {
    $advi++;$advonline[$advi] = "No TNODELST NODETYPE=V records";
    $advcode[$advi] = "DATAHEALTH1012E";
-   $advimpact[$advi] = 105;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $hub_tems;
    $hub_tems_no_tnodesav = 1;
 }
@@ -671,7 +798,7 @@ if ($hub_tems_no_tnodesav == 0) {
    if ($hub_tems eq "") {
       $advi++;$advonline[$advi] = "*HUB node missing from TNODELST Type M records";
       $advcode[$advi] = "DATAHEALTH1038E";
-      $advimpact[$advi] = 105;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "*HUB";
    } else {
       $hubi = $temsx{$hub_tems};
@@ -698,7 +825,7 @@ if ($hub_tems_no_tnodesav == 0) {
             if (substr($temslevel,0,5) lt substr($agtlevel,0,5)) {
                $advi++;$advonline[$advi] = "Agent with TEMA at [$agtlevel] later than TEMS $tems1 at [$temslevel]";
                $advcode[$advi] = "DATAHEALTH1043E";
-               $advimpact[$advi] = 100;
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
                $advsit[$advi] = $node1;
             }
             my $aref = $mhash{$agtlevel};
@@ -708,7 +835,7 @@ if ($hub_tems_no_tnodesav == 0) {
                }
                $advi++;$advonline[$advi] = "Agent with unknown TEMA level [$agtlevel]";
                $advcode[$advi] = "DATAHEALTH1044E";
-               $advimpact[$advi] = 100;
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
                $advsit[$advi] = $node1;
                next;
             }
@@ -716,7 +843,7 @@ if ($hub_tems_no_tnodesav == 0) {
             if (!defined $tref) {
                $advi++;$advonline[$advi] = "TEMS with unknown version [$temslevel]";
                $advcode[$advi] = "DATAHEALTH1045E";
-               $advimpact[$advi] = 100;
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
                $advsit[$advi] = $tems1;
                next;
             }
@@ -811,14 +938,14 @@ if ($isFTO >= 2) {
    if (scalar (keys %reverse) > 1) {
       $advi++;$advonline[$advi] = "FTO hub TEMS have different version levels [$pftover]";
       $advcode[$advi] = "DATAHEALTH1069E";
-      $advimpact[$advi] = 100;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "FTO";
    }
    my $pFTO_ct = scalar (keys %FTOver);
    if ($pFTO_ct > 2) {
       $advi++;$advonline[$advi] = "There are $pFTO_ct hub TEMS [$pftover]";
       $advcode[$advi] = "DATAHEALTH1070W";
-      $advimpact[$advi] = 50;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "FTO";
    }
 }
@@ -827,14 +954,14 @@ if ($isFTO >= 2) {
 if ($tems_packages > $tems_packages_nominal) {
    $advi++;$advonline[$advi] = "Total TEMS Packages [.cat files] count [$tems_packages] exceeds nominal [$tems_packages_nominal]";
    $advcode[$advi] = "DATAHEALTH1046W";
-   $advimpact[$advi] = 90;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = "Package.cat";
 }
 
 if ($tems_packages > 510) {
    $advi++;$advonline[$advi] = "Total TEMS Packages [.cat files] count [$tems_packages] close to TEMS failure point of 513";
    $advcode[$advi] = "DATAHEALTH1048E";
-   $advimpact[$advi] = 110;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = "Package.cat";
 }
 
@@ -851,13 +978,13 @@ for ($i=0; $i<=$nsavei; $i++) {
                if ($thrunode1 ne $hub_tems) {
                   $advi++;$advonline[$advi] = "CF Agent connected to $thrunode1 which is not the hub TEMS";
                   $advcode[$advi] = "DATAHEALTH1076W";
-                  $advimpact[$advi] = 50;
+                  $advimpact[$advi] = $advcx{$advcode[$advi]};
                   $advsit[$advi] = $node1;
                } else {
                   if ($isFTO >= 2) {
                      $advi++;$advonline[$advi] = "CF Agent not supported in FTO mode";
                      $advcode[$advi] = "DATAHEALTH1077E";
-                     $advimpact[$advi] = 100;
+                     $advimpact[$advi] = $advcx{$advcode[$advi]};
                      $advsit[$advi] = $node1;
                  }
                }
@@ -877,7 +1004,7 @@ for ($i=0; $i<=$nsavei; $i++) {
                if ($thrunode1 ne $hub_tems) {
                   $advi++;$advonline[$advi] = "WPA connected to $thrunode1 which is not the hub TEMS";
                   $advcode[$advi] = "DATAHEALTH1078E";
-                  $advimpact[$advi] = 100;
+                  $advimpact[$advi] = $advcx{$advcode[$advi]};
                   $advsit[$advi] = $node1;
                }
             }
@@ -887,7 +1014,7 @@ for ($i=0; $i<=$nsavei; $i++) {
    if (index($node1,"::MQ") !=  -1) {
       $advi++;$advonline[$advi] = "MQ Agent name has missing hostname qualifier";
       $advcode[$advi] = "DATAHEALTH1073W";
-      $advimpact[$advi] = 25;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $node1;
    }
    $nsx = $nlistvx{$node1};
@@ -895,7 +1022,7 @@ for ($i=0; $i<=$nsavei; $i++) {
    if (index($node1,":") !=  -1) {
       $advi++;$advonline[$advi] = "Node present in node status but missing in TNODELST Type V records";
       $advcode[$advi] = "DATAHEALTH1001E";
-      $advimpact[$advi] = 100;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $node1;
       next if $opt_vndx == 0;
       print NDX "$node1\n";
@@ -934,7 +1061,7 @@ for ($i=0; $i<=$nsavei; $i++) {
          next if length($node1) < 31;
          $advi++;$advonline[$advi] = "Subnode Name at 31/32 characters and might be truncated - product[$product1]";
          $advcode[$advi] = "DATAHEALTH1014W";
-         $advimpact[$advi] = 10;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $node1;
       }
    }
@@ -946,7 +1073,7 @@ for ($i=0; $i<=$magenti;$i++) {
    if ($magent_sublen[$i]*100 > $opt_subpc_warn*32768){
       $advi++;$advonline[$advi] = "Managing agent subnodelist is $magent_sublen[$i]: more then $opt_subpc_warn% of 32768 bytes";
       $advcode[$advi] = "DATAHEALTH1015W";
-      $advimpact[$advi] = 90;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $onemagent;
    }
 }
@@ -965,14 +1092,14 @@ for ($i=0; $i<=$evmapi;$i++) {
    if (!defined $onemap){
       $advi++;$advonline[$advi] = "EVNTMAP Situation reference missing";
       $advcode[$advi] = "DATAHEALTH1053E";
-      $advimpact[$advi] = 20;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $evmap[$i];
    } else {
       $onesit =~ s/\s+$//;   #trim trailing whitespace
       if (!defined $sitx{$onesit}){
          $advi++;$advonline[$advi] = "EVNTMAP ID[$evmap[$i]] Unknown Situation in mapping - $onesit";
          $advcode[$advi] = "DATAHEALTH1047E";
-         $advimpact[$advi] = 20;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $evmap[$i];
       }
    }
@@ -998,14 +1125,14 @@ sub valid_lstdate {
       if ($ilstdate eq "") {
          $advi++;$advonline[$advi] = "$itable LSTDATE is blank and will not synchronize in FTO configuration";
          $advcode[$advi] = "DATAHEALTH1039E";
-         $advimpact[$advi] = 100;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $iname;
       } elsif ($ilstdate gt $tlstdate) {
          if (defined $hubi) {
             if ($tems_version[$hubi]  lt "06.30.03") {
                $advi++;$advonline[$advi] = "LSTDATE for [$icomment] value in the future $ilstdate";
                $advcode[$advi] = "DATAHEALTH1040E";
-               $advimpact[$advi] = 100;
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
                $advsit[$advi] = "$itable";
             }
          }
@@ -1014,13 +1141,16 @@ sub valid_lstdate {
       if ($ilstdate eq "") {
          $advi++;$advonline[$advi] = "$itable LSTDATE is blank and will not synchronize in FTO configuration";
          $advcode[$advi] = "DATAHEALTH1063W";
-         $advimpact[$advi] = 10;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $iname;
       } elsif ($ilstdate gt $tlstdate) {
          if (defined $hubi) {
             if ($tems_version[$hubi]  lt "06.30.03") {
                $advi++;$advonline[$advi] = "LSTDATE for [$icomment] value in the future $ilstdate";
                $advcode[$advi] = "DATAHEALTH1041W";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+     $advimpact[$advi] = $advcx{$advcode[$advi]};
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
                $advimpact[$advi] = 10;
                $advsit[$advi] = "$itable";
             }
@@ -1035,7 +1165,7 @@ for ($i=0; $i<=$cali; $i++) {
    if ($cal_count[$i] > 1) {
       $advi++;$advonline[$advi] = "TCALENDAR duplicate key ID";
       $advcode[$advi] = "DATAHEALTH1058E";
-      $advimpact[$advi] = 105;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $cal[$i];
    }
 }
@@ -1045,14 +1175,13 @@ for ($i=0; $i<=$tcai; $i++) {
    if ($tca_count[$i] > 1) {
       $advi++;$advonline[$advi] = "TOVERRIDE duplicate key ID";
       $advcode[$advi] = "DATAHEALTH1059E";
-      $advimpact[$advi] = 105;
       $advsit[$advi] = $tca[$i];
    }
    my $onesit = $tca_sitname[$i];
    if (!defined $sitx{$onesit}){
       $advi++;$advonline[$advi] = "TOVERRIDE Unknown Situation [$onesit] in override";
       $advcode[$advi] = "DATAHEALTH1060E";
-      $advimpact[$advi] = 20;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $tca[$i];
    }
 }
@@ -1063,14 +1192,14 @@ for ($i=0; $i<=$tcii; $i++) {
       if (!defined $calx{$onecal}){
          $advi++;$advonline[$advi] = "TOVERITEM Unknown Calendar ID $onecal";
          $advcode[$advi] = "DATAHEALTH1061E";
-         $advimpact[$advi] = 75;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $tci[$i];
       }
       my $oneid = $tci_id[$i];
       if (!defined $tcax{$oneid}){
          $advi++;$advonline[$advi] = "TOVERITEM Unknown TOVERRIDE ID $oneid";
          $advcode[$advi] = "DATAHEALTH1062E";
-         $advimpact[$advi] = 75;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $tci[$i];
       }
    }
@@ -1088,7 +1217,7 @@ for ($i=0; $i<=$nsavei; $i++) {
    if (index($node1,":") !=  -1) {
       $advi++;$advonline[$advi] = "Node without a system generated MSL in TNODELST Type M records";
       $advcode[$advi] = "DATAHEALTH1002E";
-      $advimpact[$advi] = 90;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $node1;
       next if $opt_mndx == 0;
       print MDX "$node1\n";
@@ -1102,9 +1231,9 @@ for ($i=0; $i<=$nlistmi; $i++) {
    if ($nlistm_miss[$i] != 0) {
       $advi++;$advonline[$advi] = "Node present in TNODELST Type M records but missing in Node Status";
       $advcode[$advi] = "DATAHEALTH1003I";
-      $advimpact[$advi] = 0;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $node1;
-      if ($opt_miss == 1) {
+     if ($opt_miss == 1) {
          my $key = "DATAHEALTH1003I" . " " . $node1;
          $miss{$key} = 1;
       }
@@ -1112,9 +1241,9 @@ for ($i=0; $i<=$nlistmi; $i++) {
    if ($nlistm_nov[$i] != 0) {
       $advi++;$advonline[$advi] = "Node present in TNODELST Type M records but missing TNODELST Type V records";
       $advcode[$advi] = "DATAHEALTH1004I";
-      $advimpact[$advi] = 0;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $node1;
-   }
+  }
 }
 
 foreach my $f (keys %group) {
@@ -1133,7 +1262,7 @@ foreach my $f (keys %group) {
          if (!defined $ox) {
             $advi++;$advonline[$advi] = "TGROUP ID $f NAME $group_detail_ref->{grpname} not distributed in TOBJACCL";
             $advcode[$advi] = "DATAHEALTH1034W";
-            $advimpact[$advi] = 10;
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advsit[$advi] = $group_detail_ref->{grpname};
          }
       }
@@ -1146,7 +1275,7 @@ foreach my $f (sort { $a cmp $b } keys %pcyx) {
    if ($pcy_ref->{count} > 1) {
       $advi++;$advonline[$advi] = "TPCYDESC duplicate key PCYNAME";
       $advcode[$advi] = "DATAHEALTH1054E";
-      $advimpact[$advi] = 105;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $f;
    }
    foreach my $g (sort { $a cmp $b } keys %{$pcy_ref->{sit}}) {
@@ -1155,12 +1284,12 @@ foreach my $f (sort { $a cmp $b } keys %pcyx) {
          if ($pcy_ref->{autostart} eq "*YES") {
             $advi++;$advonline[$advi] = "TPCYDESC Wait on SIT or Sit reset - unknown situation $g";
             $advcode[$advi] = "DATAHEALTH1056E";
-            $advimpact[$advi] = 100;
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advsit[$advi] = $f;
          } else {
             $advi++;$advonline[$advi] = "TPCYDESC Wait on SIT or Sit reset - unknown situation $g but policy not autostarted";
             $advcode[$advi] = "DATAHEALTH1065W";
-            $advimpact[$advi] = 10;
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advsit[$advi] = $f;
          }
       }
@@ -1171,12 +1300,12 @@ foreach my $f (sort { $a cmp $b } keys %pcyx) {
          if ($pcy_ref->{autostart} eq "*YES") {
             $advi++;$advonline[$advi] = "TPCYDESC Evaluate Sit Now - unknown situation $g";
             $advcode[$advi] = "DATAHEALTH1057E";
-            $advimpact[$advi] = 100;
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advsit[$advi] = $f;
          } else {
             $advi++;$advonline[$advi] = "TPCYDESC Evaluate Sit Now - unknown situation $g but policy not autostarted";
             $advcode[$advi] = "DATAHEALTH1066W";
-            $advimpact[$advi] = 10;
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advsit[$advi] = $f;
          }
       }
@@ -1197,6 +1326,7 @@ for ($i=0;$i<=$nsavei;$i++) {
    if ($invalid_node == 1) {
       $advi++;$advonline[$advi] = "TNODESAV invalid node name";
       $advcode[$advi] = "DATAHEALTH1016E";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advimpact[$advi] = 50;
       $advsit[$advi] = $nsave[$i];
    }
@@ -1204,7 +1334,7 @@ for ($i=0;$i<=$nsavei;$i++) {
    if (index($nsave[$i]," ") != -1) {
       $advi++;$advonline[$advi] = "TNODESAV node name with embedded blank";
       $advcode[$advi] = "DATAHEALTH1049W";
-      $advimpact[$advi] = 25;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nsave[$i];
    }
    $invalid_affinities = 0;
@@ -1224,13 +1354,13 @@ for ($i=0;$i<=$nsavei;$i++) {
    if ($invalid_affinities == 1) {
       $advi++;$advonline[$advi] = "TNODESAV invalid affinities [$nsave_affinities[$i]] for node";
       $advcode[$advi] = "DATAHEALTH1079E";
-      $advimpact[$advi] = 50;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nsave[$i];
    }
    next if $nsave_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODESAV duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1007E";
-   $advimpact[$advi] = 105;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $nsave[$i];
 }
 
@@ -1250,7 +1380,7 @@ for ($i=0;$i<=$siti;$i++) {
    next if $sit_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TSITDESC duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1021E";
-   $advimpact[$advi] = 105;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $sit[$i];
 }
 
@@ -1258,7 +1388,7 @@ for ($i=0;$i<=$nami;$i++) {
    next if $nam_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNAME duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1022E";
-   $advimpact[$advi] = 105;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $nam[$i];
 }
 
@@ -1268,9 +1398,14 @@ for ($i=0;$i<=$nami;$i++) {
    next if substr($nam[$i],0,8) eq "UADVISOR";
    $advi++;$advonline[$advi] = "TNAME ID index missing in TSITDESC";
    $advcode[$advi] = "DATAHEALTH1023E";
-   $advimpact[$advi] = 25;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $nam[$i];
 }
+
+my  $ms_offline_kds_hour = 0;
+my  $ms_offline_sitmon_hour = 0;
+my  $kds_per_sec = 0;
+my  $sitmon_per_sec = 0;
 
 for ($i=0;$i<=$siti;$i++) {
    valid_lstdate("TSITDESC",$sit_lstdate[$i],$sit[$i],"SITNAME=$sit[$i]");
@@ -1281,17 +1416,77 @@ for ($i=0;$i<=$siti;$i++) {
       next if defined $sitx{$mysit};
       $advi++;$advonline[$advi] = "Situation Formula *SIT [$mysit] Missing from TSITDESC table";
       $advcode[$advi] = "DATAHEALTH1024E";
-      $advimpact[$advi] = 90;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $sit[$i];
    }
    if ($sit_reeval[$i] - $sit_bad_time gt 0) {
       $advi++;$advonline[$advi] = "Situation Sampling Interval $sit_reeval[$i] seconds - higher then danger level $sit_bad_time";
       $advcode[$advi] = "DATAHEALTH1064W";
-      $advimpact[$advi] = 50;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $sit[$i];
    }
-
+   if (index($sit_pdt[$i],"ManagedSystem.Status") != -1) {
+      if($sit[$i] ne "TEMS_Busy") {
+         if ($sit_autostart[$i] eq "*YES") {
+            $ms_offline_kds_hour += 3600/$sit_reeval[$i];
+            $ms_offline_sitmon_hour += 3600/$sit_reeval[$i] if $sit_persist[$i] > 1;
+         }
+      }
+   }
+   $sit_autostart_total += 1 if $sit_autostart[$i] eq "*YES";
 }
+$DB::single=2;
+if ($nsave_online > 0){
+$DB::single=2;
+   my $sit_ratio_percent = int(($sit_autostart_total*100)/$nsave_online);
+   if ($sit_ratio_percent > 100) {
+$DB::single=2;
+      $advi++;$advonline[$advi] = "Autostarted Situation to Online Agent ratio[$sit_ratio_percent%] - dangerously high";
+      $advcode[$advi] = "DATAHEALTH1091W";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "Situations_High";
+   }
+}
+if ($ms_offline_kds_hour > 0) {
+   my $nsave_total = $nsave_online + $nsave_offline;
+   $kds_per_sec = ($ms_offline_kds_hour * $nsave_total)/3600;
+   $sitmon_per_sec = ($ms_offline_sitmon_hour * $nsave_offline)/3600;
+}
+
+if ($ms_offline_sitmon_hour > 0) {
+   my $nsave_total = $nsave_online + $nsave_offline;
+   $sitmon_per_sec = ($ms_offline_sitmon_hour * $nsave_total)/3600;
+}
+
+if ($kds_per_sec > 30) {
+   if ($kds_per_sec > 200) {
+      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $kds_per_sec dangerously high";
+      $advcode[$advi] = "DATAHEALTH1087E";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "MS_Offline";
+   } else {
+      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $kds_per_sec somewhat high";
+      $advcode[$advi] = "DATAHEALTH1086W";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "MS_Offline";
+   }
+}
+
+if ($sitmon_per_sec > 30) {
+   if ($sitmon_per_sec > 100) {
+      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $sitmon_per_sec dangerously high";
+      $advcode[$advi] = "DATAHEALTH1089E";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "MS_Offline";
+   } else {
+      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $kds_per_sec somewhat high";
+      $advcode[$advi] = "DATAHEALTH1088W";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "MS_Offline";
+   }
+}
+
+
 
 for ($i=0;$i<=$hsavei;$i++) {
    next if $hsave_ct[$i] == 1;
@@ -1317,7 +1512,7 @@ for ($i=0;$i<=$hsavei;$i++) {
    next if $#ragents < 1;
    $advi++;$advonline[$advi] = "TNODESAV duplicate hostaddr in [$pagents]";
    $advcode[$advi] = "DATAHEALTH1010W";
-   $advimpact[$advi] = 80;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $hsave[$i];
 }
 
@@ -1336,7 +1531,7 @@ foreach my $f (keys %sysnamex) {
    }
    $advi++;$advonline[$advi] = "TNODESAV duplicate $sysname_ref->{ipcount} SYSTEM_NAMEs in [$pagents]";
    $advcode[$advi] = "DATAHEALTH1075W";
-   $advimpact[$advi] = 60;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $f;
 }
 
@@ -1345,7 +1540,7 @@ for ($i=0;$i<=$nlistvi;$i++) {
    if ($nlistv_ct[$i] > 1) {
       $advi++;$advonline[$advi] = "TNODELST Type V duplicate nodes";
       $advcode[$advi] = "DATAHEALTH1008E";
-      $advimpact[$advi] = 105;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlistv[$i];
    }
    my $thru1 = $nlistv_thrunode[$i];
@@ -1353,7 +1548,7 @@ for ($i=0;$i<=$nlistvi;$i++) {
    if (!defined $nsx) {
       $advi++;$advonline[$advi] = "TNODELST Type V Thrunode $thru1 missing in Node Status";
       $advcode[$advi] = "DATAHEALTH1025E";
-      $advimpact[$advi] = 0;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlistv[$i];
       if ($opt_miss == 1) {
          my $key = "DATAHEALTH1025E" . " " . $thru1;
@@ -1371,13 +1566,13 @@ for ($i=0;$i<=$nlistvi;$i++) {
    if ($invalid_node == 1) {
       $advi++;$advonline[$advi] = "TNODELST Type V node invalid name";
       $advcode[$advi] = "DATAHEALTH1026E";
-      $advimpact[$advi] = 50;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlistv[$i];
    }
    if (index($nlistv[$i]," ") != -1) {
       $advi++;$advonline[$advi] = "TNODELST TYPE V node name with embedded blank";
       $advcode[$advi] = "DATAHEALTH1050W";
-      $advimpact[$advi] = 25;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlistv[$i];
    }
    $invalid_node = 0;
@@ -1391,13 +1586,13 @@ for ($i=0;$i<=$nlistvi;$i++) {
    if ($invalid_node == 1) {
       $advi++;$advonline[$advi] = "TNODELST Type V Thrunode $thru1 invalid name";
       $advcode[$advi] = "DATAHEALTH1027E";
-      $advimpact[$advi] = 50;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlistv[$i];
    }
    if (index($thru1," ") != -1) {
       $advi++;$advonline[$advi] = "TNODELST TYPE V Thrunode [$thru1] with embedded blank";
       $advcode[$advi] = "DATAHEALTH1051W";
-      $advimpact[$advi] = 25;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlistv[$i];
    }
 }
@@ -1415,13 +1610,13 @@ for ($i=0;$i<=$nlisti;$i++) {
    if ($invalid_node == 1) {
       $advi++;$advonline[$advi] = "TNODELST NODETYPE=M invalid nodelist name";
       $advcode[$advi] = "DATAHEALTH1017E";
-      $advimpact[$advi] = 50;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlist[$i];
    }
    if (index($nlist[$i]," ") != -1) {
       $advi++;$advonline[$advi] = "TNODELST NODETYPE=M nodelist with embedded blank";
       $advcode[$advi] = "DATAHEALTH1052W";
-      $advimpact[$advi] = 25;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlist[$i];
    }
 }
@@ -1432,7 +1627,7 @@ for ($i=0;$i<=$obji;$i++){
    if ($obj_ct[$i] > 1) {
       $advi++;$advonline[$advi] = "TOBJACCL duplicate nodes";
       $advcode[$advi] = "DATAHEALTH1028E";
-      $advimpact[$advi] = 105;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $obj[$i];
    }
    my $objname1 = $obj_objname[$i];
@@ -1453,7 +1648,7 @@ for ($i=0;$i<=$obji;$i++){
       if (substr($nodel1,0,1) eq "*") {
          $advi++;$advonline[$advi] = "TOBJACCL Nodel $nodel1 Apparent MSL but missing from TNODELST";
          $advcode[$advi] = "DATAHEALTH1029W";
-         $advimpact[$advi] = 0;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $obj[$i];
          if ($opt_miss == 1) {
             my $pick = $obj[$i];
@@ -1467,7 +1662,7 @@ for ($i=0;$i<=$obji;$i++){
       if (!defined $nsx) {
          $advi++;$advonline[$advi] = "TOBJACCL Node or MSL [$nodel1] missing from TNODESAV or TNODELST";
          $advcode[$advi] = "DATAHEALTH1030W";
-         $advimpact[$advi] = 0;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $obj[$i];
          if ($opt_miss == 1) {
             my $pick = $obj[$i];
@@ -1480,7 +1675,8 @@ for ($i=0;$i<=$obji;$i++){
       next if defined $groupx{$objname1};       # if item being distributed is known as a situation group, good
       $advi++;$advonline[$advi] = "TOBJACCL Group name missing in Situation Group";
       $advcode[$advi] = "DATAHEALTH1035W";
-      $advimpact[$advi] = 0;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nodel1;
       if ($opt_miss == 1) {
          my $pick = $nodel1;
@@ -1499,7 +1695,7 @@ for ($i=0;$i<=$nsavei;$i++) {
    next if substr($nsave_temaver[$i],0,5) gt "06.10";
    $advi++;$advonline[$advi] = "Agent using TEMA at $nsave_temaver[$i] level";
    $advcode[$advi] = "DATAHEALTH1019W";
-   $advimpact[$advi] = 10;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $nsave[$i];
 }
 ## Check for TEMA level below Agent version
@@ -1511,7 +1707,7 @@ for ($i=0;$i<=$nsavei;$i++) {
    next if substr($nsave_temaver[$i],0,5) ge substr($nsave_version[$i],0,5);
    $advi++;$advonline[$advi] = "Agent at version [$nsave_version[$i]] using TEMA at lower release version [$nsave_temaver[$i]]";
    $advcode[$advi] = "DATAHEALTH1037W";
-   $advimpact[$advi] = 25;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $nsave[$i];
 }
 ## Check for TEMA level in IZ76410 danger zone
@@ -1522,9 +1718,15 @@ for ($i=0;$i<=$nsavei;$i++) {
       if ($nsave_product[$i] ne "VA") {
          $advi++;$advonline[$advi] = "Agent [$nsave_hostaddr[$i]] using TEMA at version [$nsave_temaver[$i]] in IZ76410 danger zone";
          $advcode[$advi] = "DATAHEALTH1042E";
-         $advimpact[$advi] = 90;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $nsave[$i];
       }
+   }
+   if ( (substr($nsave_temaver[$i],0,8) eq "06.22.07") or (substr($nsave_temaver[$i],0,8) eq "06.23.01")) {
+      $advi++;$advonline[$advi] = "Agent [$nsave_hostaddr[$i]] using TEMA at version [$nsave_temaver[$i]] in IV18016 danger zone";
+      $advcode[$advi] = "DATAHEALTH1090W";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = $nsave[$i];
    }
 }
 ## Check for virtual hub table update impact
@@ -1542,7 +1744,7 @@ if ($peak_rate > $opt_peak_rate) {
       next if $vtnode_hr[$i] == 0;
       $advi++;$advonline[$advi] = "Virtual Hub Table updates $vtnode_hr[$i] per hour $vtnode_ct[$i] agents";
       $advcode[$advi] = "DATAHEALTH1018W";
-      $advimpact[$advi] = 90;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $vtnode[$i];
    }
    $advi++;$advonline[$advi] = "Virtual Hub Table updates peak $peak_rate per second more then nominal $opt_peak_rate -  per hour [$vtnode_tot_hr] - total agents $vtnode_tot_ct";
@@ -1556,7 +1758,7 @@ for ($i=0;$i<=$mlisti;$i++) {
    next if $mlist_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TNODELST Type M duplicate NODE/NODELIST";
    $advcode[$advi] = "DATAHEALTH1009E";
-   $advimpact[$advi] = 105;
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $mlist[$i];
 }
 
@@ -1574,13 +1776,13 @@ if ($hub_tems_no_tnodesav == 0) {
       if ($hub_tems_ct > $hub_limit){
          $advi++;$advonline[$advi] = "Hub TEMS has $hub_tems_ct managed systems which exceeds limits $hub_limit";
          $advcode[$advi] = "DATAHEALTH1005W";
-         $advimpact[$advi] = 75;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $hub_tems;
       }
       if ($tems_version[$hubi]  eq "06.30.02") {
          $advi++;$advonline[$advi] = "Danger of TEMS crash sending events to receiver APAR IV50167";
          $advcode[$advi] = "DATAHEALTH1067E";
-         $advimpact[$advi] = 110;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $hub_tems;
       }
    }
@@ -1591,7 +1793,7 @@ if ($hub_tems_no_tnodesav == 0) {
       if ($tems_ct[$i] > $remote_limit){
          $advi++;$advonline[$advi] = "TEMS has $tems_ct[$i] managed systems which exceeds limits $remote_limit";
          $advcode[$advi] = "DATAHEALTH1006W";
-         $advimpact[$advi] = 75;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $tems[$i];
       }
       my $tlevel = substr($tems_version[$i],0,5);
@@ -1600,12 +1802,13 @@ if ($hub_tems_no_tnodesav == 0) {
          if ($tlevel_ref->{future} == 0) {
             $advi++;$advonline[$advi] = "End of Service TEMS $tems[$i] maint[$tems_version[$i]] date[$tlevel_ref->{date}]";
             $advcode[$advi] = "DATAHEALTH1083W";
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advimpact[$advi] = 75;
             $advsit[$advi] = "eos";
          } else {
             $advi++;$advonline[$advi] = "Future End of Service TEMS tems[$i] maint[$tems_version[$i]] date[$tlevel_ref->{date}]";
             $advcode[$advi] = "DATAHEALTH1084W";
-            $advimpact[$advi] = 55;
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advsit[$advi] = "eos";
          }
       }
@@ -1643,7 +1846,7 @@ if ($hub_tems_no_tnodesav == 0) {
       if ($tems_ctnok[$hubi] > 0) {
          $advi++;$advonline[$advi] = "FTO hub TEMS has $tems_ctnok[$hubi] agents configured which is against FTO best practice";
          $advcode[$advi] = "DATAHEALTH1020W";
-         $advimpact[$advi] = 80;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $hub_tems;
       }
    }
@@ -1651,6 +1854,162 @@ if ($hub_tems_no_tnodesav == 0) {
 
 my $fraction;
 my $pfraction;
+
+if ($tema_total_eos > 0) {
+   foreach my $f (sort { $a cmp $b } keys %eoslevelx) {
+      my $tlevel_ref = $eoslevelx{$f};
+      next if $tlevel_ref->{count} == 0;
+      if ($tlevel_ref->{future} == 0) {
+         $advi++;$advonline[$advi] = "End of Service agents maint[$f] count[$tlevel_ref->{count}] date[$tlevel_ref->{date}]";
+         $advcode[$advi] = "DATAHEALTH1081W";
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
+         $advsit[$advi] = "eos";
+      } else {
+         $advi++;$advonline[$advi] = "Future End of Service agents maint[$f] count[$tlevel_ref->{count}] date[$tlevel_ref->{date}]";
+         $advcode[$advi] = "DATAHEALTH1082W";
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
+         $advsit[$advi] = "eos";
+      }
+   }
+}
+
+# Calculate for same agent inserted into TNODELST multiple times the mode [most common frequency]
+my %online_count = ();
+my $online_mode = 0;
+foreach my $f (keys %eibnodex) {
+   $online_count{$eibnodex{$f}->{count}} += 1;
+}
+
+for my $k (sort {$online_count{$b} <=> $online_count{$a}} keys %online_count) {
+   $online_mode = $k;
+   last;
+}
+
+# Calculate advisories for same agent inserted into TNODELST multiple times more then most common
+# This is an important signal about identically named agents on different systems.
+$top20 = 0;
+foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
+                      $a cmp $b
+                    } keys %eibnodex) {
+   last if $eibnodex{$f}->{count} <= $online_mode;
+   $top20 += 1;
+   if ($eibnodex{$f}->{count} > 2) {
+      $advi++;$advonline[$advi] = "Agent registering $eibnodex{$f}->{count} times: possible duplicate agent names";
+      $advcode[$advi] = "DATAHEALTH1068E";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = $f;
+   }
+   last if $top20 > 19;
+}
+
+my $event_ct = keys %eventx;
+
+$top20 = 0;
+$eventx_dur = 0;
+if ($event_ct > 0) {
+   foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                         $a cmp $b
+                       } keys %eventx) {
+      $top20 += 1;
+      last if $top20 > 20;
+      my $ncount = keys %{$eventx{$f}->{origin}};
+      my $sit_start = $eventx{$f}->{start};
+      my $sit_last = $eventx{$f}->{last};
+      my $sit_dur = get_epoch($sit_last) - get_epoch($sit_start) + 1;
+      my $sit_rate = ($eventx{$f}->{count}*60)/$sit_dur;
+      my $psit_rate = sprintf("%.2f",$sit_rate);
+      if ($sit_rate > 3) {
+         my $pnodes;
+         for my $g (keys %{$eventx{$f}->{nodes}}) {
+            $pnodes .= $g . " ";
+         }
+         $advi++;$advonline[$advi] = "Situation Event arriving $psit_rate per minute in $sit_dur second(s) from nodes[$pnodes] Atomize[$eventx{$f}->{atomize}]";
+         $advcode[$advi] = "DATAHEALTH1074W";
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
+         $advsit[$advi] = $eventx{$f}->{sitname};
+      }
+   }
+}
+$eventx_dur = 1;
+if ($eventx_last != -1) {
+   $eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
+}
+if ($top20 != 0) {
+   print OH "Total,$eventx_dur seconds,\n";
+}
+
+# check for ghost situation event status
+foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                      $a cmp $b
+                    } keys %eventx) {
+   next if defined $sitx{$eventx{$f}->{sitname}};
+   my $pnodes;
+   for my $g (keys %{$eventx{$f}->{nodes}}) {
+      $pnodes .= $g . " ";
+   }
+
+   $advi++;$advonline[$advi] = "Situation undefined but Events arriving from nodes[$pnodes]";
+   $advcode[$advi] = "DATAHEALTH1085W";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = $f;
+}
+
+my $tadvi = 0;
+my $eventx_ct = 0;
+foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                      $a cmp $b
+                    } keys %eventx) {
+   $eventx_ct += $eventx{$f}->{count};
+}
+#$DB::single=2;
+if ($eventx_ct > 0) {
+   my $sit_rate = ($eventx_ct*60)/$eventx_dur;
+   my $psit_rate = sprintf("%.2f",$sit_rate);
+   if ($sit_rate > 60) {
+      $advi++;$advonline[$advi] = "Situation Status Events arriving $psit_rate per minute";
+      $advcode[$advi] = "DATAHEALTH1080W";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "sitrate";
+   }
+
+}
+
+$tadvi = $advi + 1;
+print OH "Advisory messages,$tadvi\n";
+
+if ($advi != -1) {
+   print OH "\n";
+   print OH "Impact,Advisory Code,Object,Advisory\n";
+   for (my $a=0; $a<=$advi; $a++) {
+       my $mysit = $advsit[$a];
+       my $myimpact = $advimpact[$a];
+       my $mykey = $mysit . "|" . $a;
+       $advx{$mykey} = $a;
+   }
+   foreach my $f ( sort { $advimpact[$advx{$b}] <=> $advimpact[$advx{$a}] ||
+                          $advcode[$advx{$a}] cmp $advcode[$advx{$b}] ||
+                          $advsit[$advx{$a}] cmp $advsit[$advx{$b}] ||
+                          $advonline[$advx{$a}] cmp $advonline[$advx{$b}]
+                        } keys %advx ) {
+      my $j = $advx{$f};
+
+      print OH "$advimpact[$j],$advcode[$j],$advsit[$j],$advonline[$j]\n";
+      $max_impact = $advimpact[$j] if $advimpact[$j] > $max_impact;
+      $advgotx{$advcode[$j]} = $advimpact[$j];
+   }
+}
+
+
+print OH "\n";
+print OH "Top 20 most recently added or changed Situations\n";
+print OH "LSTDATE,Situation,Formula\n";
+$top20 = 0;
+foreach my $f ( sort { $sit_lstdate[$sitx{$b}] cmp $sit_lstdate[$sitx{$a}]} keys %sitx) {
+   $top20 += 1;
+   my $j = $sitx{$f};
+   print OH "=\"$sit_lstdate[$j]\",$sit_psit[$j],$sit_pdt[$j],\n";
+   last if $top20 >= 20;
+}
 
 if ($tema_total_count > 0 ){
    print OH "\n";
@@ -1690,231 +2049,9 @@ if ($tema_total_count > 0 ){
    $fraction = ($tema_total_max_apars) / $tema_total_count;
    $oneline = sprintf( "%.0f", $fraction) . ",Average APARS TEMA version less than latest TEMS version,";
    print OH "$oneline\n";
-   print OH "\n";
-}
-if ($tema_total_eos > 0) {
-   foreach my $f (sort { $a cmp $b } keys %eoslevelx) {
-      my $tlevel_ref = $eoslevelx{$f};
-      next if $tlevel_ref->{count} == 0;
-      if ($tlevel_ref->{future} == 0) {
-         $advi++;$advonline[$advi] = "End of Service agents maint[$f] count[$tlevel_ref->{count}] date[$tlevel_ref->{date}]";
-         $advcode[$advi] = "DATAHEALTH1081W";
-         $advimpact[$advi] = 75;
-         $advsit[$advi] = "eos";
-      } else {
-         $advi++;$advonline[$advi] = "Future End of Service agents maint[$f] count[$tlevel_ref->{count}] date[$tlevel_ref->{date}]";
-         $advcode[$advi] = "DATAHEALTH1082W";
-         $advimpact[$advi] = 55;
-         $advsit[$advi] = "eos";
-      }
-   }
 }
 
-print OH "Top 20 most recently added or changed Situations\n";
-print OH "LSTDATE,Situation,Formula\n";
-my $top20 = 0;
-foreach my $f ( sort { $sit_lstdate[$sitx{$b}] cmp $sit_lstdate[$sitx{$a}]} keys %sitx) {
-   $top20 += 1;
-   my $j = $sitx{$f};
-   print OH "=\"$sit_lstdate[$j]\",$sit_psit[$j],$sit_pdt[$j],\n";
-   last if $top20 >= 20;
-}
-print OH "\n";
 
-# Calculate for same agent inserted into TNODELST multiple times the mode [most common frequency]
-my %online_count = ();
-my $online_mode = 0;
-foreach my $f (keys %eibnodex) {
-   $online_count{$eibnodex{$f}->{count}} += 1;
-}
-
-for my $k (sort {$online_count{$b} <=> $online_count{$a}} keys %online_count) {
-   $online_mode = $k;
-   last;
-}
-
-# Calculate for same agent inserted into TNODELST multiple times more then most common
-# This is an important signal about identically named agents on different systems.
-$top20 = 0;
-foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
-                      $a cmp $b
-                    } keys %eibnodex) {
-   last if $eibnodex{$f}->{count} <= $online_mode;
-   if ($top20 == 0) {
-      print OH "Maximum Top 20 agents showing online status more than $online_mode times - the most common number\n";
-      print OH "OnlineCount,Node,ThrunodeCount,Thrunodes\n";
-   }
-   $top20 += 1;
-   $oneline = $eibnodex{$f}->{count} . ",";
-   $oneline .= $f . ",";
-   my $pthrunode = "";
-   my $pthruct = 0;
-   foreach my $g (sort {$a cmp $b} keys  %{$eibnodex{$f}->{thrunode}}) {
-      $pthruct += 1;
-      $pthrunode .= ":" if $pthrunode ne "";
-      $pthrunode .= $g;
-   }
-   $oneline .= $pthruct . "," . $pthrunode . ",";
-   print OH "$oneline\n";
-   if ($eibnodex{$f}->{count} > 2) {
-      $advi++;$advonline[$advi] = "Agent registering $eibnodex{$f}->{count} times: possible duplicate agent names";
-      $advcode[$advi] = "DATAHEALTH1068E";
-      $advimpact[$advi] = 90;
-      $advsit[$advi] = $f;
-   }
-   last if $top20 > 19;
-}
-print OH "\n" if $top20 > 0;
-
-my $event_ct = keys %eventx;
-
-$top20 = 0;
-$eventx_dur = 0;
-print OH "Top 20 Situation Event Report\n";
-print OH "Situation,Count,Open,Close,NodeCount,Interval,Atomize,Rate,Nodes\n";
-if ($event_ct > 0) {
-   foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
-                         $a cmp $b
-                       } keys %eventx) {
-      $top20 += 1;
-      last if $top20 > 20;
-      $oneline = $eventx{$f}->{sitname} . ",";
-      $oneline .=  $eventx{$f}->{count} . ",";
-      $oneline .=  $eventx{$f}->{open} . ",";
-      $oneline .=  $eventx{$f}->{close} . ",";
-      my $ncount = keys %{$eventx{$f}->{origin}};
-      $oneline .=  $ncount . ",";
-      $oneline .=  $eventx{$f}->{reeval} . ",";
-      $oneline .=  $eventx{$f}->{atomize} . ",";
-      my $sit_start = $eventx{$f}->{start};
-      my $sit_last = $eventx{$f}->{last};
-      my $sit_dur = get_epoch($sit_last) - get_epoch($sit_start) + 1;
-      my $sit_rate = ($eventx{$f}->{count}*60)/$sit_dur;
-      my $psit_rate = sprintf("%.2f",$sit_rate);
-      if ($sit_rate > 3) {
-         my $pnodes;
-         for my $g (keys %{$eventx{$f}->{nodes}}) {
-            $pnodes .= $g . " ";
-         }
-         $advi++;$advonline[$advi] = "Situation Event arriving $psit_rate per minute in $sit_dur second(s) from nodes[$pnodes] Atomize[$eventx{$f}->{atomize}]";
-         $advcode[$advi] = "DATAHEALTH1074W";
-         $advimpact[$advi] = 90;
-         $advsit[$advi] = $eventx{$f}->{sitname};
-      }
-      $oneline .=  $psit_rate . ",";
-      my $pnodes = "";
-      my $cnodes = 0;
-      foreach my $g (keys %{$eventx{$f}->{origin}}) {
-         $cnodes += 1;
-         last if $cnodes > 3;
-         my $onenode = $g;
-         $onenode =~ s/\s+//g;
-         $pnodes .= $onenode . ";";
-      }
-      $oneline .=  $pnodes . ",";
-      print OH "$oneline\n";
-   }
-   $eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
-   if ($top20 != 0) {
-      print OH "Total,$eventx_dur seconds,\n";
-   }
-}
-
-# check for ghost situation event status
-foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
-                      $a cmp $b
-                    } keys %eventx) {
-   next if defined $sitx{$eventx{$f}->{sitname}};
-   my $pnodes;
-   for my $g (keys %{$eventx{$f}->{nodes}}) {
-      $pnodes .= $g . " ";
-   }
-
-   $advi++;$advonline[$advi] = "Situation undefined but Events arriving from nodes[$pnodes]";
-   $advcode[$advi] = "DATAHEALTH1085W";
-   $advimpact[$advi] = 95;
-   $advsit[$advi] = $f;
-}
-$eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
-if ($top20 != 0) {
-   print OH "Total,$eventx_dur seconds,\n";
-}
-
-if ($tema_total_eos > 0 ) {
-   print OH "\n";
-   print OH "End of Service TEMAs\n";
-   print OH "Node,Maint,Type,Date\n";
-   for ($i=0; $i<=$nsavei; $i++) {
-      my $node1 = $nsave[$i];
-      my $tlevel = substr($nsave_temaver[$i],0,5);
-      next if $tlevel eq "";
-      my $tlevel_ref = $eoslevelx{$tlevel};
-      next if !defined $tlevel_ref;
-      next if $tlevel_ref->{future} == 1;
-      $oneline = $node1 . ",";
-      $oneline .= $nsave_temaver[$i] . ",";
-      $oneline .= "EOS" . ",";
-      $oneline .= $tlevel_ref->{date} . ",";
-      print OH "$oneline\n";
-   }
-   for ($i=0; $i<=$nsavei; $i++) {
-      my $node1 = $nsave[$i];
-      my $tlevel = substr($nsave_temaver[$i],0,5);
-      next if $tlevel eq "";
-      my $tlevel_ref = $eoslevelx{$tlevel};
-      next if !defined $tlevel_ref;
-      next if $tlevel_ref->{future} == 0;
-      $oneline = $node1 . ",";
-      $oneline .= $nsave_temaver[$i] . ",";
-      $oneline .= "FutureEOS" . ",";
-      $oneline .= $tlevel_ref->{date} . ",";
-      print OH "$oneline\n";
-   }
-}
-print OH "\n";
-
-my $tadvi = 0;
-my $eventx_ct = 0;
-foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
-                      $a cmp $b
-                    } keys %eventx) {
-   $eventx_ct += $eventx{$f}->{count};
-}
-#$DB::single=2;
-if ($eventx_ct > 0) {
-   my $sit_rate = ($eventx_ct*60)/$eventx_dur;
-   my $psit_rate = sprintf("%.2f",$sit_rate);
-   if ($sit_rate > 60) {
-      $advi++;$advonline[$advi] = "Situation Status Events arriving $psit_rate per minute";
-      $advcode[$advi] = "DATAHEALTH1080W";
-      $advimpact[$advi] = 95;
-      $advsit[$advi] = "sitrate";
-   }
-
-}
-
-$tadvi = $advi + 1;
-print OH "Advisory messages,$tadvi\n";
-
-if ($advi != -1) {
-   print OH "\n";
-   print OH "Impact,Advisory Code,Object,Advisory\n";
-   for (my $a=0; $a<=$advi; $a++) {
-       my $mysit = $advsit[$a];
-       my $myimpact = $advimpact[$a];
-       my $mykey = $mysit . "|" . $a;
-       $advx{$mykey} = $a;
-   }
-   foreach my $f ( sort { $advimpact[$advx{$b}] <=> $advimpact[$advx{$a}] ||
-                          $advcode[$advx{$a}] cmp $advcode[$advx{$b}] ||
-                          $advsit[$advx{$a}] cmp $advsit[$advx{$b}] ||
-                          $advonline[$advx{$a}] cmp $advonline[$advx{$b}]
-                        } keys %advx ) {
-      my $j = $advx{$f};
-      print OH "$advimpact[$j],$advcode[$j],$advsit[$j],$advonline[$j]\n";
-      $max_impact = $advimpact[$j] if $advimpact[$j] > $max_impact;
-   }
-}
 if ($opt_event == 1){
    print OH "\n";
    print OH "Flapper Situation Report\n";
@@ -1961,6 +2098,128 @@ if ($opt_event == 1){
    }
 }
 
+if ($tema_total_eos > 0 ) {
+   print OH "\n";
+   print OH "End of Service TEMAs\n";
+   print OH "Node,Maint,Type,Date\n";
+   for ($i=0; $i<=$nsavei; $i++) {
+      my $node1 = $nsave[$i];
+      my $tlevel = substr($nsave_temaver[$i],0,5);
+      next if $tlevel eq "";
+      my $tlevel_ref = $eoslevelx{$tlevel};
+      next if !defined $tlevel_ref;
+      next if $tlevel_ref->{future} == 1;
+      $oneline = $node1 . ",";
+      $oneline .= $nsave_temaver[$i] . ",";
+      $oneline .= "EOS" . ",";
+      $oneline .= $tlevel_ref->{date} . ",";
+      print OH "$oneline\n";
+   }
+   for ($i=0; $i<=$nsavei; $i++) {
+      my $node1 = $nsave[$i];
+      my $tlevel = substr($nsave_temaver[$i],0,5);
+      next if $tlevel eq "";
+      my $tlevel_ref = $eoslevelx{$tlevel};
+      next if !defined $tlevel_ref;
+      next if $tlevel_ref->{future} == 0;
+      $oneline = $node1 . ",";
+      $oneline .= $nsave_temaver[$i] . ",";
+      $oneline .= "FutureEOS" . ",";
+      $oneline .= $tlevel_ref->{date} . ",";
+      print OH "$oneline\n";
+   }
+}
+print OH "\n";
+
+# Calculate for same agent inserted into TNODELST multiple times more then most common
+# This is an important signal about identically named agents on different systems.
+$top20 = 0;
+foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
+                      $a cmp $b
+                    } keys %eibnodex) {
+   last if $eibnodex{$f}->{count} <= $online_mode;
+   if ($top20 == 0) {
+      print OH "Maximum Top 20 agents showing online status more than $online_mode times - the most common number\n";
+      print OH "OnlineCount,Node,ThrunodeCount,Thrunodes\n";
+   }
+   $top20 += 1;
+   $oneline = $eibnodex{$f}->{count} . ",";
+   $oneline .= $f . ",";
+   my $pthrunode = "";
+   my $pthruct = 0;
+   foreach my $g (sort {$a cmp $b} keys  %{$eibnodex{$f}->{thrunode}}) {
+      $pthruct += 1;
+      $pthrunode .= ":" if $pthrunode ne "";
+      $pthrunode .= $g;
+   }
+   $oneline .= $pthruct . "," . $pthrunode . ",";
+   print OH "$oneline\n";
+   last if $top20 > 19;
+}
+print OH "\n" if $top20 > 0;
+
+
+$top20 = 0;
+$eventx_dur = 0;
+print OH "Top 20 Situation Event Report\n";
+print OH "Situation,Count,Open,Close,NodeCount,Interval,Atomize,Rate,Nodes\n";
+if ($event_ct > 0) {
+   foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
+                         $a cmp $b
+                       } keys %eventx) {
+      $top20 += 1;
+      last if $top20 > 20;
+      $oneline = $eventx{$f}->{sitname} . ",";
+      $oneline .=  $eventx{$f}->{count} . ",";
+      $oneline .=  $eventx{$f}->{open} . ",";
+      $oneline .=  $eventx{$f}->{close} . ",";
+      my $ncount = keys %{$eventx{$f}->{origin}};
+      $oneline .=  $ncount . ",";
+      $oneline .=  $eventx{$f}->{reeval} . ",";
+      $oneline .=  $eventx{$f}->{atomize} . ",";
+      my $sit_start = $eventx{$f}->{start};
+      my $sit_last = $eventx{$f}->{last};
+      my $sit_dur = get_epoch($sit_last) - get_epoch($sit_start) + 1;
+      my $sit_rate = ($eventx{$f}->{count}*60)/$sit_dur;
+      my $psit_rate = sprintf("%.2f",$sit_rate);
+      $oneline .=  $psit_rate . ",";
+      my $pnodes = "";
+      my $cnodes = 0;
+      foreach my $g (keys %{$eventx{$f}->{origin}}) {
+         $cnodes += 1;
+         last if $cnodes > 3;
+         my $onenode = $g;
+         $onenode =~ s/\s+//g;
+         $pnodes .= $onenode . ";";
+      }
+      $oneline .=  $pnodes . ",";
+      print OH "$oneline\n";
+   }
+}
+$eventx_dur = 1;
+if ($eventx_last != -1) {
+   $eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
+}
+if ($top20 != 0) {
+   print OH "Total,$eventx_dur seconds,\n";
+}
+
+if ($advi != -1) {
+   print OH "\n";
+   print OH "Advisory Trace, Meaning and Recovery suggestions follow\n\n";
+   foreach my $f ( sort { $a cmp $b } keys %advgotx ) {
+      print OH "Advisory code: " . $f . "\n";
+      print OH "Impact:" . $advgotx{$f}  . "\n";
+      if (defined $advtextx{$f}) {
+         print OH $advtextx{$f};
+      } else {
+         print OH "No text yet!\n";
+      }
+   }
+}
+
+close OH;
+
 if ($opt_s ne "") {
    if ($max_impact > 0 ) {
         open SH, ">$opt_s";
@@ -2002,7 +2261,7 @@ if ($opt_miss == 1) {
         $oneline .= $obj;
         $oneline .= "' AND SYSTEM.PARMA('QIBUSER','_CLEANUP',8) AND SYSTEM.PARMA('QIBCLASSID','5535',4);";
         print MIS "$oneline\n";
-     } elsif  ($code eq "DATAHEALTH1029E") {
+     } elsif  ($code eq "DATAHEALTH1029W") {
         $oneline = "DELETE FROM O4SRV.TOBJACCL WHERE OBJCLASS='5140' AND NODEL='";
         $oneline .= $obj;
         $oneline .= "' AND SYSTEM.PARMA('QIBUSER','_CLEANUP',8) AND SYSTEM.PARMA('QIBCLASSID','5535',4);";
@@ -2093,7 +2352,7 @@ sub new_tactypcy {
    if (!defined $pcy_ref) {
       $advi++;$advonline[$advi] = "Policy Activity [ACTNAME=$iactname] Unknown policy name";
       $advcode[$advi] = "DATAHEALTH1055E";
-      $advimpact[$advi] = 10;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $ipcyname;
    } else {
       if ($itypestr eq "*WAIT_ON_SITUATION") {
@@ -2192,7 +2451,7 @@ sub new_tgroupi {
   if (!defined $group_ref) {
      $advi++;$advonline[$advi] = "TGROUPI $key unknown TGROUP ID";
      $advcode[$advi] = "DATAHEALTH1031E";
-     $advimpact[$advi] = 50;
+     $advimpact[$advi] = $advcx{$advcode[$advi]};
      $advsit[$advi] = $iid;
   }
   if ($groupi_detail_ref->{objclass} == 2010) {
@@ -2202,7 +2461,8 @@ sub new_tgroupi {
      if (!defined $group_ref) {
         $advi++;$advonline[$advi] = "TGROUPI $key unknown Group $iobjname";
         $advcode[$advi] = "DATAHEALTH1032E";
-        $advimpact[$advi] = 50;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+        $advimpact[$advi] = $advcx{$advcode[$advi]};
         $advsit[$advi] = $iobjname;
      } else {
         $group_ref->{indirect} = 1;
@@ -2212,7 +2472,8 @@ sub new_tgroupi {
      if (!defined $sitx{$sit1}) {
         $advi++;$advonline[$advi] = "TGROUPI $key unknown Situation $iobjname";
         $advcode[$advi] = "DATAHEALTH1033E";
-        $advimpact[$advi] = 50;
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+        $advimpact[$advi] = $advcx{$advcode[$advi]};
         $advsit[$advi] = $iobjname;
      }
   } else {
@@ -2241,7 +2502,7 @@ sub new_tobjaccl {
 }
 
 sub new_tsitdesc {
-   my ($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$ipdt) = @_;
+   my ($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$isitinfo,$ipdt) = @_;
    $sx = $sitx{$isitname};
    if (!defined $sx) {
       $siti += 1;
@@ -2249,6 +2510,7 @@ sub new_tsitdesc {
       $sit[$siti] = $isitname;
       $sitx{$isitname} = $siti;
       $sit_autostart[$siti] = $iautostart;
+      $sit_persist[$siti] = 1;
       $sit_pdt[$siti] = $ipdt;
       $sit_ct[$siti] = 0;
       $sit_lstdate[$siti] = $ilstdate;
@@ -2258,14 +2520,16 @@ sub new_tsitdesc {
       if ((length($ireev_days) == 0) or (length($ireev_days) > 3)) {
          $advi++;$advonline[$advi] = "Situation with invalid sampling days [$ireev_days]";
          $advcode[$advi] = "DATAHEALTH1071W";
-         $advimpact[$advi] = 20;
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $isitname;
       }
       if (length($ireev_time) != 6){
-         $advi++;$advonline[$advi] = "Situation with invalid sampling time [$ireev_time]";
-         $advcode[$advi] = "DATAHEALTH1072W";
-         $advimpact[$advi] = 20;
-         $advsit[$advi] = $isitname;
+         if ($ireev_time ne "0") {
+            $advi++;$advonline[$advi] = "Situation with invalid sampling time [$ireev_time]";
+            $advcode[$advi] = "DATAHEALTH1072W";
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
+            $advsit[$advi] = $isitname;
+         }
       }
       if ((length($ireev_days) >= 1) and (length($ireev_days) <= 3) ) {
          if ((length($ireev_time) >= 1) and (length($ireev_time) <= 6)) {
@@ -2283,6 +2547,8 @@ sub new_tsitdesc {
             $sit_reeval[$siti] = $ireev_days*86400 + $reev_time_hh*3600 + $reev_time_mm*60 + $reev_time_ss;   # sampling interval in seconds
          }
       }
+      $isitinfo =~ /COUNT=(\d+)/;
+      $sit_persist[$siti] = $1 if defined $1;
    }
   $sit_ct[$sx] += 1;
 }
@@ -2328,7 +2594,7 @@ sub new_tnodesav {
          if ($tversion ne "") {
             $advi++;$advonline[$advi] = "Invalid agent version [$iversion] in node $inode tnodesav";
             $advcode[$advi] = "DATAHEALTH1036E";
-            $advimpact[$advi] = 25;
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advsit[$advi] = $inode;
             $iversion = "00.00.00";
          }
@@ -2801,6 +3067,7 @@ sub init_txt {
    my $ireev_days;
    my $ireev_time;
    my $ipdt;
+   my $isitinfo;
 
    my @knam_data;
    my $iid;
@@ -2870,7 +3137,8 @@ sub init_txt {
       $inode = substr($oneline,0,32);
       $inode =~ s/\s+$//;   #trim trailing whitespace
       $io4online = substr($oneline,33,1);
-
+      $nsave_offline += ($io4online eq "N");
+      $nsave_online += ($io4online eq "Y");
       # if offline with no product, ignore - maybe produce advisory later
       $iproduct = substr($oneline,42,2);
       $iproduct =~ s/\s+$//;   #trim trailing whitespace
@@ -2963,9 +3231,11 @@ sub init_txt {
       $ireev_days =~ s/\s+$//;   #trim trailing whitespace
       $ireev_time = substr($oneline,70,6);
       $ireev_time =~ s/\s+$//;   #trim trailing whitespace
-      $ipdt = substr($oneline,80);
+      $isitinfo = substr($oneline,80,128);
+      $isitinfo =~ s/\s+$//;   #trim trailing whitespace
+      $ipdt = substr($oneline,209);
       $ipdt =~ s/\s+$//;   #trim trailing whitespace
-      new_tsitdesc($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$ipdt);
+      new_tsitdesc($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$isitinfo,$ipdt);
    }
 
    open(KNAM, "< $opt_txt_tname") || die("Could not open TNAME $opt_txt_tname\n");
@@ -3380,6 +3650,7 @@ sub init_lst {
    my $iautostart;
    my $ireev_days;
    my $ireev_time;
+   my $isitinfo;
    my $ipdt;
 
    my @knam_data;
@@ -3463,6 +3734,8 @@ sub init_lst {
       $ireserved =~ s/\s+$//;   #trim trailing whitespace
       $ithrunode =~ s/\s+$//;   #trim trailing whitespace
       $iaffinities =~ s/\s+$//;   #trim trailing whitespace
+      $nsave_offline += ($io4online eq "N");
+      $nsave_online += ($io4online eq "Y");
       new_tnodesav($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$iaffinities);
    }
 
@@ -3517,12 +3790,15 @@ sub init_lst {
       $ll += 1;
       next if substr($oneline,0,1) ne "[";                    # Look for starting point
       chop $oneline;
-      # KfwSQLClient /e "SELECT SITNAME,AUTOSTART,LSTDATE,REEV_DAYS,REEV_TIME,PDT FROM O4SRV.TSITDESC" >QA1CSITF.DB.LS
-      ($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$ipdt) = parse_lst(6,$oneline);
+      # KfwSQLClient /e "SELECT SITNAME,AUTOSTART,LSTDATE,REEV_DAYS,REEV_TIME,SITINFO,PDT FROM O4SRV.TSITDESC" >QA1CSITF.DB.LST
+$DB::single=2;
+      ($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$isitinfo,$ipdt) = parse_lst(7,$oneline);
       $isitname =~ s/\s+$//;   #trim trailing whitespace
       $iautostart =~ s/\s+$//;   #trim trailing whitespace
-      $ipdt = substr($oneline,33,1);
-      new_tsitdesc($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$ipdt);
+$DB::single=2;
+      $isitinfo =~ s/\s+$//;   #trim trailing whitespace
+      $ipdt = substr($oneline,33,1);  #???#
+      new_tsitdesc($isitname,$iautostart,$ilstdate,$ireev_days,$ireev_time,$isitinfo,$ipdt);
    }
 
    open(KNAM, "< $opt_lst_tname") || die("Could not open TNAME $opt_lst_tname\n");
@@ -4043,6 +4319,7 @@ EndOFHelp
 exit;
 }
 sub get_epoch {
+$DB::single=2;
    use POSIX;
    my $itm_stamp = shift;
    my $unixtime = $epochx{$itm_stamp};
@@ -4192,3 +4469,1475 @@ sub gettime
 # 1.32000  : Add FP7 data
 # 1.33000  : end End of Service alerts and report
 # 1.34000  : Add advisory for ghost situations, event status history even though deleted situation
+# 1.35000  : Eliminate doubled line
+#          : advisory on IV18016 case
+#          : add advisory explanations to report
+#          : add advisories related to too many MS_Offline type situations
+#          : Do not do advisory on Sampling Time "0"
+#          : Restructure report sequence so advisory comes a just after TEMS summary
+# Following is the embedded "DATA" file used to explain
+# advisories the the report. It replicates text in
+# Appendix 2 of TEMS Audit Users Guide.docx
+__END__
+DATAHEALTH1001E
+Text: Node present in node status but missing in TNODELST Type V records
+
+Check: For every NODE in TNODESAV, there must be a TNODELST
+NODETYPE=V with matching TNODELST column
+
+Meaning: This is sometimes seen after a FTO synchronization
+defect. There are likely other unknown causes. A missing
+type V records identifies agents where no situations will
+be started and real time data may not be available. This
+is a severe condition and needs rapid resolution.
+
+There are some cases with z/OS Agents where this condition
+exists but is not a problem. That research continues.
+
+Recovery plan: Open a PMR and work with IBM Support on how
+to resolve this issue. Sometimes stopping the agent, doing
+a Remove Offline Entry from the Managed System List and
+restarting agent works…. However that process effectively
+deletes all the user defined Managed System List data.
+--------------------------------------------------------------
+
+DATAHEALTH1002E
+Text: Node without a system generated MSL in TNODELST Type M records
+
+Check: For every NODE in TNODESAV, there must a TNODELST Type M
+with matching NODE and with a NODELST starting with an asterisk.
+
+Meaning: This is sometimes seen after a FTO synchronization defect.
+There are likely other unknown causes. The MSLs starting with
+asterisk are system generated MSLs. For example all Windows OS
+Agents should be in *NT_SYSTEM. If there are agents missing, then
+situations distributed to *NT_SYSTEM will not include the missing
+agents and so some situations will not run as expected. We have
+seen rare cases where a customer chose to delete those records and
+in so the issue can be ignored in that case.
+
+There are some cases with z/OS Agents where this condition exists
+but is not a problem. That research continues.
+
+Recovery plan: Open a PMR and work with IBM Support on how to resolve this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1003I
+Text: Node present in TNODELST Type M records but missing in Node Status
+
+Check: For every NODE in TNODELST where NODETYPE=M; there should
+be a matching TNODESAV NODE.
+
+Meaning: This is a very low severity case where the MSLs have left
+over agents which are not in service any more. The adverse impact
+is that if a new agent is created with the same name as the out of
+service agent unexpected situations may start running.
+
+Recovery plan: In TEP Object Editor, edit the MSLs involved and delete
+the unknown agents and perhaps delete no longer used MSLs. One site
+had 100,000 TNODELST rows and 35% of them represented obsolete MSLs
+that should have been deleted long ago.
+--------------------------------------------------------------
+
+DATAHEALTH1004I
+Text: Node present in TNODELST Type M records, but missing TNODELST Type V records
+
+Check: For every NODE in TNODELST NODETYPE=M, there should be a
+matching TNODELST NODETYPE=V NODE agent.
+
+Meaning: This case may be related to the previous advisory code DATAHEALTH1003I.
+If so, after the "missing" agents are removed  from the MSL,
+this will not be an advisory. It might also be a case of missing
+NODETYPE=V records DATAHEALTH1001E. After the recovery plan for
+that case above is performed this will no longer show.
+
+Recovery plan: Open a PMR and work with IBM Support on how to resolve this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1005W
+Text: Hub TEMS has <count> managed systems which exceeds limits $hub_limit
+
+Check: A Hub TEMS should have no more than 10,000 agents
+[ITM 623 and earlier] and no more than 20,000 agents
+[ITM 630 and later].
+
+Meaning:  The documented level in the Installation Guide TEMS
+sizing section is what ITM R&D and QA have tested and stand behind.
+No customer should exceed these limits. The agent count includes
+both directly configured agents and also subnode agents such as
+Agentless Agent for Linux subnodes. The effect of exceeding this
+limit is often seen as Hub TEMS instability. Unfortunately that
+is a common problem.
+
+Recovery plan: Create new ITM Hub TEMS islands to manage more agents.
+--------------------------------------------------------------
+
+DATAHEALTH1006W
+Text: Remote TEMS has <count> managed systems which exceeds limits 1,500
+
+Check: A remote TEMS should have no more than 1,500 agents
+
+Meaning: The count includes subnode agents which connect through a
+managing agent. The documented level is what ITM R&D and QA have
+tested and stand behind. No customer should exceed these limits.
+Unfortunately that is a common issue.
+
+Recovery plan: Create new ITM remote TEMS agents and keep within
+the published limits. In production workloads the practical limit
+may be less than 1,500 agents depending on workload. One site could
+only maintain remote TEMS stability by limiting to 750 agents.
+--------------------------------------------------------------
+
+DATAHEALTH1007E
+Text: TNODESAV duplicate nodes
+
+Check: TNODESAV.NODE values must be unique.
+
+Meaning: This always means the Index file [.IDX] is out of
+sync with the data [.DB]. The one fully diagnosed case where
+this was observed was when a customer unwisely replaced a .IDX
+file from another TEMS and not the .DB file. It could happen
+for many other reasons.
+
+Recovery plan: Open a PMR and work with IBM Support to resolve
+this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1008E
+Text: TNODESAV duplicate nodes
+
+Check: TNODELST NODETYPE=V NODELST values must be unique
+
+Meaning: This always means the Index file [.IDX] is out of
+sync with the data [.DB]. It could happen for many other reasons.
+
+Recovery plan: Open a PMR and work with IBM Support to resolve
+this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1009E
+Text: TNODELST Type M duplicate NODE/NODELST
+
+Check: TNODELST NODETYPE=M NODE/NODELST values must be unique.
+
+Meaning: This likely means the Index file [.IDX] is out of sync
+with the data [.DB]. It can happen for many other reasons.
+
+Recovery plan:  Open a PMR and work with IBM Support to resolve
+this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1010W
+Text: TNODESAV duplicate hostaddr in [$pagent]
+
+Check: TNODESAV HOSTADDR values must be unique.
+
+Meaning:  For most agents this contains the protocol/ip_addr/port/hostname
+value. In a normal running system these will be unique. The $pagent
+string shows the managed system names of the agents, the thrunode
+and the online status Y or N.
+Here is an example advisory
+
+10,DATAHEALTH1010W,
+  ip.pipe:#99.99.99.141[10055]<NM>ibmzp1928</NM>,
+  TNODESAV duplicate hostaddr in
+  [ibmzp1928:PX[REMOTE_ibmptm3c_2][Y]
+   ibmzp1928:KUX[REMOTE_ibmptm3c_2][Y] ]
+
+This value ,ip.pipe:#99.99.99.141[10055] names the protocol used,
+the ip address and the port number.
+
+The two registered users in this example are
+
+ibmzp1928:PX with thrunode REMOTE_ibmptm3c_2 and is online
+
+ibmzp1928:KUX with the same thrunode REMOTE_ibmptm3c_2 and is also online
+
+But but but!!! two ITM processes cannot ever share listening ports.
+
+This means that one of the two processes is not functional but is
+continuing to send node status updates. This is a waste of resources
+and confusing at best.
+
+There have been two well diagnosed cases.
+- An early config problem at the agent left an offline agent
+  with the same HOSTADDR as the existing agent but usually in
+  offline [N] status
+- A Universal Agent was stopped, but the UA process continued
+  updating node status. The new Agent Builder replacement used the
+  same listening port. Both were online in the TNODESAV table on
+  different remote TEMS. There were no situations assigned to
+  that Universal Agent.
+
+There will be many more cases to learn from. These are usually not
+big problems. However, they do consume resources and can
+create confusion in understanding the ITM environment.
+It would be best to fix them.
+
+Recovery plan:  Examine each on a case by case basis. In the case
+where one agent was offline, a tacmd cleanms -m <agentname>
+resolved the issue. In the UA case, the recovery was simply
+to kill the errant UA process. UA then went offline and a tacmd
+cleanms -m <ua_agent_name> restored normal functioning. If you
+need further help, open a PMR and work with IBM Support
+--------------------------------------------------------------
+
+DATAHEALTH1011E
+Text: HUB TEMS $hub_tems is present in TNODELST but missing from TNODESAV
+
+Check: Check TNODELST NODETYPE=M and the *HUB entry. The corresponding
+TNODESAV data does not contain the Hub TEMS nodeid.
+
+Meaning:  The meaning and impact is unknown. This was observed in some
+test environments. It has also been seen when checker run against a
+remote TEMS. It is unlikely to be seen in a hub TEMS that is actually
+working well.
+
+Recovery plan:  Open a PMR and work with IBM Support on how to resolve
+this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1012E
+Text: No TNODELST NODETYPE=V records
+
+Check: TNODELST NODETYPE=V - no such records
+
+Meaning: This might mean a very bad condition.
+
+Recovery plan:  Open a PMR and work with IBM Support on
+how to resolve this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1013W
+Text:  Node Name at 32 characters and might be truncated
+
+Check: Length of NODE in TNODESAV is 32 characters
+
+Meaning: This *might* mean truncation has happened.
+For example, if a hostname is relatively long, it is likely
+that the total length of Node Name will exceed 32 characters.
+During agent registration, if the constructed Node Name is
+longer than 32 characters the node name is silently truncated.
+This might be harmless if the node name is unique after
+truncation. But it could cause problems where one agent would
+masquerade as another and cause lots of overhead and incorrect
+monitoring. It could also be that the Node Name is exactly 32
+characters long and there is no trouble at all.
+
+Recovery plan: Review nodes. If truncation has occurred,
+reconfigure the agent to avoid truncation if a problem exists.
+--------------------------------------------------------------
+
+DATAHEALTH1014W
+Text:  Subnode Name at 31/32 characters and might be truncated
+
+Check: Length of NODE in TNODESAV is 31 or 32 characters
+
+Meaning: This *might* mean truncation has happened. For a subnode
+agent this involves a configuration on the controlling agent.
+In one case closely examined there was a 3 byte header RZ: and
+a 5 byte trailer:RZB. That left 24 characters for the subnode name.
+In all cases the nodename created by the agent was 31 characters,
+so there was only 23 characters for identifying the subnode. With
+some subnode agents, truncation occurred here and caused problems
+with subnode agents going offline invalidly. As described earlier
+this may or may not cause a problem. If the subnode specifier was
+23 characters anyway there would be no trouble at all.
+
+Recovery plan: Review subnodes. If truncation has occurred,
+reconfigure the subnode agent to avoid truncation if a problem exists.
+--------------------------------------------------------------
+
+DATAHEALTH1015W
+Text: Managing agent subnodelist is <count>,  more than $opt_subpc_warn% of 32768 bytes
+
+Check: For a managing agent, compare the length of subnode string
+to 32,768 bytes and alert if more than 80% full
+[TEMS prior to ITM 623 FP2].
+
+Meaning: This applies only if the TEMS the managing agent connects
+to is at maintenance level before ITM 623 FP2.
+
+Until ITM 623 FP2, there is an absolute limit of 32,768 bytes
+for the string of subnode agent names [with blank separator]. If that
+is exceeded, the TEMS usually fails. In one case TEMS did not crash
+but totally stopped working correctly. This is a very dangerous
+condition and must be avoided. The default is 90% of maximum.
+
+Recovery plan:  1) Update TEMS to maintenance levels of ITM 623 or ITM 630.
+2) Configure multiple managing agents and divide the workload. The usual
+estimate is 800 to 1000 subnode agents per managing agent.  A precise number
+is not known because the length of each subnode agent name is not fixed.
+--------------------------------------------------------------
+
+DATAHEALTH1016E
+Text:  TNODESAV invalid node name
+
+Severity: 50
+
+Check:  Node Names should only use certain characters.
+
+Meaning:  This will usually have little effect unless the
+Hub TEMS is configured with CMS_NODE_VALIDATION.  Should
+that be set the problem agents will be offline. The legal
+characters are:
+
+ A-Z, a-z, 0-9,* _-:@$#
+
+A Node Name can never start with '*',  '#',  '.'  or  ' ' .
+
+In one case, what appeared to be a legal name, contained
+an invisible X'08' character [ASCII backspace] and therefore
+was in fact an invalid Node Name.
+
+At ITM 6.3, the CMS_NODE_VALIDATION was defaulted to YES.
+Nodes like this will fail to connect and that could cause
+monitoring disruption.
+
+Recovery plan:  Reconfigure agent using legal characters.
+--------------------------------------------------------------
+
+DATAHEALTH1017E
+Text:  TNODELST NODETYPE=M invalid nodelist name
+
+Check:  Nodelist names should only use certain characters.
+
+Meaning:  This will usually have little effect unless the
+Hub TEMS is configured with CMS_NODE_VALIDATION.  At
+ITM 630 this is now the default. Should that be set
+the problem agents will  be offline. The legal characters are:
+
+ A-Z, a-z, 0-9,* _-:@$# period and space
+
+A Nodelist Name can never start with '*',  '#',  '.'  or  ' ' .
+
+Recovery plan:  Reconfigure agent using legal characters.
+--------------------------------------------------------------
+
+DATAHEALTH1018W
+Text:  Virtual Hub Table updates <count> per hour <count> agents
+Text:  Virtual Hub Table updates peak <rate> per second more than nominal <rate>,  per hour <count>, total agents <count>
+
+Check: Calculate certain agents and the known update virtual hub table update rate
+
+Meaning: This applies to the following agents
+UX - Unix OS Agent
+OQ - Microsoft MS-SQL
+OR - Oracle
+OY - Sybase
+Q5 - Microsoft Clustering
+HV - Microsoft Hyper-V Server Agent
+All agents named use an older technology that causes a hub TEMS
+virtual table to be updated synchronously - like every one to
+three minutes. When there are large numbers of these agents,
+the effect on the Hub TEMS can be destabilizing. In addition,
+the resulting summary Hub TEMS virtual tables are always
+incomplete and thus of little value. The objects that cause
+this activity should be deleted.
+
+In the Total message, the peak rate is the number of updates
+coming on from the agent's worst case. That is usually at
+6 minutes, 12 minutes. etc after the hour. Some of the agents
+update 2 or 3 tables and so it is not a pure count of agents.
+The damage occurs when the incoming workload surpasses the ITM
+communications capacity. Then other communications fail. There
+have been cases with as few as 180 Unix OS Agents caused the
+Hub TEMS to be destabilized.
+
+Long term, the agent application support files will be changed
+to avoid the issue. For any particular customer, they may already
+have taken the recovery action.
+
+Recovery plan: See this blog post https://ibm.biz/BdRW3z for a
+fuller explanation of the issue and a recovery process. Often IBM
+Support prepares the recovery action for the customer.
+--------------------------------------------------------------
+
+DATAHEALTH1019W
+Text:  Agent using TEMA at <level> level
+
+Check:  Check the Agent Support Library [TEMA] level for 6.1 or later
+
+Meaning:  Prior to ITM 6.2 the OpenSSL library was used for secure
+communications. This needs to be updated to later levels which use
+ GSKIT for secure communications.
+
+Recovery plan:  Upgrade the OS Agent which will upgrade the Agent
+Support Library to use more recent secure communications logic. If t
+he OS Agent is not currently installed then install it. That
+case can happen with some agents that are installed alone.
+--------------------------------------------------------------
+
+DATAHEALTH1020W
+Text:  FTO hub TEMS has <count> agents configured which is against FTO best practice
+
+Check: Count number of agents connecting to a hub TEMS in FTO configuration
+
+Meaning: From the installation guide here https://ibm.biz/BdiZue
+you can read a statement that in FTO configuration most agents
+should connect via remote TEMS. The only exceptions are TEPS,
+WPA and Summarization and Pruning Agent. Any other Agents on
+the system running the Hub TEMS should also connect to two
+remote TEMSes. That provides continuity of monitoring when
+the TEMS has stopped.
+
+It may seem strange that in FTO mode we require two Hub TEMS and
+two remote TEMS - even for just a single agent. Following is the
+background.
+
+1) If the agent loses contact with the primary Hub TEMS by a
+communications failure the agent will attempt to connect to the
+other Hub TEMS. However, that is in backup mode and will reject
+the attempt to connect. That agent will never be able to report
+any monitoring - and that conclusion violates the goal of High
+Availability.
+
+2) If an agent is connected to both FTO Hub TEMS, one will be
+the normal primary remote TEMS. When an FTO switch has occurred
+and the normal backup Hub TEMS take the primary role, the agents
+will switch to that Hub TEMS. Later when the normal primary Hub
+TEMS is started, that Hub TEMS takes on the backup role.  The
+agent connection logic will attempt to switch back to the normal
+primary remote TEMS after 75 minutes. Each time that happens,
+the situations which should run on the agent will first start
+up on the Hub TEMS in backup role. Shortly afterwards the agent
+will be instructed to switch to another TEMS. When that agent
+connects to the current Hub TEMS, the situations will be started
+again and create situation events if the conditions warrant. This
+will continue every 75 minutes and that is highly disruptive to
+normal monitoring.
+
+Please note that if you do not require FTO, a single Hub TEMS
+is a fine configuration.
+
+Recovery plan:  If you are going to configure FTO, then all
+agents should be configured to remote TEMS except TEPS, WPA
+and Summarization and Pruning Agent. TEPS will need two
+separate Portal Servers and WPA and S&P will be configured
+to both Hub TEMS.
+--------------------------------------------------------------
+
+DATAHEALTH1021E
+Text:  TSITDESC duplicate nodes
+
+Check: TSITDESC SITNAME values must be unique.
+
+Meaning: This always means the Index file [.IDX] is out of
+sync with the data [.DB]. The one fully diagnosed case where
+this was observed was when a customer unwisely replaced an .IDX
+file from another TEMS and not the .DB file. It could happen
+for many other reasons.
+
+Recovery plan: Open a PMR and work with IBM Support on how to
+resolve this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1022E
+Text:  TNAME duplicate nodes
+
+Check: TNAME ID values must be unique.
+Meaning: This always means the Index file [.IDX] is out of sync
+with the data [.DB]. The one fully diagnosed case where this was
+observed was when a customer unwisely replaced an .IDX file from
+another TEMS and not the .DB file. It could happen for many other
+reasons.
+
+Recovery plan:   Open a PMR and work with IBM Support on how to
+resolve this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1023E
+
+Text:  TNAME ID index missing in TSITDESC
+
+Check: TNAME ID should have matching TSITDESC SITNAME column
+
+Meaning: This likely has little impact however it means the
+TNAME FULLNAME could not be used. It could mean that some
+data has been lost from the TSITDESC table.
+
+Recovery plan: Open a PMR and work with IBM Support on
+how to resolve this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1024E
+Text:  Situation Formula *SIT [ <situation> Missing from TSITDESC table
+
+Check: Validate that situation references in the TSITDESC PDT match other TSITDESC SITNAMEs
+
+Meaning: The affected situations will not run as expected.
+It could mean that some data has been lost from the TSITDESC table.
+
+Recovery plan:   Rewrite the situation and the situation editor
+will force situations selected are correct.
+--------------------------------------------------------------
+
+DATAHEALTH1025E
+Text:  TNODELST Type V Thrunode <thrunode>  missing in Node Status
+
+Check: Validate that a thrunode reference in a TNODELST NODETYPE=V
+object is represented in the TNODESAV table.
+
+Meaning: This could mean that monitoring is not happening on the
+node involved. Often this shows as other error checks.
+
+Recovery plan:   Open a PMR and work with IBM Support on how to
+resolve this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1026E
+Text:  TNODELST Type V node invalid name
+
+Check:  Node names should only use certain characters.
+
+Meaning:  This will usually have little effect unless the Hub TEMS
+is configured with CMS_NODE_VALIDATION.  Should that be set the
+problem agents will  be offline. The legal characters are:
+
+ A-Z, a-z, 0-9,* _-:@$# period and space
+
+A Nodelist Name can never start with '*',  '#',  '.'  or  ' '
+
+Recovery plan:  Reconfigure agent and use legal characters.
+--------------------------------------------------------------
+
+DATAHEALTH1027E
+Text:  TNODELST Type V Thrunode <node> invalid name
+
+Check:  Nodelist names should only use certain characters.
+
+Meaning:  This will usually have little effect unless the
+Hub TEMS is configured with CMS_NODE_VALIDATION.  Should
+that be set the problem agents will  be offline. The legal
+characters are:
+
+A-Z, a-z, 0-9,* _-:@$# period and space
+
+A Nodelist Name can never start with '*',  '#',  '.'  or  ' '
+
+Recovery plan:  Reconfigure nodelist and use legal characters.
+--------------------------------------------------------------
+
+DATAHEALTH1028E
+Text:  TOBJACCL duplicate nodes
+
+Check: TOBJACCL.NODE values must be unique.
+
+Meaning: This always means the Index file [.IDX] is out of sync
+with the data [.DB].
+
+Recovery plan: Open a PMR and work with IBM Support on how to
+resolve this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1029W
+Text:  TOBJACCL Nodel $nodel1 Apparent MSL but missing from TNODELST
+
+Check: TOBJACCL.NODEL values should be present in TNODELST.
+
+Meaning: This is a meaningless distribution.
+
+Recovery plan: Review entry and delete if no longer needed.
+--------------------------------------------------------------
+
+DATAHEALTH1030W
+Text:  TOBJACCL Node missing in Node Status
+
+Check: TOBJACCL.OBJNAME values should be present in TNODESAV
+
+Meaning: This is a meaningless distribution.
+
+Recovery plan: Review entry and delete if no longer needed.
+--------------------------------------------------------------
+
+DATAHEALTH1031E
+Text:  TGROUPI [$key] unknown TGROUP ID
+
+Check: TGROUPI ID should match a TGROUP ID
+
+Meaning: This could prevent Situation Group Distribution
+
+Recovery plan: Review Situation Group entries and correct.
+--------------------------------------------------------------
+
+DATAHEALTH1032E
+Text:  TGROUPI [$key] unknown group objectname
+
+Check: TGROUPI OBJNAME should match a TGROUP ID
+
+Meaning: This could prevent Situation Group Distribution
+
+Recovery plan: Review Situation Group entries and correct.
+--------------------------------------------------------------
+
+DATAHEALTH1033E
+Text:  TGROUPI [$key] unknown situation objectname
+
+Check: TGROUPI OBJNAME should match a Situation name
+
+Meaning: This could prevent Situation Group Distribution
+
+Recovery plan: Review Situation Group entries and correct.
+--------------------------------------------------------------
+
+DATAHEALTH1034W
+Text:  TGROUP ID $f not distributed in TOBJACCL
+
+Check: Validate that a Situation Group ID is distributed.
+
+Meaning: This could mean that monitoring is not happening on
+the Situation Group. In some cases the data is used for reference only.
+
+Recovery plan:   Review situation group and see if it should be
+distributed.
+--------------------------------------------------------------
+
+DATAHEALTH1035W
+Text:  TOBJACCL Group name missing in Situation Group
+
+Check: Validate that a Group distribution exists in Situation Group
+
+Meaning: This likely a left over distribution for a deleted situation group.
+
+Recovery plan:   Review distribution and delete if no longer needed.
+--------------------------------------------------------------
+
+DATAHEALTH1036E
+Text:  Invalid Agent version [agent_version] in node <nodename> in tnodesav
+
+Check: Versions should be nn.nn.nn
+
+Meaning: Probably a left over from a bad install, but it could prevent normal agent operation.
+
+Recovery plan: review agent configuration
+--------------------------------------------------------------
+
+DATAHEALTH1037W
+Text:  Agent at version [agent_version] using TEMA at lower release [TEMA_version]
+
+Check: Compare TEMA and Agent version
+
+Meaning: This may work OK but there is little experience and no IBM
+testing at all. Older TEMA levels are missing APAR fixes and that
+can increase the number of problems seen.
+
+Recovery plan:   upgrade OS Agent to higher release level.
+--------------------------------------------------------------
+
+DATAHEALTH1038E
+Text:  *HUB node missing from TNODELST Type M records"
+
+Check: Check for presence of *HUB
+
+Meaning: This is usually a severe problem where the TNODELST
+has been damaged and needs rebuilding. It can also mean the
+program was run on a remote TEMS in error.
+
+Recovery plan:   Consult IBM Support if needed.
+--------------------------------------------------------------
+
+DATAHEALTH1039E
+Text:  table LSTDATE is blank and will not synchronize in FTO configuration
+
+Check: Check for blank column in table
+
+Meaning: This is a FTO configuration and these IDs will not be
+synchronized to the backup hub TEMS. This can lead to loss of
+events at event receiver. If not FTO then not a problem. This
+was an object created before ITM the objects were synchronized.
+
+Recovery plan:   In some cases you can use tacmd functions to
+delete and recreate the data. In other cases contact IBM Support
+for advice.
+--------------------------------------------------------------
+
+DATAHEALTH1040E
+Text:  LSTDATE for [comment] value in the future date
+
+Check: Check for future date in that field and ensure FTO is configured
+
+Meaning: This condition was corrected by APAR IV60288 at ITM 630 FP3.
+Before that time, if the future LSTDATE was processed by a FTO Backup
+hub TEMS, that would prevent other updates from being synchronized.
+That means FTO would not work properly.
+
+Recovery plan:   Upgrade to ITM 630 FP3. Otherwise contact IBM Support
+for a recovery action plan.
+--------------------------------------------------------------
+
+DATAHEALTH1041W
+Text:  table LSTDATE value in the future <date>
+
+Check: Check for future date in that field and ensure FTO is not configured
+
+Meaning: This has no effect when FTO is not configured but would
+definitely be a problem if FTO was configured later on.
+
+Recovery plan:   Upgrade to ITM 630 FP3. Otherwise contact IBM Support
+in case a FTO configuration is planned for the future.
+--------------------------------------------------------------
+
+DATAHEALTH1042E
+Text:  Agent [agent name] using TEMA at version [version] in IZ76410 danger
+
+Check: Check for agent level
+
+Meaning: TEMA in the range ITM 621 before FP3 and ITM 622 before
+FP3 had a severe defect whereby an agent could be connected to
+two remote TEMS at the same time. This would occur following a
+switch to secondary remote TEMS and an automatic switch back.
+The issues were many including situations running multiple
+times, Agent crashes, no situations running and many more.
+
+Recovery plan:   Upgrade OS Agent to levels past the danger zone.
+Alternatively only configure agent to a single remote TEMS.
+For more information contact IBM Support.
+--------------------------------------------------------------
+
+DATAHEALTH1043E
+Text:  Agent with TEMA at [version] later than TEMS $tems1 at [version]
+
+Check: Check for agent level and TEMS level
+
+Meaning: Agents should be at a TEMA level equal or below the
+TEMS version level. This case is not supported and is not
+tested. It may work but is considered risky.
+
+Recovery plan:   Upgrade the TEMS to the agent level or higher.
+If needed a new remote TEMS at an equal or higher level can be
+used. TEMSes can connect to other TEMS any order high to low
+or low to high.
+--------------------------------------------------------------
+
+DATAHEALTH1044E
+Text:  Agent with unknown TEMA level [version]
+
+Check: Check for agent level
+
+Meaning: This has been seen in a few cases and the exact impact
+is unknown. However it does not seem to be a safe condition. This
+might also suggest a new Database Health Checker version is needed.
+
+Recovery plan: Reinstall the agent or contact IBM Support for advice.
+--------------------------------------------------------------
+
+DATAHEALTH1045E
+Text:  TEMS with unknown version [version]
+
+Check: Check for TEMS level
+
+Meaning: This has never been seen and the exact impact is unknown.
+However it does not seem to be a safe condition. This might also
+suggest a new Database Health Checker version is needed.
+
+Recovery plan: Contact IBM Support for advice
+--------------------------------------------------------------
+
+DATAHEALTH1046W
+Text:  Total TEMS Packages [.cat files] count [count] exceeds nominal [500]
+
+Check: Check for number of catalogs [IBM internal usage only]
+
+Meaning: TEMS has an absolute maximum of 512 catalog files. If
+one more is added then TEMS will fail to initialize.
+
+Recovery plan: Remove unneeded .cat and related .atr files.
+--------------------------------------------------------------
+
+DATAHEALTH1047E
+Text:  EVNTMAP ID[id] Unknown Situation in mapping - sitname
+
+Check: See if event mapping references a known situation name
+
+Meaning: This was probably left over when a situation was deleted.
+This has relatively little impact.
+
+Recovery plan: If concerned contact IBM Support to get help on
+removing data.
+--------------------------------------------------------------
+
+DATAHEALTH1048E
+Text:  Total TEMS Packages [.cat files] count count] close to TEMS failure point of 513"
+
+Check: Check for number of catalogs [IBM internal usage only]
+
+Meaning: TEMS has an absolute maximum of 512 catalog files. If one
+more is added then TEMS will fail to initialize. This is when total
+is more than 510 and failure is very close.
+
+Recovery plan: Remove unneeded .cat and related .atr files.
+--------------------------------------------------------------
+
+DATAHEALTH1049W
+Text:  TNODESAV node name with embedded blank
+
+Check: Check for nodes with embedded blanks
+
+Meaning: Agent names are allowed to have embedded blanks, however
+it is usually a configuration error and confusing at best.
+
+Recovery plan: Reconfigure agent without embedded blanks in name.
+--------------------------------------------------------------
+
+DATAHEALTH1050W
+Text: TNODELST TYPE V node name with embedded blank
+
+Check: Check for TNODELST TYPE V nodes with embedded blanks
+
+Meaning:  This is likely a side effect of DATAHEALTH1049W.
+Agent names are allowed to have embedded blanks, however
+it is usually a configuration error and confusing at best.
+
+Recovery plan: Reconfigure agent without embedded blanks in name.
+--------------------------------------------------------------
+
+DATAHEALTH1051W
+Text:  TNODELST TYPE V Thrunode [thrunode] with embedded blank
+
+Check: Check for TNODELST TYPE V thrunode with embedded blanks
+
+Meaning:  This is likely a side effect of DATAHEALTH1049W. Agent
+names are allowed to have embedded blanks, however it is usually
+a configuration error and confusing at best.
+
+Recovery plan: Reconfigure remote TEMS without embedded blanks
+in name
+--------------------------------------------------------------
+
+DATAHEALTH1052W
+Text:  TNODELST NODETYPE=M nodelist with embedded blank
+
+Check: Check for TNODELST TYPE M nodelist with embedded blanks
+
+Meaning:  Nodelist names are allowed to have embedded blanks,
+however it is usually a configuration error and confusing at best.
+
+Recovery plan: Reconfigure remote TEMS without embedded blanks
+in name.
+--------------------------------------------------------------
+
+DATAHEALTH1053E
+Text:  EVNTMAP Situation reference missing
+
+Check: EVNTMAP Situation tag in MAP column
+
+Meaning:  The Event Mapping does not reference a situation and
+so cannot be applied. If an event mapping was expected, it will
+not work.
+
+Recovery plan: Work with IBM Support on how to remove the data.
+--------------------------------------------------------------
+
+DATAHEALTH1054E
+Text:  TPCYDESC duplicate key PCYNAME
+
+Check: TPCYDESC should have unique policy names
+
+Meaning: This always means the Index file [.IDX] is out of sync
+ with the data [.DB]. This usually means the workflow policy
+ process is not working as expected.
+
+Recovery plan: Open a PMR and work with IBM Support to resolve
+this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1055E
+Text: Policy Activity [ACTNAME=name] Unknown policy name
+
+Check: TACTYPCY should have reference a known policy name
+
+Meaning: This is likely a left over activity from a deleted
+workflow policy. It has no impact unless a new policy is
+created using the old name in which case the new policy
+might behave unexpectedly.
+
+Recovery plan: If this is a concern, open a PMR and work
+with IBM Support to resolve this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1056E
+Text: Policy Activity [ACTNAME=name] Unknown policy name
+
+Check: Check that Workflow Policy activities reference
+known situations.
+
+Meaning: This usually means the workflow policy process is
+not working as expected. Usually this means that the situation
+was deleted.
+
+Recovery plan: If the workflow policy is no longer used it
+should be deleted or rewritten.
+--------------------------------------------------------------
+
+DATAHEALTH1057E
+Text:  TPCYDESC Evaluate Sit Now - unknown situation sitname
+
+Check: Check that Workflow Policy activities reference known
+situations.
+
+Meaning: This usually means the workflow policy process is
+not working as expected. Usually this means that the situation
+was deleted.
+
+Recovery plan: If the workflow policy is no longer used
+it should be deleted or rewritten.
+--------------------------------------------------------------
+
+DATAHEALTH1058E
+Text:  TCALENDAR duplicate key ID
+
+Check: TCALENDAR should have unique keys
+
+Meaning: This always means the Index file [.IDX] is out of sync
+with the data [.DB]. This usually means the workflow policy process
+is not working as expected.
+
+Recovery plan: Open a PMR and work with IBM Support to resolve
+this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1059E
+Text:  TOVERRIDE duplicate key ID
+
+Check: TOVERRIDE should have unique keys
+
+Meaning: This always means the Index file [.IDX] is out of sync
+with the data [.DB]. This usually means the workflow policy process
+is not working as expected.
+
+Recovery plan: Open a PMR and work with IBM Support to resolve
+this issue.
+--------------------------------------------------------------
+
+DATAHEALTH1060E
+Text:  TOVERRIDE Unknown Situation [sitname] in override
+
+Check: TOVERRIDE should reference a known situation
+
+Meaning: This usually means the situation was deleted and
+has relatively low impact.
+
+Recovery plan: If this is concerning, work with IBM Support
+to delete the data.
+--------------------------------------------------------------
+
+DATAHEALTH1061E
+Text:  TOVERITEM Unknown Calendar ID calid
+
+Check: TOVERITEM should reference a known calendar if specified
+
+Meaning: This could mean the situation override is not working as expected.
+
+Recovery plan: Review override and validate it is correctly defined.
+--------------------------------------------------------------
+
+DATAHEALTH1062E
+Text:  TOVERITEM Unknown TOVERRIDE ID id
+
+Check: TOVERITEM should reference a known TOVERRIDE object
+
+Meaning: This could mean the situation override is not working as expected.
+
+Recovery plan: Review override and validate it is correctly defined.
+--------------------------------------------------------------
+
+DATAHEALTH1063W
+
+Text:  table LSTDATE is blank and will not synchronize in FTO configuration
+Check: LSTDATE should not be blank
+
+Meaning: This is an error condition but it has no effect and
+FTO is not defined.
+
+Recovery plan: If FTO is planned in future, work with IBM Support
+to correct data.
+--------------------------------------------------------------
+
+DATAHEALTH1064W
+Text:  Situation Sampling Interval value seconds - higher then danger level danger
+
+Check: situation sampling interval should be maximum 4 days
+
+Meaning: This a recently identified issue. On Linux/Unix/Windows
+it just doesn't work as expected on z/OS it can result in excessive
+CPU resource used,
+
+Recovery plan: Change sampling interval to 4 days or less.
+--------------------------------------------------------------
+
+DATAHEALTH1065W
+Text: TPCYDESC Wait on SIT or Sit reset - unknown situation sitname but policy not autostarted
+
+Check: Check that Workflow Policy activities reference known situations.
+
+Meaning: This usually means the workflow policy process would not
+work as expected if started. Usually this means that the situation
+was deleted.
+
+Recovery plan: If the workflow policy is no longer used it should be deleted or rewritten.
+--------------------------------------------------------------
+
+DATAHEALTH1066W
+Text: TPCYDESC Evaluate Sit Now - unknown situation sitname but policy not autostarted
+
+Check: Check that Workflow Policy activities reference known situations.
+
+Meaning: This usually means the workflow policy process would not
+work as expected if started. Usually this means that the situation
+was deleted.
+
+Recovery plan: If the workflow policy is no longer used it should be deleted or rewritten.
+--------------------------------------------------------------
+
+DATAHEALTH1067E
+Text:  Danger of TEMS crash sending events to receiver APAR IV50167
+
+Check: Check TEMS maintenance level.
+
+Meaning: At ITM 630 FP2 there were a number of serious problems. The most
+severe was APAR IV50167.
+
+Using Msg Slot Customization with Event Forwarding may crash 6.3 FP2 TEMS
+http://www-01.ibm.com/support/docview.wss?uid=swg21656217
+
+With some customers no crash was seen. With others it was a couple times
+a week. With others the crashing was constant after some point.
+
+Here is a partial list of other known issues
+
+APARs opened against IBM Tivoli Monitoring (ITM) V63 FP2
+http://www-01.ibm.com/support/docview.wss?uid=swg21659707
+
+Recovery plan: Upgrade the hub TEMS to a later maintenance level such as
+
+IBM Tivoli Monitoring 6.3.0 Fix Pack 7 (6.3.0-TIV-ITM-FP0007)
+http://www-01.ibm.com/support/docview.wss?uid=swg24041633
+--------------------------------------------------------------
+
+DATAHEALTH1068E
+Text: Agent registering [count] times: possible duplicate agent names
+
+Check: Check TEIBLOGT table
+
+Meaning: It is quite possible to accidentally have multiple agents
+with the same name. This contradicts a basic ITM requirement of each
+managed system name being unique. The impact is a failure to monitor
+as expected. It can also have severe impacts on TEMS and TEPS
+performance. This Database Health Checker process identifies some
+but not all of the problems. Another symptom of the issue is relatively
+ constant "Navigator Updates Pending" messages in the Portal Client.
+
+See the Database Health Checker report section showing the
+top 20 agents which *may* be having a problem. There may be
+no real problems if the hub TEMS has been running for a long
+time and no agent is seen with unusually large counts. See the
+recovery plan section below for a general way to identify all
+such issue.
+
+Recovery plan: See the following blog post
+Sitworld: TEPS Audit https://ibm.biz/BdXNvy
+
+The report shows all the duplicate agent names that affect the
+TEPS. In the portal client this is seen as excessive
+"Navigator Updates Pending" conditions. There is other work
+underway to identify more cases.
+
+Recovery is to configure the agents to have unique names.
+--------------------------------------------------------------
+
+DATAHEALTH1069E
+Text:  FTO hub TEMS have different version levels [nodeid=version;…]
+
+Check: Check definition of hub TEMSes
+
+Meaning: FTO hub TEMSes should have the same maintenance level. It is
+possible to run for a while at different levels such as while
+installing new maintenance. However to minimize problems avoiding
+this condition is required.
+
+Recovery plan: Apply maintenance to backlevel TEMS so they run at the same level.
+--------------------------------------------------------------
+
+DATAHEALTH1070W
+Text:  Agent There are count hub TEMS [nodeid=version;…]
+
+Check: Check definition of hub TEMSes
+
+Meaning: An ITM configuration can validly have one or two hub
+TEMSes. This advisory is created when three or more hub
+TEMSes are found. It is currently unknown if this causes
+any actual problems, but it is often an accident. There is
+a transient configuration with two FTO hub TEMSes and another
+hub TEMS in Hot Backup mode, so condition could be normal.
+
+Recovery plan: Correct the ITM to have only one or two hub TEMSes.
+--------------------------------------------------------------
+
+DATAHEALTH1071W
+Text:  Situation with invalid sampling days [days]
+
+Check: Check Situation Sampling Interval days
+
+Meaning: The Situation Sampling interval days should be a number
+from 1 to 3 digits. This advisory is produced if the number is
+empty or more than 3 digits. If this condition exists, it might
+cause situations to behave abnormally
+--------------------------------------------------------------
+
+DATAHEALTH1072W
+Text:  Situation with invalid sampling time [time]
+
+Check: Check Situation Sampling Interval time
+
+Meaning: The Situation Sampling interval time should
+be a 6 digit number representing hhmmss. Cases have been
+seen where this is "0" or "0000". In those cases it caused
+incorrect sampled situation behavior and monitoring did
+not take place as expected.
+
+Recovery plan: Re-write the situation if it is still useful,
+otherwise delete it.
+--------------------------------------------------------------
+
+DATAHEALTH1073W
+Text:  MQ Agent name has missing hostname qualifier
+
+Check: MQ Agent name has missing hostname qualifier
+
+Meaning: MQ agents should specify the hostname using
+this control in the mq.cfg file:
+
+SET AGENT NAME(<hostname>)
+
+Without that it is quite easy to get accidental
+duplicate names for different agents. That can
+lead to confusion and excessive TEMS and TEPS work.
+
+Recovery plan: Add the above control.
+--------------------------------------------------------------
+
+DATAHEALTH1074W
+Text:  Situation Event arriving $psit_rate per minute
+
+Check: Check situations and eliminate the reason for excessive event rates.
+
+Meaning: Events that arrive in high volume can sometimes
+de-stabilize the hub and remote TEMSes. Situation events should
+be for rare and exceptional circumstances where a recovery action
+is possible to correct the condition.
+
+In the example customer situation, a Windows login rejected alert
+was arriving hundreds of time per second and prevented the TEMS
+from doing any other work including servicing TEPS and working
+with the FTO backup hub TEMS.
+
+The Database Health Checker "Top 20 Situation Event Report"
+section will display more information including three example
+offending agents.
+
+Recovery plan: Stop the situation and investigate. Remove the
+cause of the alert or, if condition is actually normal change
+the situation to stop warning on this normal condition.
+--------------------------------------------------------------
+
+DATAHEALTH1075W
+Text:  TNODESAV duplicate 2 SYSTEM_NAMEs in [...]
+
+Check: Check managed systems for duplicate System Names on different systems
+
+Meaning: The Portal Client Navigator layout is depended on
+the Agent System Name. Usually that is identical to the Agent
+Host Name which derives from the system hostname. However,
+using CTIRA_HOSTNAME and CTIRA_SYSTEM_NAME an agent can be
+configured to have almost any value. When a Hostname is
+duplicated, you often see duplicate agent names, which
+causes significant issues. When a System Name is duplicated,
+there is a significant possibility of confusion.
+Each of the agents will be shown in the Navigation tree under
+the same node.
+
+In one case, there were 500+ Windows OS Agents all under the
+same navigation node. This caused great distress.
+
+Recovery plan: Reconfigure the agents involved. Usually that
+means making sure the Hostname and System Name are equivalent
+and unique across all agents.
+--------------------------------------------------------------
+
+DATAHEALTH1076W
+Text:  CF Agent configured to $thrunode1 which is not the hub TEMS
+
+Check: Check managed systems for CF Agents not configured to the hub TEMS.
+
+Meaning: The CF Agent - name ends ::CONFIG is part of the
+MQ Configuration Agent. By product design there should be only
+one such agent in an ITM environment and it must be configured
+only to the hub TEMS.
+
+The process is a coordination process between XXX::RCACFG agents.
+The extra CONFIG agents connecting to remote TEMSes have no purpose
+and will cause remote TEMS performance issues and confusion.
+
+Recovery plan:   For each remote TEMS with this issue make these
+changes and recycle the remote TEMS.
+
+Windows: Remove "KCFFEPRB.KCFCCTII" from KDS_RUN in
+<installdir>\cms\KBBENV.
+
+Linux/Unix: Remove "KCFFEPRB.KCFCCTII" from KDS_RUN in
+<installdir>/tables/<temsnodeid>/KBBENV
+
+and
+
+<installdir>/config/kbbenv.ini
+
+In the future, only configure that agent to the hub TEMS.
+--------------------------------------------------------------
+
+DATAHEALTH1077E
+Text:  CF Agent not supported in FTO mode
+
+Check: Check managed systems for CF configured to hub TEMS in FTO mode
+
+Meaning: The CF Agent - name ends in ::CONFIG is part of the
+MQ Configuration Agent. By product design there should be
+only one such agent in an ITM environment and it must be
+configured only to the hub TEMS and the TEMS must not be
+in FTO mode.
+
+Recovery plan:   For each remote TEMS with this issue make these
+changes and recycle the remote TEMS.
+
+Windows: Remove "KCFFEPRB.KCFCCTII" from KDS_RUN in
+<installdir>\cms\KBBENV.
+
+Linux/Unix: Remove "KCFFEPRB.KCFCCTII" from KDS_RUN in
+<installdir>/tables/<temsnodeid>/KBBENV
+
+and
+
+<installdir>/config/kbbenv.ini
+
+In the future, only configure that agent to the hub TEMS.
+--------------------------------------------------------------
+
+DATAHEALTH1078E
+Text:  WPA connected to $thrunode1 which is not the hub TEMS
+
+Check: Check managed systems for WPA connected to remote TEMS
+
+Meaning: The Warehouse Proxy Agent must only be configured
+to the hub TEMS. If there is to be a WPA installed on each
+remote TEMS [definitely best practice] each WPA must connect
+to the hub TEMS and use an environment variable to specify
+which remote TEMS it is responsible for.
+
+Recovery plan: Configure each WPA to connect and register with
+the hub TEMS and use the KHD_WAREHOUSE_TEMS_LIST environment
+variable to specify the remote TEMS nodeid that the WPA will be
+responsible for.
+--------------------------------------------------------------
+
+DATAHEALTH1079E
+Text:  TNODESAV invalid affinities [aff] for node
+
+Check: TNODESAV AFFINITIES
+
+Meaning: Something is really wrong with the agent.
+
+Recovery plan: Reinstall agent. If this does not cure issue
+then contact IBM Support.
+--------------------------------------------------------------
+
+DATAHEALTH1080W
+Text:  Situation Status Events arriving num per minute
+
+Check: SITSTSH
+
+Meaning: This means situation status events are arrive more than
+60 per minute long term. Many hub TEMS cannot sustain such a rate
+and will be unstable. Large systems may sustain such a rate with
+success.
+
+Recovery plan: Monitor system for stability. Change situation
+definitions to reduce work. Create multiple hub TEMS for large
+environments.
+--------------------------------------------------------------
+
+Recovery plan: Upgrade OS Agent to a supported level.
+
+DATAHEALTH1081W
+Text:  End of Service agents maint[level] count[num] date[date]
+
+Check: TNODESAV
+
+Meaning: This records that there are out of service
+TEMA [Agent Support Library] levels. That usually corresponds
+to OS Agent levels since they are bundled together. While
+IBM Support will give aid when possible but it will be
+impossible to do deep level diagnosis and APAR fix creation.
+
+See separate report section.
+
+Recovery plan: Upgrade OS Agent to a supported level.
+--------------------------------------------------------------
+
+DATAHEALTH1082W
+Text:  End of Service agents maint[level] count[num] date[date]
+
+Check: TNODESAV
+
+Meaning: This records that there are some agents that will be
+out of service TEMA [Agent Support Library] levels in the future.
+That usually corresponds to OS Agent levels since they are bundled
+together. After that date, IBM Support will give aid when possible
+but it will be impossible to do deep level diagnosis and APAR
+fix creation. See separate report section.
+
+Recovery plan:  Upgrade the agent before the end of support date.
+--------------------------------------------------------------
+
+DATAHEALTH1083W
+Text:  End of Service TEMS tems maint[level] date[date]
+
+Check: TNODESAV
+
+Meaning: This records that the TEMS is out of service maintenance
+level. IBM Support will give aid when possible but it will be
+impossible to do deep level diagnosis and APAR fix creation.
+
+Recovery plan:  Upgrade the TEMS to a supported level before the
+end of support date.
+--------------------------------------------------------------
+
+DATAHEALTH1084W
+Text:  Future End of Service TEMS tems maint[level] date[date]
+
+Check: TNODESAV
+
+Meaning: This records that the TEMS will be out of service
+maintenance level at a future date. IBM Support will give aid
+when possible but it will be impossible to do deep level diagnosis
+and APAR fix creation.
+
+Recovery plan:  Upgrade the TEMS to a supported level before the
+end of support date.
+--------------------------------------------------------------
+
+DATAHEALTH1085W
+Text:  Situation undefined but Events arriving from nodes[nodes]
+
+Check: TSITSTSH
+
+Meaning: This means that situation event status are arriving for
+a situation that is not defined in the current database. Depending
+on volume of incoming work this can have a profound effect and
+often goes unnoticed. The advisory is tagged with Situation and
+the Atomize value if present.
+
+The TEMS sends an order to the agent to stop the situation but
+sometimes the agent does not get the instruction. This can happen
+at any maintenance level.
+
+Recovery plan:  At recent maintenance levels, where agent and TEMS
+are at ITM 623 FP2 or higher, when the agent starts up with the hub
+TEMS they will validate exactly what situations should running
+and made any needed adjustments. An agent recycle will correct the
+condition.
+
+If either TEMS or agent is below that maintenance level, the
+procedure documented here can be used - in the local workaround
+section:
+
+http://www.ibm.com/support/docview.wss?uid=swg1IV10164
+
+The agent is stopped, the situation persistence file is deleted and the agent is started.
+--------------------------------------------------------------
+
+DATAHEALTH1086W
+Text:  MS_Offline dataserver evaluation rate count per second somewhat high
+
+Check: TSITDESC and TNODESAV
+
+Meaning: There are more than 30 INODESTS evaluations per second
+in the TEMS dataserver. This is associated with MS_Offline type
+situations.
+
+Recovery plan:  Run fewer MS_Offline type situations to avoid
+performance problems.
+--------------------------------------------------------------
+
+DATAHEALTH1087E
+Text:  MS_Offline dataserver evaluation rate count per second dangerously high
+
+Check: TSITDESC and TNODESAV
+
+Meaning: There are more than 200 INODESTS evaluations per second
+in the TEMS dataserver. This is associated with MS_Offline type
+situations. This can destablize hub TEMS operations.
+
+Recovery plan:  Run fewer MS_Offline type situations to avoid
+problems.
+--------------------------------------------------------------
+
+DATAHEALTH1088W
+Text:  MS_Offline SITMON evaluation rate count per second somewhat high
+
+Check: TSITDESC and TNODESAV
+
+Meaning: There are more than 30 SITMODE evaluations per second
+in the TEMS dataserver. This is associated with MS_Offline type
+situations using Persist>1.
+
+Recovery plan:  Avoid using MS_Offline type situations with
+Persist, which can cause severe performance problems.
+performance problems.
+--------------------------------------------------------------
+
+DATAHEALTH1089E
+Text:  MS_Offline SITMON evaluation rate count per second dangerously high
+
+Check: TSITDESC and TNODESAV
+
+Meaning: There are more than 200 SITMODE evaluations per second
+in the TEMS dataserver. This is associated with MS_Offline type
+situations using Persist>1.
+
+Recovery plan:  Avoid using MS_Offline type situations with
+Persist, which can cause severe performance problems.
+performance problems and TEMS instability.
+--------------------------------------------------------------
+
+DATAHEALTH1090W
+Text:  Agent [agent name] using TEMA at version [version] in IV18016 danger zone
+
+Check: Check for agent level
+
+Meaning: TEMA at ITM 622 FP7 and ITM 623 FP1 have a risk of
+looping during TEMS connection. This occurs sometimes when
+embedded situations are in the situation formula. The result
+is high agent CPU until the agent is recycled.
+
+Recovery plan:   Upgrade OS Agent to levels past the danger zone.
+--------------------------------------------------------------
+
+DATAHEALTH1091W
+Text:  Autostarted Situation to Online Agent ratio[percent] - dangerously high
+
+Check: Check for situations versus agents
+
+Meaning: Hub and remote TEMS can become unstable if too many
+situations are running. This has been seen when separate situations
+are distributed to specific agents instead of multiple agents. The
+test here is 100%.
+
+The TEMS dataserver [SQL processor] runs logic for each situation
+which is distributed. In the key problem case there were 7,000
+situations and 700 agents. The TEMS became so unstable it stopped
+processing events entirely.
+
+Recovery plan: Reduce the number of situations by using MSLs to
+distribute a single situation to multuple agents. If this logic
+is absolutely necessary, create multuple hub TEMSes to manage
+the workload.
+--------------------------------------------------------------
