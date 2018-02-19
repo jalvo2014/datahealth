@@ -36,13 +36,30 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.48000";
+my $gVersion = "1.49000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
 
 # a collection of variables which are used throughout the program.
 # defined globally
+
+
+# Requests to access, (insert or query), the TSITSTSH table at
+# the Hub TEMS hang when EIF forwarding is enabled.
+# When this happens, the TEP client becomes unresponsive if
+# workspaces are opened that access the TSITSTSH table.
+# Root cause :
+# If the Host Name is missing from the HOSTADDR column in the
+# INODESTS table, the EIF code attempts to determine the hostname
+# from the IP address.
+# While searching for the hostname, access to the TSITSTSH table
+#  is restricted.
+# If the request to determine the hostname does not complete
+# quickly and if there is a sufficiently high number of events to
+# emit, requests to the TSITSTSH begin to back up.
+# This can cause requests from clients, such as TEP and an RTEMS,
+# to take an excessively long time to complete.
 
 my $args_start = join(" ",@ARGV);      # capture arguments for later processing
 my $run_status = 0;                    # A count of pending runtime errors - used to allow multiple error detection before stopping process
@@ -77,6 +94,8 @@ sub valid_lstdate;                       # validate the LSTDATE
 sub get_epoch;                           # convert from ITM timestamp to epoch seconds
 sub sitgroup_get_sits;                   # calculate situations associated with Situation Group
 
+my %pdtx;
+
 my @grp;
 my %grpx = ();
 my @grp_sit = ();
@@ -92,6 +111,12 @@ my $sitdata_start_time = gettime();     # formated current time for report
 
 
 my %miss = ();                          # collection of missing cases
+
+my %offline_agentx;
+my %offline_thrunodex;
+my %offline_productx;
+my %offline_productversionx;
+my %offline_temax;
 
 # TNODELST type V record data           Alive records - list thrunode most importantly
 my $vlx;                                # Access index
@@ -186,6 +211,9 @@ my @tems_affinities = ();                # TEMS AFFINITIES
 my @tems_sampload = ();                  # Sampled Situaton dataserver load
 my @tems_sampsit = ();                   # Sampled Situation Count
 my @tems_puresit = ();                   # Pure Situation Count
+my @tems_sampload_dedup = ();            # Sampled Situaton dataserver load - without duplicate PDTs
+my @tems_sampsit_dedup = ();             # Sampled Situation Count - without duplicate PDTs
+my @tems_puresit_dedup = ();             # Pure Situation Count - without duplicate PDTs
 my @tems_sits = ();                      # Situations hash
 my $hub_tems = "";                       # hub TEMS nodeid
 my $hub_tems_version = "";               # hub TEMS version
@@ -326,6 +354,237 @@ my %advcx = (
               "DATAHEALTH1106W" => "90",
               "DATAHEALTH1107W" => "96",
             );
+
+
+# known product codes - from many sources
+my %knownpc = (
+                 "3Z" => "Monitoring Agent for Active Directory",
+                 "A2" => "AF/Remote Alert Adapter",
+                 "A4" => "Monitoring Agent for i5/OS",
+                 "AH" => "System Automation for z/OS",
+                 "AM" => "IBM Tivoli Alert Adapter for OMEGACENTER Gateway",
+                 "AU" => "CA-Unicenter Alert Emitter",
+                 "AX" => "IBM Tivoli Monitoring Shared Libraries",
+                 "BB" => "RAS1 programming building blocks",
+                 "BC" => "ITCAM System Edition for WebSphere DataPower",
+                 "BL" => "CASP Directory Server Monitoring Agent",
+                 "BN" => "ITCAM Agent for WebSphere DataPower Appliance",
+                 "BR" => "CASP Exchange Connector Monitoring Agent",
+                 "BS" => "Basic Services",
+                 "C3" => "IBM Tivoli Monitoring for CICS",
+                 "C5" => "IBM Tivoli OMEGAMON XE for CICS on z/OS",
+                 "CA" => "Agent Management Services Watchdog",
+                 "CF" => "TEMS Configurator",
+                 "CG" => "IBM Tivoli Monitoring for Cryptographic Coprocessors",
+                 "CI" => "IBM Tivoli Monitoring Product Installer",
+                 "CICATRSQ" => "IBM Tivoli Monitoring SQL Files",
+                 "CIENV" => "IBM Tivoli Monitoring Product Installer",
+                 "CJ" => "Tivoli Enterprise Portal Desktop Client",
+                 "CO" => "Command and Control",
+                 "CP" => "IBM Tivoli Monitoring for CICS",
+                 "CQ" => "Tivoli Enterprise Portal Server",
+                 "CU" => "ICU globalization support",
+                 "CW" => "Tivoli Enterprise Portal Browser Client",
+                 "CZ" => "IBM Tivoli Monitoring CommandPro",
+                 "D3" => "IBM Tivoli Monitoring for DB2",
+                 "D4" => "ITCAM for SOA",
+                 "D5" => "OMEGAMON XE for PE and PM on z/OS",
+                 "DC" => "distributed communications",
+                 "DD" => "Distributed Database common",
+                 "DE" => "distributed communications transport protocol",
+                 "DF" => "OMEGAMON II for SMS",
+                 "DH" => "Internet http server",
+                 "DO" => "IBM Tivoli Decision Support for z/OS",
+                 "DP" => "IBM Tivoli OMEGAMON XE for DB2",
+                 "DS" => "Tivoli Enterprise Management Server",
+                 "DY" => "remote deploy (os agent only)",
+                 "E3" => "R/3 Clients (for ETEWatch) Monitoring Agent",
+                 "E4" => "Siemens APOGEE Agent",
+                 "E5" => "OSIsoft PI Agent",
+                 "E6" => "Johnson Controls Metasys Agent",
+                 "E7" => "APC InfraStruXure Agent",
+                 "E8" => "Eaton Power Xpert Agent",
+                 "E9" => "Active Energy Manager Agent",
+                 "EA" => "Internet Monitoring Agent",
+                 "EL" => "Lotus Notes Clients (for ETEWatch) Monitoring Agent",
+                 "EM" => "Event manager",
+                 "EN" => "SNMP Gateway on Windows NT",
+                 "ER" => "Management Agent for Tivoli Enterprise Console Gateway",
+                 "ES" => "EIF to WS-Notification",
+                 "ET" => "End-to-End",
+                 "EU" => "Custom Clients (for ETEWatch) Monitoring Agent",
+                 "EW" => "Web Browsers (for ETEWatch) Monitoring Agent",
+                 "EX" => "Monitoring Agent for Microsoft Exchange Server",
+                 "EZ" => "OMA for eBA Solutions",
+                 "FN" => "Monitoring Agent for Tivoli Management Framework",
+                 "FW" => "Windows NT Tivoli Enterprise Portal",
+                 "GA" => "SNMP Gateway on AIX",
+                 "GB" => "IBM Tivoli Monitoring for Domino",
+                 "GL" => "general library",
+                 "GR" => "Graphics and Sound Library for TEP",
+                 "GS" => "IBM GSKit Security Interface",
+                 "GW" => "OMEGAMON XE for CICS TG on z/OS",
+                 "HC" => "HMC Alert Adapter",
+                 "HD" => "Warehouse Proxy",
+                 "HI" => "HP OpenView IT/Operations Alert Adapter",
+                 "HL" => "IBM OMEGAMON z/OS Management Console",
+                 "HO" => "HP OpenView NNM Alert Adapter",
+                 "HT" => "Monitoring Agent for Web Servers",
+                 "I2" => "OMEGAMON II for IMS",
+                 "I3" => "IBM Tivoli OMEGAMON XE for IMS",
+                 "I5" => "OMEGAMON XE for IMS on z/OS",
+                 "IC" => "OMEGAMON XE for WebSphere Interchange Server",
+                 "IE" => "WebSphere InterChange Server Data Source",
+                 "IH" => "OpenView ITO Alert Emitter",
+                 "IP" => "OMEGAMON XE for IMS on z/OS",
+                 "IS" => "IBM Tivoli Composite Application Manager for Internet Service Monitoring",
+                 "IT" => "TEC GUI Integration",
+                 "IV" => "IBM Tivoli Enterprise Portal Server Extensions Update",
+                 "IW" => "IBM Tivoli Enterprise Portal Server Extensions",
+                 "JR" => "Tivoli Enterprise-supplied JRE",
+                 "JU" => "Monitoring Agent for JMX JSR-77",
+                 "KA" => "Monitoring Agent for Tivoli Enterprise Console",
+                 "KF" => "IBM Eclipse Help Server",
+                 "KT" => "ITCAM for Response Time Enabler on z/OS",
+                 "LA" => "IBM Tivoli LAP tool",
+                 "LN" => "Lotus Notes Monitoring Agent",
+                 "LO" => "Monitoring Agent for Netcool-OMNIbus Logfiles",
+                 "LV" => "ITMS:Engine",
+                 "LX" => "POSIX pthread mapping service",
+                 "LZ" => "Monitoring Agent for Linux OS",
+                 "M2" => "OMEGAMON II for MVS",
+                 "M3" => "IBM Tivoli Monitoring for OS/390",
+                 "M5" => "IBM Tivoli OMEGAMON XE for z/OS",
+                 "M6" => "ITCAM Agent for WebSphere MQ File Transfer Edition",
+                 "MA" => "Remedy ARS Alert Adapter",
+                 "MC" => "WebSphere MQ Configuration",
+                 "MD" => "PQEdit",
+                 "MQ" => "Monitoring for Websphere MQ",
+                 "MS" => "Tivoli Enterprise Monitoring Server",
+                 "N3" => "IBM Tivoli OMEGAMON XE for Mainframe Networks",
+                 "NA" => "IBM Tivoli NetView for z/OS Enterprise Management Agent",
+                 "ND" => "Monitoring Agent for Tivoli NetView Server",
+                 "NO" => "Tivoli Omnibus ObjectServer Agent",
+                 "NP" => "IBM Tivoli Network Manager",
+                 "NT" => "Monitoring Agent for Windows OS",
+                 "NV" => "IBM Tivoli OMEGAMON Alert Manager For TME10 NetView",
+                 "NW" => "Novell NetWare Monitoring Agent",
+                 "OB" => "OMNIMON BASE",
+                 "OE" => "CCC for OS/390 Unix System Services",
+                 "ON" => "OMEGAMON II for Mainframe Network",
+                 "OQ" => "Monitoring Agent for Microsoft SQL Server",
+                 "OR" => "Monitoring Agent for Oracle",
+                 "OS" => "IBM Tivoli Monitoring for Sysplex",
+                 "OX" => "Informix Monitoring Agent",
+                 "OY" => "Monitoring Agent for Sybase Server",
+                 "P0" => "Tivoli Performance Analyzer Domain for DB2",
+                 "P3" => "Tivoli Performance Analyzer Domain for OS agent",
+                 "P4" => "Tivoli Performance Analyzer Domain for Oracle",
+                 "P5" => "Base Monitoring Agent for AIX",
+                 "P6" => "Tivoli Performance Analyzer Domain for System P",
+                 "P8" => "ITCAM Agent for PeopleSoft Enterprise Application Domain",
+                 "P9" => "ITCAM Agent for PeopleSoft Enterprise Process Scheduler",
+                 "PA" => "Performance Analytics for TEP",
+                 "PC" => "DEC Polycenter Alert Adapter",
+                 "PE" => "Monitoring Agent for Provisioning",
+                 "PH" => "Base Monitoring Agent for HMC",
+                 "PI" => "Tivoli Performance Analyzer Domain for ITCAM RT",
+                 "PK" => "Base Monitoring Agent for CEC",
+                 "PL" => "CandleLight Workstation",
+                 "PS" => "PeopleSoft Monitoring Agent",
+                 "PT" => "Peregrine ServiceCenter Alert Adapter",
+                 "PU" => "Tivoli Performance Analyzer Domain for VMware",
+                 "PV" => "Base Monitoring Agent for VIOS",
+                 "PX" => "Premium Monitoring Agent for AIX",
+                 "Q4" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: ISA Server 2004",
+                 "Q5" => "Monitoring Agent for Microsoft Cluster Server",
+                 "Q7" => "Microsoft Internet Information Services (IIS) Agent",
+                 "Q8" => "agent workload",
+                 "Q9" => "agent pureapplication",
+                 "QA" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: ISA Server 2000",
+                 "QB" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: BizTalk Server",
+                 "QC" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: Commerce Server",
+                 "QD" => "IBM Tivoli Monitoring for IBM Director",
+                 "QF" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: .NET Framework",
+                 "QH" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: Host Integration Server",
+                 "QI" => "Monitoring for WebSphere Integration Brokers",
+                 "QP" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: SharePoint Portal Server",
+                 "QR" => "Monitoring Agent for Microsoft Virtual Server",
+                 "QT" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: Content Management Server",
+                 "QU" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: UDDI Services",
+                 "QV" => "Monitoring Agent for VMware ESX",
+                 "QX" => "Monitoring Agent for Citrix Access Suite",
+                 "R2" => "Agentless Monitoring for Windows Operating Systems",
+                 "R3" => "Agentless Monitoring for AIX Operating Systems",
+                 "R4" => "Agentless Monitoring for Linux Operating Systems",
+                 "R5" => "Agentless Monitoring for HP-UX Operating Systems",
+                 "R6" => "Agentless Monitoring for Solaris Operating Systems",
+                 "R9" => "Business System Manager Common Agent",
+                 "RA" => "distributed agent remote manager",
+                 "RC" => "IBM Tivoli Monitoring for Rational Applications",
+                 "RG" => "IBM Tivoli Advanced Audit for DFSMShsm",
+                 "RJ" => "IBM Tivoli Allocation Optimizer for z/OS",
+                 "RK" => "IBM Tivoli Automated Tape Allocation Manager",
+                 "RN" => "IBM Tivoli Advanced Catalog Management for z/OS",
+                 "RV" => "IBM Tivoli Advanced Backup and Recovery for z/OS",
+                 "RW" => "IBM Tivoli Tape Optimizer",
+                 "RZ" => "ITCAM Extended Agent for Oracle Database",
+                 "S1" => "ITCAM Lotus Sametime Agent",
+                 "S2" => "OS/2 Monitoring Agent",
+                 "S3" => "IBM Tivoli OMEGAMON XE for SMS",
+                 "SA" => "IBM Tivoli OMEGAMON XE for R/3",
+                 "SB" => "shared probes",
+                 "SD" => "Status Data Manager",
+                 "SH" => "Tivoli Enterprise Monitoring SOAP Server",
+                 "SJ" => "Best Practices for WebSphere",
+                 "SK" => "Reporting Agent for Tivoli Storage Manager",
+                 "SP" => "SNMP Alert Adapter",
+                 "SR" => "IBM Tivoli Service Level Advisor",
+                 "SS" => "Windows NT SNA Server Monitoring Agent",
+                 "SY" => "Summarization and Pruning Agent",
+                 "T1" => "ITCAM File Transfer Enablement",
+                 "T2" => "ITCAM for Response Time Tracking",
+                 "T3" => "ITCAM Application Management Console (AMC)",
+                 "T4" => "ITCAM for Client Response Time (CRT) Agent",
+                 "T5" => "ITCAM for Web Response Time (WRT) Agent",
+                 "T6" => "ITCAM for Robotic Response Time (RRT) Agent",
+                 "TH" => "ITCAM for MQ Tracking",
+                 "TL" => "Omegamon XE for Message Transaction Tracker",
+                 "TM" => "Monitoring Agent for IBM Tivoli Monitoring 5.x Endpoint",
+                 "TN" => "Unicenter TNG Alert Emitter",
+                 "TO" => "ITCAM Transaction Reporter",
+                 "TR" => "IBM Tivoli OMEGAMON Alert Emitter For TME10 NetView",
+                 "TU" => "ITCAM Transaction Collector",
+                 "TV" => "Tivoli Enterprise Console Alert Adapter",
+                 "TX" => "Tuxedo Monitoring Agent",
+                 "UA" => "CA-Unicenter Alert Adapter",
+                 "UB" => "IBM Tivoli Monitoring for Applications: Siebel Agent",
+                 "UD" => "IBM Tivoli Composite Application Manager Agent for DB2",
+                 "UE" => "Tivoli Enterprise Services User Interface Extensions",
+                 "UF" => "Universal Agent Framework",
+                 "UI" => "Tivoli Enterprise Services User Interface",
+                 "UJ" => "Unison Maestro Alert Adapter",
+                 "UL" => "Monitoring Agent for UNIX Logs",
+                 "UM" => "Universal Agent",
+                 "UR" => "Unison RoadRuner Alert Adapter",
+                 "UT" => "Unicenter TNG Alert Adapter",
+                 "UX" => "Monitoring Agent for UNIX OS",
+                 "VA" => "Premium Monitoring Agent for VIOS",
+                 "VI" => "HP OpenView Alert Emitter",
+                 "VL" => "OMEGAMON XE on z/VM and Linux",
+                 "VM" => "IBM Tivoli Monitoring for Virtual Servers",
+                 "VT" => "Tivoli Enterprise Console Alert Emitter",
+                 "VW" => "NetView for z/OS Agent Support",
+                 "W0" => "IBM Message Service Client Library",
+                 "WE" => "OMEGAMON XE for Websphere Application Server on Distributed Systems",
+                 "WJ" => "IBM Tivoli Composite Application Manager Common Components",
+                 "WL" => "BEA Weblogic Server Monitoring Agent",
+                 "WO" => "IBM Tivoli Monitoring for OMEGAVIEW II for the Enterprise",
+                 "WW" => "OMEGAMON XE for WebSphere Application Server on OS/390",
+                 "YB" => "IBM Tivoli Information Management for z/OS",
+                 "YJ" => "Monitoring Agent for J2EE",
+                 "YN" => "ITCAM for Web Resources",
+              );
 
 my %advtextx = ();
 my $advkey = "";
@@ -574,6 +833,7 @@ my $curi;                                  # global index for subroutines
 my @sit = ();                              # array of situations
 my %sitx = ();                             # Index from situation name to index
 my @sit_pdt = ();                          # array of predicates or situation formula
+my @sit_pdtseq = ();                       # array of duplicate count for pdts
 my @sit_ct = ();                           # count of situation references
 my @sit_fullname = ();                     # array of fullname
 my @sit_psit = ();                         # array of printable situaton names
@@ -2029,9 +2289,12 @@ for ($i=0;$i<=$obji;$i++) {
                      $tems_sits[$tx]{$sitone} = 1;
                      if ($sit_reeval[$sx] == 0) {
                         $tems_puresit[$tx] += 1;
+                        $tems_puresit_dedup[$tx] += 1 if $sit_pdtseq[$sx] == 1;
                      } else {
                         $tems_sampsit[$tx] += 1;
+                        $tems_sampsit_dedup[$tx] += 1  if $sit_pdtseq[$sx] == 1;
                         $tems_sampload[$tx] += (3600)/$sit_reeval[$sx];
+                        $tems_sampload_dedup[$tx] += (3600)/$sit_reeval[$sx] if $sit_pdtseq[$sx] == 1;
                      }
                   }
                }
@@ -2055,9 +2318,12 @@ for ($i=0;$i<=$obji;$i++) {
                   if (defined $tx) {
                      if ($sit_reeval[$sx] == 0) {
                         $tems_puresit[$tx] += 1;
+                        $tems_puresit_dedup[$tx] += 1 if $sit_pdtseq[$sx] == 1;
                      } else {
                         $tems_sampsit[$tx] += 1;
+                        $tems_sampsit_dedup[$tx] += 1  if $sit_pdtseq[$sx] == 1;
                         $tems_sampload[$tx] += (3600)/$sit_reeval[$sx];
+                        $tems_sampload_dedup[$tx] += (3600)/$sit_reeval[$sx] if $sit_pdtseq[$sx] == 1;
                      }
                   }
                }
@@ -2090,9 +2356,12 @@ for ($i=0;$i<=$obji;$i++) {
                         $tems_sits[$tx]{$s} = 1;
                         if ($sit_reeval[$sx] == 0) {
                            $tems_puresit[$tx] += 1;
+                           $tems_puresit_dedup[$tx] += 1 if $sit_pdtseq[$sx] == 1;
                         } else {
                            $tems_sampsit[$tx] += 1;
+                           $tems_sampsit_dedup[$tx] += 1  if $sit_pdtseq[$sx] == 1;
                            $tems_sampload[$tx] += (3600)/$sit_reeval[$sx];
+                           $tems_sampload_dedup[$tx] += (3600)/$sit_reeval[$sx] if $sit_pdtseq[$sx] == 1;
                         }
                      }
                   }
@@ -2119,9 +2388,12 @@ for ($i=0;$i<=$obji;$i++) {
                      $tems_sits[$tx]{$s} = 1;
                      if ($sit_reeval[$sx] == 0) {
                         $tems_puresit[$tx] += 1;
+                        $tems_puresit_dedup[$tx] += 1 if $sit_pdtseq[$sx] == 1;
                      } else {
                         $tems_sampsit[$tx] += 1;
+                        $tems_sampsit_dedup[$tx] += 1  if $sit_pdtseq[$sx] == 1;
                         $tems_sampload[$tx] += (3600)/$sit_reeval[$sx];
+                        $tems_sampload_dedup[$tx] += (3600)/$sit_reeval[$sx] if $sit_pdtseq[$sx] == 1;
                      }
                   }
                }
@@ -2490,7 +2762,7 @@ if ($tema_total_count > 0 ){
 if ($npc_ct > 0 ) {
    print OH "\n";
    print OH "Product Summary Report\n";
-   print OH "Product[Agent],Count,Versions,TEMAs,\n";
+   print OH "Product[Agent],Count,Versions,TEMAs,Name,\n";
    foreach my $f (sort { $a cmp $b } keys %pcx) {
       my $pc_ref = $pcx{$f};
       $oneline = $f . "," . $pc_ref->{count} . ",";
@@ -2518,6 +2790,17 @@ if ($npc_ct > 0 ) {
       }
       $pinfo = substr($pinfo,0,-1) if $pinfo ne "";
       $oneline .= "INFOs[" . $pinfo . "],";
+      my $pcname = "";
+      $pcname = $knownpc{$f} if defined $knownpc{$f};
+      if ($pcname eq "")  {
+         $f =~ /(\d+)/;
+         my $agent_digits = $1;
+         if (defined $agent_digits) {
+            $pcname = "Agent-Builder-" . $f if $f eq $agent_digits;
+         }
+      }
+      $oneline .= $pcname . ",";
+
       print OH "$oneline\n";
    }
 
@@ -2680,7 +2963,7 @@ if ($top20 != 0) {
 print OH "\n";
 print OH "TEMS Situation Load Impact Report\n";
 print OH "Hub,$hub_tems,$hub_tems_ct\n";
-print OH ",TEMSnodeid,Count,Status,Version,Arch,SampSit,SampLoad/s,PureSit,\n";
+print OH ",TEMSnodeid,Count,Status,Version,Arch,SampSit,SampLoad/min,PureSit,DDSampSit,DDSampLoad/min,DDPureSit,Max1,Max1_ct,Max5,Max5_ct,DDMax1,DDMax1_ct,DDMax5,DDMax5_ct,\n";
 for (my $i=0;$i<=$temsi;$i++) {
    my $poffline = "Offline";
    my $node1 = $tems[$i];
@@ -2688,9 +2971,92 @@ for (my $i=0;$i<=$temsi;$i++) {
    if (defined $nx) {
       $poffline = "Online" if $nsave_o4online[$nx] eq "Y";
    }
-   my $sit_rate = $tems_sampload[$i]/3600;
+   my $sit_rate = $tems_sampload[$i]/60;
    my $psit_rate = sprintf("%.2f",$sit_rate);
-   print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_sampsit[$i],$psit_rate,$tems_puresit[$i],\n";
+   my $sit_rate_dedup = $tems_sampload_dedup[$i]/60;
+   my $psit_rate_dedup = sprintf("%.2f",$sit_rate_dedup);
+   # calculate peak 1 minute and 5 minute rates for sampled situations.
+   my @peak1;
+   my @peak5;
+   my $cmax1 = 0;
+   my $cmax5 = 0;
+   my $cmax1_ct = 0;
+   my $cmax5_ct = 0;
+   my $cmax1_sec = 0;
+   my $cmax5_sec = 0;
+   my @peak1dd;
+   my @peak5dd;
+   my $cmax1dd = 0;
+   my $cmax5dd = 0;
+   my $cmax1dd_ct = 0;
+   my $cmax5dd_ct = 0;
+   my $cmax1dd_sec = 0;
+   my $cmax5dd_sec = 0;
+   foreach my $f (keys %{$tems_sits[$i]}) {
+      my $sitone = $f;
+      $sx = $sitx{$sitone};
+      next if !defined $sx;
+      next if $sit_reeval[$sx] == 0;
+      my $ssec = 0;
+      my $csec = 0;
+      my $cmin1;
+      my $cmin5;
+      $csec = 0;
+      for (;;) {
+         $csec += $sit_reeval[$sx];
+         last if $csec > 86400;
+         $cmin1 = int($csec/60);
+         $cmin5 = int($csec/300);
+         $peak1[$cmin1] += 1;
+         $peak5[$cmin5] += 1;
+         if ($cmax1 < $peak1[$cmin1]) {
+            $cmax1 = $peak1[$cmin1];
+            $cmax1_sec = $csec;
+         }
+         if ($cmax5 < $peak5[$cmin5]) {
+            $cmax5 = $peak5[$cmin5];
+            $cmax5_sec = $csec;
+         }
+      }
+      next if $sit_pdtseq[$sx] > 1;
+      my $cmin1dd;
+      my $cmin5dd;
+      $csec = 0;
+      for (;;) {
+         $csec += $sit_reeval[$sx];
+         last if $csec > 86400;
+         $cmin1dd = int($csec/60);
+         $cmin5dd = int($csec/300);
+         $peak1dd[$cmin1dd] += 1;
+         $peak5dd[$cmin5dd] += 1;
+         if ($cmax1dd < $peak1dd[$cmin1dd]) {
+            $cmax1dd = $peak1dd[$cmin1dd];
+            $cmax1dd_sec = $csec;
+         }
+         if ($cmax5dd < $peak5dd[$cmin5dd]) {
+            $cmax5dd = $peak5dd[$cmin5dd];
+            $cmax5dd_sec = $csec;
+         }
+      }
+   }
+   for (my $j=0;$j<1440;$j++) {
+      next if !defined $peak1[$j];
+      $cmax1_ct += 1 if $peak1[$j] == $cmax1;
+   }
+   for (my $j=0;$j<288;$j++) {
+      next if !defined $peak5[$j];
+      $cmax5_ct += 1 if $peak5[$j] == $cmax5;
+   }
+   for (my $j=0;$j<1440;$j++) {
+      next if !defined $peak1dd[$j];
+      $cmax1dd_ct += 1 if $peak1dd[$j] == $cmax1dd;
+   }
+   for (my $j=0;$j<288;$j++) {
+      next if !defined $peak5dd[$j];
+      $cmax5dd_ct += 1 if $peak5dd[$j] == $cmax5dd;
+   }
+
+   print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_sampsit[$i],$psit_rate,$tems_puresit[$i],$tems_sampsit_dedup[$i],$psit_rate_dedup,$tems_puresit_dedup[$i],$cmax1,$cmax1_ct,$cmax5,$cmax5_ct,$cmax1dd,$cmax1dd_ct,$cmax5dd,$cmax5dd_ct\n";
 }
 
 if ($danger_IZ76410 > 0) {
@@ -2786,6 +3152,57 @@ foreach my $f (keys %ipx) {
          }
       }
    }
+}
+
+print OH "\n";
+print OH "TEMS Offline Reports\n";
+print OH "Offline by Thrunode\n";
+print OH "Thrunode,Count,\n";
+foreach my $f (sort { $a cmp $b } keys %offline_thrunodex) {
+   my $offline_thrunode_ref = $offline_thrunodex{$f};
+   print OH "$f," . $offline_thrunode_ref->{count} . ",\n";
+}
+
+print OH "\n";
+print OH "Offline by Product\n";
+print OH "Product,Count,\n";
+foreach my $f (sort { $a cmp $b } keys %offline_productx) {
+   my $offline_product_ref = $offline_productx{$f};
+   print OH "$f," . $offline_product_ref->{count} . ",\n";
+}
+
+print OH "\n";
+print OH "Offline by Product-Version\n";
+print OH "Product,Version,Count,\n";
+foreach my $f (sort { $a cmp $b } keys %offline_productversionx) {
+   my $offline_productversion_ref = $offline_productversionx{$f};
+   my $oline = $offline_productversion_ref->{product} . ",";
+   $oline .= $offline_productversion_ref->{version} . ",";
+   $oline .= $offline_productversion_ref->{count} . ",";
+   print OH "$oline\n";
+}
+
+print OH "\n";
+print OH "Offline by TEMA\n";
+print OH "TEMA,Count,\n";
+foreach my $f (sort { $a cmp $b } keys %offline_temax) {
+   my $offline_tema_ref = $offline_temax{$f};
+   print OH "$f," . $offline_tema_ref->{count} . ",\n";
+}
+
+print OH "\n";
+print OH "Offline by Agents\n";
+print OH "Agent,Count,Version,Reserved,Thrunode,Hostaddr,Hostinfo,\n";
+foreach my $f (sort { $a cmp $b } keys %offline_agentx) {
+   my $offline_agent_ref = $offline_agentx{$f};
+   my $oline = $f . ",";
+   $oline .= $offline_agent_ref->{count}  . ",";
+   $oline .= $offline_agent_ref->{version}  . ",";
+   $oline .= $offline_agent_ref->{reserved}  . ",";
+   $oline .= $offline_agent_ref->{thrunode}  . ",";
+   $oline .= $offline_agent_ref->{hostaddr}  . ",";
+   $oline .= $offline_agent_ref->{hostinfo}  . ",";
+   print OH "$oline\n";
 }
 
 if ($advi != -1) {
@@ -3144,6 +3561,7 @@ sub new_tsitdesc {
       $sit_autostart[$siti] = $iautostart;
       $sit_persist[$siti] = 1;
       $sit_pdt[$siti] = $ipdt;
+      $sit_pdtseq[$siti] = 0;
       $sit_ct[$siti] = 0;
       $sit_lstdate[$siti] = $ilstdate;
       $sit_reeval[$siti] = 1;
@@ -3185,6 +3603,18 @@ sub new_tsitdesc {
       }
       $isitinfo =~ /COUNT=(\d+)/;
       $sit_persist[$siti] = $1 if defined $1;
+      my $pdt_ref = $pdtx{$ipdt};
+      if (!defined $pdt_ref) {
+         my %pdtref = (
+                         count => 0,
+                         sits => {},
+                      );
+         $pdt_ref = \%pdtref;
+         $pdtx{$ipdt} = \%pdtref;
+      }
+      $pdt_ref->{count} += 1;
+      $pdt_ref->{sits}{$isitname} = 1;
+      $sit_pdtseq[$siti] = $pdt_ref->{count};
    }
   $sit_ct[$sx] += 1;
 }
@@ -3215,6 +3645,7 @@ sub new_tname {
 
 sub new_tnodesav {
    my ($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$ihostinfo,$iaffinities) = @_;
+   my $itema = "";
    $nsx = $nsavex{$inode};
    if (!defined $nsx) {
       $nsavei++;
@@ -3244,6 +3675,7 @@ sub new_tnodesav {
       $nsave_common[$nsx] = "";
       if (length($ireserved) == 0) {
          $nsave_temaver[$nsx] = "";
+         $itema = "";
       } else {
          my @words;
          @words = split(";",$ireserved);
@@ -3258,6 +3690,7 @@ sub new_tnodesav {
                $nsave_common[$nsx] = substr($words[1],2);
                @words = split(":",$words[1]);
                $nsave_temaver[$nsx] = substr($words[0],2,8);
+               $itema = $nsave_temaver[$nsx];
             }
          }
       }
@@ -3291,6 +3724,9 @@ sub new_tnodesav {
          $tems_sampload[$tx] = 0;
          $tems_sampsit[$tx] = 0;
          $tems_puresit[$tx] = 0;
+         $tems_sampload_dedup[$tx] = 0;
+         $tems_sampsit_dedup[$tx] = 0;
+         $tems_puresit_dedup[$tx] = 0;
       }
    }
    my $arch = "";
@@ -3436,7 +3872,71 @@ sub new_tnodesav {
          }
       }
    }
+   if ($io4online eq "N") {
+      my $offline_agent_ref = $offline_agentx{$inode};
+      if (!defined $offline_agent_ref) {
+         my %offline_agentref = (
+                                   count => 0,
+                                   product => $iproduct,
+                                   version => $iversion,
+                                   hostaddr => $ihostaddr,
+                                   reserved => $ireserved,
+                                   thrunode => $ithrunode,
+                                   hostinfo => $ihostinfo,
+                                   hostaddr => $ihostaddr,
+                                );
+         $offline_agent_ref = \%offline_agentref;
+         $offline_agentx{$inode} = \%offline_agentref;
+      }
+      $offline_agent_ref->{count} += 1;
+
+      my $offline_thrunode_ref = $offline_thrunodex{$ithrunode};
+      if (!defined $offline_thrunode_ref) {
+         my %offline_thrunoderef = (
+                                      count => 0,
+                                   );
+         $offline_thrunode_ref = \%offline_thrunoderef;
+         $offline_thrunodex{$ithrunode} = \%offline_thrunoderef;
+      }
+      $offline_thrunode_ref->{count} += 1;
+
+      my $offline_product_ref = $offline_productx{$iproduct};
+      if (!defined $offline_product_ref) {
+         my %offline_productref = (
+                                      count => 0,
+                                  );
+         $offline_product_ref = \%offline_productref;
+         $offline_productx{$iproduct} = \%offline_productref;
+      }
+      $offline_product_ref->{count} += 1;
+
+      my $iproductversion = $iproduct . "|" . $iversion;
+      my $offline_productversion_ref = $offline_productversionx{$iproductversion};
+      if (!defined $offline_productversion_ref) {
+         my %offline_productversionref = (
+                                            count => 0,
+                                            product => $iproduct,
+                                            version => $iversion,
+                                         );
+         $offline_productversion_ref = \%offline_productversionref;
+         $offline_productversionx{$iproductversion} = \%offline_productversionref;
+      }
+      $offline_productversion_ref->{count} += 1;
+
+      if ($itema ne "") {
+         my $offline_tema_ref = $offline_temax{$itema};
+         if (!defined $offline_tema_ref) {
+            my %offline_temaref = (
+                                         count => 0,
+                                     );
+            $offline_tema_ref = \%offline_temaref;
+            $offline_temax{$itema} = \%offline_temaref;
+         }
+         $offline_tema_ref->{count} += 1;
+      }
+   }
 }
+
 
 # Record data from the TNODELST NODETYPE=V table. This is the ALIVE data which captures the thrunode
 
@@ -5247,6 +5747,9 @@ sub gettime
 #          : Add report on mixed up hostnames from same system
 # 1.48000  : Add advisory when Agent Operation Log data is collected.
 #          : Don't check TEMS for hub-ness if TEMS is offline
+# 1.49000  : Add Offline report summarized 5 ways
+#          : Add Product Summary Report, Product Code Names when known
+#          : Add deduplicate PDT situation report to TEMSNODE report
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
