@@ -207,6 +207,7 @@ my @tems_version = ();                   # TEMS version number
 my @tems_o4online = ();                  # TEMS online status
 my @tems_arch = ();                      # TEMS architecture
 my @tems_thrunode = ();                  # TEMS THRUNODE, when NODE=THRUNODE that is a hub TEMS
+my @tems_hostaddr = ();                  # TEMS THRUNODE, when NODE=THRUNODE that is a hub TEMS
 my @tems_affinities = ();                # TEMS AFFINITIES
 my @tems_sampload = ();                  # Sampled Situaton dataserver load
 my @tems_sampsit = ();                   # Sampled Situation Count
@@ -346,13 +347,14 @@ my %advcx = (
               "DATAHEALTH1098E" => "100",
               "DATAHEALTH1099W" => "25",
               "DATAHEALTH1100W" => "25",
-              "DATAHEALTH1101E" => "95",
+              "DATAHEALTH1101E" => "25",
               "DATAHEALTH1102W" => "10",
               "DATAHEALTH1103W" => "90",
               "DATAHEALTH1104E" => "100",
               "DATAHEALTH1105E" => "100",
               "DATAHEALTH1106W" => "90",
               "DATAHEALTH1107W" => "96",
+              "DATAHEALTH1108W" => "50",
             );
 
 
@@ -2487,7 +2489,7 @@ if ($hub_tems_no_tnodesav == 0) {
          $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = "$tems[$i]";
       }
-      print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],\n";
+      print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_hostaddr[$i]\n";
    }
    for (my $i=0;$i<=$tepsi;$i++) {
       my $poffline = "Offline";
@@ -3669,6 +3671,16 @@ sub new_tnodesav {
       $nsave_version[$nsx] = $iversion;
       $nsave_subversion[$nsx] = "";
       $nsave_hostaddr[$nsx] = $ihostaddr;
+      if ($ihostaddr ne "") {
+         if (index($ihostaddr,"<NM>") == -1){
+            if ($iproduct ne "EM") {
+               $advi++;$advonline[$advi] = "Agent with hostaddr [$ihostaddr] missing the <NM>..</NM> hostname setting";
+               $advcode[$advi] = "DATAHEALTH1108W";
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
+               $advsit[$advi] = $inode;
+            }
+         }
+      }
       $nsave_hostinfo[$nsx] = $ihostinfo;
       $nsave_ct[$nsx] = 0;
       $nsave_o4online[$nsx] = $io4online;
@@ -3720,6 +3732,7 @@ sub new_tnodesav {
          $tems_o4online[$tx] = $io4online;
          $tems_arch[$tx] = $arch;
          $tems_thrunode[$tx] = $ithrunode;
+         $tems_hostaddr[$tx] = $ihostaddr;
          $tems_affinities[$tx] = $iaffinities;
          $tems_sampload[$tx] = 0;
          $tems_sampsit[$tx] = 0;
@@ -7542,4 +7555,24 @@ IBM Support diagnostics. The format is not publicly documented.
 
 Recovery plan: Consider turning off historical data collection
 of the CCC Logs - Agent Operation Logs.
+--------------------------------------------------------------
+
+DATAHEALTH1108W
+Text:  Agent with hostaddr [hostaddr] missing the <NM>..</NM> hostname setting
+
+Check: TNODESAV check
+
+Meaning: In this condition, the EIF event transmitter logic
+looks up the hostname based on the ip address. In one challenging
+case, the ip addresses were missing in the environment. The
+resulting slowdown in EIF caused a dramatic impact on TEPS, making
+it almost unusable.
+
+In the end, the ip addresses were added to the Linux /etc/hosts
+file and the problem was ended.
+
+Recovery plan: Check for such cases by doing a manual
+nslookup ip_addr. If this takes a long time add the correct
+entries into the /etc/hosts file or to the DNS data the system
+is configured to use.
 --------------------------------------------------------------
