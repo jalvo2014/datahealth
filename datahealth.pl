@@ -36,7 +36,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.49000";
+my $gVersion = "1.50000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -360,7 +360,9 @@ my %advcx = (
 
 # known product codes - from many sources
 my %knownpc = (
+                 "1B" => "Monitoring Agent for JBOSS EAP 5.1",
                  "3Z" => "Monitoring Agent for Active Directory",
+                 "4S" => "Monitoring Agent for SSL Certificate Expiration Agent",
                  "A2" => "AF/Remote Alert Adapter",
                  "A4" => "Monitoring Agent for i5/OS",
                  "AH" => "System Automation for z/OS",
@@ -432,6 +434,7 @@ my %knownpc = (
                  "HL" => "IBM OMEGAMON z/OS Management Console",
                  "HO" => "HP OpenView NNM Alert Adapter",
                  "HT" => "Monitoring Agent for Web Servers",
+                 "HV" => "Monitoring Agent for Microsoft Hyper-V Server",
                  "I2" => "OMEGAMON II for IMS",
                  "I3" => "IBM Tivoli OMEGAMON XE for IMS",
                  "I5" => "OMEGAMON XE for IMS on z/OS",
@@ -464,11 +467,13 @@ my %knownpc = (
                  "MQ" => "Monitoring for Websphere MQ",
                  "MS" => "Tivoli Enterprise Monitoring Server",
                  "N3" => "IBM Tivoli OMEGAMON XE for Mainframe Networks",
+                 "N4" => "Monitoring Agent for Network Devices",
                  "NA" => "IBM Tivoli NetView for z/OS Enterprise Management Agent",
                  "ND" => "Monitoring Agent for Tivoli NetView Server",
                  "NO" => "Tivoli Omnibus ObjectServer Agent",
                  "NP" => "IBM Tivoli Network Manager",
                  "NT" => "Monitoring Agent for Windows OS",
+                 "NU" => "Monitoring Agent for NetApp Storage",
                  "NV" => "IBM Tivoli OMEGAMON Alert Manager For TME10 NetView",
                  "NW" => "Novell NetWare Monitoring Agent",
                  "OB" => "OMNIMON BASE",
@@ -480,6 +485,7 @@ my %knownpc = (
                  "OX" => "Informix Monitoring Agent",
                  "OY" => "Monitoring Agent for Sybase Server",
                  "P0" => "Tivoli Performance Analyzer Domain for DB2",
+                 "P1" => "Monitoring Agent for TPC",
                  "P3" => "Tivoli Performance Analyzer Domain for OS agent",
                  "P4" => "Tivoli Performance Analyzer Domain for Oracle",
                  "P5" => "Base Monitoring Agent for AIX",
@@ -510,6 +516,7 @@ my %knownpc = (
                  "QF" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: .NET Framework",
                  "QH" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: Host Integration Server",
                  "QI" => "Monitoring for WebSphere Integration Brokers",
+                 "QL" => "Monitoring Agent for Microsoft Lync Server",
                  "QP" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: SharePoint Portal Server",
                  "QR" => "Monitoring Agent for Microsoft Virtual Server",
                  "QT" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: Content Management Server",
@@ -571,6 +578,7 @@ my %knownpc = (
                  "UR" => "Unison RoadRuner Alert Adapter",
                  "UT" => "Unicenter TNG Alert Adapter",
                  "UX" => "Monitoring Agent for UNIX OS",
+                 "V1" => "Monitoring Agent for Linux Kernel-based Virtual Machines",
                  "VA" => "Premium Monitoring Agent for VIOS",
                  "VI" => "HP OpenView Alert Emitter",
                  "VL" => "OMEGAMON XE on z/VM and Linux",
@@ -583,6 +591,7 @@ my %knownpc = (
                  "WL" => "BEA Weblogic Server Monitoring Agent",
                  "WO" => "IBM Tivoli Monitoring for OMEGAVIEW II for the Enterprise",
                  "WW" => "OMEGAMON XE for WebSphere Application Server on OS/390",
+                 "XI" => "Monitoring Agent for Citrix XenServer",
                  "YB" => "IBM Tivoli Information Management for z/OS",
                  "YJ" => "Monitoring Agent for J2EE",
                  "YN" => "ITCAM for Web Resources",
@@ -1862,13 +1871,14 @@ if ($ms_offline_sitmon_hour > 0) {
 }
 
 if ($kds_per_sec > 30) {
+    my $prate = sprintf("%.2f",$kds_per_sec);
    if ($kds_per_sec > 200) {
-      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $kds_per_sec agents/sec dangerously high";
+      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $prate agents/sec dangerously high";
       $advcode[$advi] = "DATAHEALTH1087E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
    } else {
-      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $kds_per_sec agents/sec somewhat high";
+      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $prate agents/sec somewhat high";
       $advcode[$advi] = "DATAHEALTH1086W";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
@@ -1876,13 +1886,14 @@ if ($kds_per_sec > 30) {
 }
 
 if ($sitmon_per_sec > 30) {
+    my $prate = sprintf("%.2f",$sitmon_per_sec);
    if ($sitmon_per_sec > 100) {
-      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $sitmon_per_sec agents/sec dangerously high";
+      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $prate agents/sec dangerously high";
       $advcode[$advi] = "DATAHEALTH1089E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
    } else {
-      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $kds_per_sec agents/sec somewhat high";
+      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $prate agents/sec somewhat high";
       $advcode[$advi] = "DATAHEALTH1088W";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
@@ -5763,6 +5774,10 @@ sub gettime
 # 1.49000  : Add Offline report summarized 5 ways
 #          : Add Product Summary Report, Product Code Names when known
 #          : Add deduplicate PDT situation report to TEMSNODE report
+# 1.50000  : Add TEMS HOSTADDR to summary report
+#          : Change DATAHEALTH1101E impact to 25
+#          : Add DATAHEALTH1108W to HOSTADDR with <NM> tag
+#          : Correct 1086-1089 in from and content
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
