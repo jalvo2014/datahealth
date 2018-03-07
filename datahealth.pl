@@ -36,7 +36,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.50000";
+my $gVersion = "1.51000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -93,6 +93,8 @@ sub fill_tnodelstv;                      # reprocess new TNODELST NODETYPE=V dat
 sub valid_lstdate;                       # validate the LSTDATE
 sub get_epoch;                           # convert from ITM timestamp to epoch seconds
 sub sitgroup_get_sits;                   # calculate situations associated with Situation Group
+
+my %ms_offlinex;
 
 my %pdtx;
 
@@ -361,6 +363,7 @@ my %advcx = (
 # known product codes - from many sources
 my %knownpc = (
                  "1B" => "Monitoring Agent for JBOSS EAP 5.1",
+                 "2N" => "Agentless Agent",
                  "3Z" => "Monitoring Agent for Active Directory",
                  "4S" => "Monitoring Agent for SSL Certificate Expiration Agent",
                  "A2" => "AF/Remote Alert Adapter",
@@ -378,6 +381,7 @@ my %knownpc = (
                  "C3" => "IBM Tivoli Monitoring for CICS",
                  "C5" => "IBM Tivoli OMEGAMON XE for CICS on z/OS",
                  "CA" => "Agent Management Services Watchdog",
+                 "CE" => "Candle Technology Engine",
                  "CF" => "TEMS Configurator",
                  "CG" => "IBM Tivoli Monitoring for Cryptographic Coprocessors",
                  "CI" => "IBM Tivoli Monitoring Product Installer",
@@ -393,6 +397,7 @@ my %knownpc = (
                  "D3" => "IBM Tivoli Monitoring for DB2",
                  "D4" => "ITCAM for SOA",
                  "D5" => "OMEGAMON XE for PE and PM on z/OS",
+                 "D9" => "ITM Systems Director",
                  "DC" => "distributed communications",
                  "DD" => "Distributed Database common",
                  "DE" => "distributed communications transport protocol",
@@ -402,6 +407,7 @@ my %knownpc = (
                  "DP" => "IBM Tivoli OMEGAMON XE for DB2",
                  "DS" => "Tivoli Enterprise Management Server",
                  "DY" => "remote deploy (os agent only)",
+                 "E1" => "Monitoring Agent for OPC Servers",
                  "E3" => "R/3 Clients (for ETEWatch) Monitoring Agent",
                  "E4" => "Siemens APOGEE Agent",
                  "E5" => "OSIsoft PI Agent",
@@ -441,15 +447,20 @@ my %knownpc = (
                  "IC" => "OMEGAMON XE for WebSphere Interchange Server",
                  "IE" => "WebSphere InterChange Server Data Source",
                  "IH" => "OpenView ITO Alert Emitter",
+                 "II" => "IBM Installation Manager",
                  "IP" => "OMEGAMON XE for IMS on z/OS",
                  "IS" => "IBM Tivoli Composite Application Manager for Internet Service Monitoring",
                  "IT" => "TEC GUI Integration",
                  "IV" => "IBM Tivoli Enterprise Portal Server Extensions Update",
                  "IW" => "IBM Tivoli Enterprise Portal Server Extensions",
+                 "JM" => "Embedded JVM",
                  "JR" => "Tivoli Enterprise-supplied JRE",
+                 "JS" => "Monitoring Agent for mySAP JMX",
                  "JU" => "Monitoring Agent for JMX JSR-77",
                  "KA" => "Monitoring Agent for Tivoli Enterprise Console",
                  "KF" => "IBM Eclipse Help Server",
+                 "KJ" => "SCM Mongo Database",
+                 "KM" => "SCM Ruby Database",
                  "KT" => "ITCAM for Response Time Enabler on z/OS",
                  "LA" => "IBM Tivoli LAP tool",
                  "LN" => "Lotus Notes Monitoring Agent",
@@ -465,11 +476,13 @@ my %knownpc = (
                  "MC" => "WebSphere MQ Configuration",
                  "MD" => "PQEdit",
                  "MQ" => "Monitoring for Websphere MQ",
+                 "MV" => "OMEGAVIEW",
                  "MS" => "Tivoli Enterprise Monitoring Server",
                  "N3" => "IBM Tivoli OMEGAMON XE for Mainframe Networks",
                  "N4" => "Monitoring Agent for Network Devices",
                  "NA" => "IBM Tivoli NetView for z/OS Enterprise Management Agent",
                  "ND" => "Monitoring Agent for Tivoli NetView Server",
+                 "NJ" => "Node.js",
                  "NO" => "Tivoli Omnibus ObjectServer Agent",
                  "NP" => "IBM Tivoli Network Manager",
                  "NT" => "Monitoring Agent for Windows OS",
@@ -494,7 +507,8 @@ my %knownpc = (
                  "P9" => "ITCAM Agent for PeopleSoft Enterprise Process Scheduler",
                  "PA" => "Performance Analytics for TEP",
                  "PC" => "DEC Polycenter Alert Adapter",
-                 "PE" => "Monitoring Agent for Provisioning",
+                 "PE" => "MonitorFng Agent for Provisioning",
+                 "PG" => "Python",
                  "PH" => "Base Monitoring Agent for HMC",
                  "PI" => "Tivoli Performance Analyzer Domain for ITCAM RT",
                  "PK" => "Base Monitoring Agent for CEC",
@@ -544,9 +558,11 @@ my %knownpc = (
                  "SA" => "IBM Tivoli OMEGAMON XE for R/3",
                  "SB" => "shared probes",
                  "SD" => "Status Data Manager",
+                 "SE" => "SCM MySQL",
                  "SH" => "Tivoli Enterprise Monitoring SOAP Server",
                  "SJ" => "Best Practices for WebSphere",
                  "SK" => "Reporting Agent for Tivoli Storage Manager",
+                 "SL" => "ITCAM for MS Apps Discovery and Launchpad",
                  "SP" => "SNMP Alert Adapter",
                  "SR" => "IBM Tivoli Service Level Advisor",
                  "SS" => "Windows NT SNA Server Monitoring Agent",
@@ -557,7 +573,9 @@ my %knownpc = (
                  "T4" => "ITCAM for Client Response Time (CRT) Agent",
                  "T5" => "ITCAM for Web Response Time (WRT) Agent",
                  "T6" => "ITCAM for Robotic Response Time (RRT) Agent",
+                 "T7" => "ITCAM for TXN CICS TX DC",
                  "TH" => "ITCAM for MQ Tracking",
+                 "TJ" => "K4/QF",
                  "TL" => "Omegamon XE for Message Transaction Tracker",
                  "TM" => "Monitoring Agent for IBM Tivoli Monitoring 5.x Endpoint",
                  "TN" => "Unicenter TNG Alert Emitter",
@@ -579,22 +597,30 @@ my %knownpc = (
                  "UT" => "Unicenter TNG Alert Adapter",
                  "UX" => "Monitoring Agent for UNIX OS",
                  "V1" => "Monitoring Agent for Linux Kernel-based Virtual Machines",
+                 "V5" => "Citrix XenDesktop Agent",
+                 "V6" => "Cisco (UCS) Agent",
                  "VA" => "Premium Monitoring Agent for VIOS",
                  "VI" => "HP OpenView Alert Emitter",
                  "VL" => "OMEGAMON XE on z/VM and Linux",
                  "VM" => "IBM Tivoli Monitoring for Virtual Servers",
                  "VT" => "Tivoli Enterprise Console Alert Emitter",
                  "VW" => "NetView for z/OS Agent Support",
-                 "W0" => "IBM Message Service Client Library",
+                 "W0" => "RICOH Monitoring for Multi-function",
+                 "W2" => "IBM Message Service Client Library",
+                 "W3" => "RICOH Monitoring for Device Profiler for Multi-function",
                  "WE" => "OMEGAMON XE for Websphere Application Server on Distributed Systems",
                  "WJ" => "IBM Tivoli Composite Application Manager Common Components",
                  "WL" => "BEA Weblogic Server Monitoring Agent",
                  "WO" => "IBM Tivoli Monitoring for OMEGAVIEW II for the Enterprise",
                  "WW" => "OMEGAMON XE for WebSphere Application Server on OS/390",
+                 "YB" => "IBM Tivoli Information Management for z/OS",
+                 "XA" => "Citrix XenApp Agent",
+                 "XH" => "PHP",
                  "XI" => "Monitoring Agent for Citrix XenServer",
                  "YB" => "IBM Tivoli Information Management for z/OS",
                  "YJ" => "Monitoring Agent for J2EE",
                  "YN" => "ITCAM for Web Resources",
+                 "ZE" => "Tivoli zEnterprise Monitoring Agent",
               );
 
 my %advtextx = ();
@@ -1762,6 +1788,7 @@ if ($t3_count > 1) {
    $advsit[$advi] = "TEMS";
 }
 
+
 for ($i=0;$i<=$siti;$i++) {
    if (substr($sit[$i],0,8) eq "UADVISOR") {
       if ($sit_autostart[$i] ne "*NO") {              ##check maybe ne "*NO" versus *SYN ????
@@ -1785,6 +1812,8 @@ for ($i=0;$i<=$siti;$i++) {
          }
       }
    }
+   # record data about MS_Offline type situations
+   $ms_offlinex{$sit[$i]} = $i if index($sit_pdt[$i],"ManagedSystem.Status") != -1;
    next if $sit_ct[$i] == 1;
    $advi++;$advonline[$advi] = "TSITDESC duplicate nodes";
    $advcode[$advi] = "DATAHEALTH1021E";
@@ -3217,6 +3246,86 @@ foreach my $f (sort { $a cmp $b } keys %offline_agentx) {
    $oline .= $offline_agent_ref->{hostinfo}  . ",";
    print OH "$oline\n";
 }
+
+# calculate totals
+my $msoff_ct = 0;
+my $msoff_eval_hour = 0;
+my $msoff_kds_agents_sec = 0;
+my $msoff_sitmon_agents_sec = 0;
+my $nsave_total = $nsave_online + $nsave_offline;
+foreach my $f (sort { $a cmp $b } keys %ms_offlinex) {
+   $sx = $sitx{$f};
+   next if $sit[$sx] eq "TEMS_BUSY";
+   next if $sit_autostart[$sx] ne "*YES";
+   next if $sit_reeval[$sx] == 0;
+   $msoff_ct += 1;
+   my $ms_rate = 3600/$sit_reeval[$sx];
+   $msoff_eval_hour += $ms_rate;
+   $msoff_kds_agents_sec += ($ms_rate * $nsave_total)/3600;
+   if ($sit_persist[$sx] == 1) {
+      $msoff_sitmon_agents_sec += ($ms_rate * $nsave_offline)/3600;
+   } else {
+      $msoff_sitmon_agents_sec += ($ms_rate * $nsave_total)/3600;
+   }
+}
+
+
+# now produce report
+my $prate;
+my $ppc;
+my $ms_rate;
+my $oline;
+my $res_pc;
+my $agents_sec;
+print OH "\n";
+print OH "MS_Offline-type Situation Report\n";
+print OH "Sitname,Eval/hour,Eval%,kds/sec,kds%,SITMON/sec,SITMON%,Notes,\n";
+foreach my $f (sort { $a cmp $b } keys %ms_offlinex) {
+   $sx = $sitx{$f};
+   next if $sit[$sx] eq "TEMS_BUSY";
+   next if $sit_autostart[$sx] ne "*YES";
+   next if $sit_reeval[$sx] == 0;
+   $oline = $sit[$sx] . ",";
+   $ms_rate = 3600/$sit_reeval[$sx];
+   $prate = sprintf("%.2f",$ms_rate);
+   $oline .= $prate . ",";
+   $res_pc = ($ms_rate*100)/$msoff_eval_hour;
+   $ppc = sprintf '%.2f%%', $res_pc;
+   $oline .= $ppc . ",";
+
+   $agents_sec = ($ms_rate * $nsave_total)/3600;
+   $prate = sprintf("%.2f",$agents_sec);
+   $oline .= $prate . ",";
+   $res_pc = ($agents_sec*100)/$msoff_kds_agents_sec if $msoff_kds_agents_sec > 0;
+   $ppc = sprintf '%.2f%%', $res_pc;
+   $oline .= $ppc . ",";
+
+   if ($sit_persist[$sx] == 1) {
+      $agents_sec = ($ms_rate * $nsave_offline)/3600;
+   } else {
+      $agents_sec = ($ms_rate * $nsave_total)/3600;
+   }
+   $prate = sprintf("%.2f",$agents_sec);
+   $oline .= $prate . ",";
+   $res_pc = ($agents_sec*100)/$msoff_sitmon_agents_sec if $msoff_sitmon_agents_sec > 0;
+   $ppc = sprintf '%.2f%%', $res_pc;
+   $oline .= $ppc . ",";
+   my $inotes = "";
+   $inotes .= "REASON test missing;" if index($sit_pdt[$sx],"Reason") == -1;
+   $inotes .= "Persist=" . $sit_persist[$sx] . " >1;" if $sit_persist[$sx] > 1;
+   $oline .= $inotes . ",";
+
+
+   print OH "$oline\n";
+}
+$oline = "Total[" . $msoff_ct . "],";
+$prate = sprintf("%.2f",$msoff_eval_hour);
+$oline .= $prate . ",100%,";
+$prate = sprintf("%.2f",$msoff_kds_agents_sec);
+$oline .= $prate . ",100%,";
+$prate = sprintf("%.2f",$msoff_sitmon_agents_sec);
+$oline .= $prate . ",100%,";
+print OH "$oline\n";
 
 if ($advi != -1) {
    print OH "\n";
@@ -5778,6 +5887,7 @@ sub gettime
 #          : Change DATAHEALTH1101E impact to 25
 #          : Add DATAHEALTH1108W to HOSTADDR with <NM> tag
 #          : Correct 1086-1089 in from and content
+# 1.51000  : Add MS_Offline type report
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
