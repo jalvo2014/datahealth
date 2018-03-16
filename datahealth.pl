@@ -36,7 +36,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.51000";
+my $gVersion = "1.52000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -3343,6 +3343,14 @@ if ($advi != -1) {
 
 close OH;
 
+# Some cases get run which appear to be hub
+# TEMSes but are not really. This identifies
+# such cases and causes them to be ignored by the
+# AOA controller task itm_ref_checker.pl
+if ($max_impact == 105) {
+   $max_impact = 0 if $hub_tems_ct == 0;
+}
+
 if ($opt_s ne "") {
    if ($max_impact > 0 ) {
         open SH, ">$opt_s";
@@ -5888,6 +5896,7 @@ sub gettime
 #          : Add DATAHEALTH1108W to HOSTADDR with <NM> tag
 #          : Correct 1086-1089 in from and content
 # 1.51000  : Add MS_Offline type report
+# 1.52000  : Ignore leaked through remote TEMS databases
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
