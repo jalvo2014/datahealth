@@ -36,7 +36,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.52000";
+my $gVersion = "1.53000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -362,6 +362,12 @@ my %advcx = (
 
 # known product codes - from many sources
 my %knownpc = (
+                 "06" => "Monitoring Agent for GSMA BlueCARE Windows OS",
+                 "07" => "Monitoring Agent for GSMA BlueCARE AIX OS",
+                 "08" => "Monitoring Agent for GSMA BlueCARE Linux OS",
+                 "09" => "Monitoring Agent for GSMA BlueCARE Solaris OS",
+                 "10" => "Monitoring Agent for GSMA BlueCARE HP-UX OS",
+                 "87" => "Monitoring Agent for GSMA Symantec SE Agent",
                  "1B" => "Monitoring Agent for JBOSS EAP 5.1",
                  "2N" => "Agentless Agent",
                  "3Z" => "Monitoring Agent for Active Directory",
@@ -2910,6 +2916,7 @@ if ($tema_total_eos > 0 ) {
       $oneline .= $nsave_temaver[$i] . ",";
       $oneline .= "EOS" . ",";
       $oneline .= $tlevel_ref->{date} . ",";
+      $oneline .= $nsave_hostaddr[$i] . ",";
       print OH "$oneline\n";
    }
    for ($i=0; $i<=$nsavei; $i++) {
@@ -2923,6 +2930,7 @@ if ($tema_total_eos > 0 ) {
       $oneline .= $nsave_temaver[$i] . ",";
       $oneline .= "FutureEOS" . ",";
       $oneline .= $tlevel_ref->{date} . ",";
+      $oneline .= $nsave_hostaddr[$i] . ",";
       print OH "$oneline\n";
    }
 }
@@ -5897,6 +5905,8 @@ sub gettime
 #          : Correct 1086-1089 in from and content
 # 1.51000  : Add MS_Offline type report
 # 1.52000  : Ignore leaked through remote TEMS databases
+# 1.53000  : Add more product names
+#          : Add hostaddr to several reports
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
