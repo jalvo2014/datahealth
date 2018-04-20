@@ -36,7 +36,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.53000";
+my $gVersion = "1.54000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -474,6 +474,7 @@ my %knownpc = (
                  "LV" => "ITMS:Engine",
                  "LX" => "POSIX pthread mapping service",
                  "LZ" => "Monitoring Agent for Linux OS",
+                 "M1" => "Discovery and Deployment",
                  "M2" => "OMEGAMON II for MVS",
                  "M3" => "IBM Tivoli Monitoring for OS/390",
                  "M5" => "IBM Tivoli OMEGAMON XE for z/OS",
@@ -837,7 +838,8 @@ my %klevelx = ( '06.30' => 1,
                 '06.10' => 1,
               );
 
-my %eoslevelx = ( '06.22' => {date=>'04/28/2018',count=>0,future=>1},
+my %eoslevelx = ( '06.23' => {date=>'12/31/2019',count=>0,future=>1},
+                  '06.22' => {date=>'04/28/2018',count=>0,future=>0},
                   '06.21' => {date=>'09/30/2015',count=>0,future=>0},
                   '06.20' => {date=>'09/30/2015',count=>0,future=>0},
                   '06.10' => {date=>'04/30/2012',count=>0,future=>0},
@@ -1969,9 +1971,9 @@ foreach my $f (keys %sysnamex) {
    my $sysname_ref = $sysnamex{$f};
    next if $sysname_ref->{ipcount} == 1;
    my $pagents = "";
-   foreach my $g (keys %{$sysname_ref->{sysipx}}) {
+   foreach my $g (sort {$a cmp $b} keys %{$sysname_ref->{sysipx}}) {
       my $sysip_ref = $sysname_ref->{sysipx}{$g};
-      foreach my $h (keys %{$sysip_ref->{instance}}) {
+      foreach my $h (sort {$a cmp $b} keys %{$sysip_ref->{instance}}) {
          my $sysname_node_ref = $sysip_ref->{instance}{$h};
          $pagents .= $h . "|";
          $pagents .= $sysname_node_ref->{thrunode} . "|";
@@ -2495,7 +2497,7 @@ if ($hub_tems_no_tnodesav == 0) {
             $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advsit[$advi] = "eos";
          } else {
-            $advi++;$advonline[$advi] = "Future End of Service TEMS tems[$i] maint[$tems_version[$i]] date[$tlevel_ref->{date}]";
+            $advi++;$advonline[$advi] = "Future End of Service TEMS $tems[$i] maint[$tems_version[$i]] date[$tlevel_ref->{date}]";
             $advcode[$advi] = "DATAHEALTH1084W";
             $advimpact[$advi] = $advcx{$advcode[$advi]};
             $advsit[$advi] = "eos";
@@ -2991,7 +2993,7 @@ if ($event_ct > 0) {
       $oneline .=  $psit_rate . ",";
       my $pnodes = "";
       my $cnodes = 0;
-      foreach my $g (keys %{$eventx{$f}->{origin}}) {
+      foreach my $g (sort {$a cmp $b} keys %{$eventx{$f}->{origin}}) {
          $cnodes += 1;
          last if $cnodes > 3;
          my $onenode = $g;
@@ -3153,10 +3155,10 @@ if ($tema_multi > 0) {
    print OH "\n";
    print OH "Systems with Multiple TEMA levels\n";
    print OH "IP_Address,Agent,TEMAver,TEMAarch,\n";
-   foreach my $f (keys %ipx) {
+   foreach my $f (sort {$a cmp $b} keys %ipx) {
       my $ip_ref =$ipx{$f};
       next if $ip_ref->{count} < 2;
-      foreach my $g (keys %{$ip_ref->{agents}}) {
+      foreach my $g (sort {$a cmp $b} keys %{$ip_ref->{agents}}) {
          $oneline = $f . ",";
          $oneline .= $g . ",";
          $oneline .= $ip_ref->{agents}{$g} . ",";
@@ -3166,7 +3168,7 @@ if ($tema_multi > 0) {
    }
 }
 
-foreach my $f (keys %ipx) {
+foreach my $f (sort {$a cmp $b} keys %ipx) {
    my $ip_ref = $ipx{$f};
    my $hcount = scalar keys %{$ip_ref->{hostname}};
    if ($hcount > 1) {
@@ -3189,10 +3191,10 @@ foreach my $f (keys %ipx) {
             print OH "Multiple hostname report\n";
             print OH "IP_Address,Hostname,Agents,\n";
          }
-         foreach my $g (keys %hostx) {
+         foreach my $g (sort {$a cmp $b} keys %hostx) {
             my $iagents = $hostx{$g};
             my $pagents = "";
-            foreach my $h (keys %{$iagents}) {
+            foreach my $h (sort {$a cmp $b} keys %{$iagents}) {
                $pagents .= $h . " ";
             }
             $oneline = $f . ",";
@@ -5907,6 +5909,7 @@ sub gettime
 # 1.52000  : Ignore leaked through remote TEMS databases
 # 1.53000  : Add more product names
 #          : Add hostaddr to several reports
+# 1.54000  : Get some reports sorted for easier regression testing
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
