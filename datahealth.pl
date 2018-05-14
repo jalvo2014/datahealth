@@ -36,7 +36,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.54000";
+my $gVersion = "1.55000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -367,11 +367,14 @@ my %knownpc = (
                  "08" => "Monitoring Agent for GSMA BlueCARE Linux OS",
                  "09" => "Monitoring Agent for GSMA BlueCARE Solaris OS",
                  "10" => "Monitoring Agent for GSMA BlueCARE HP-UX OS",
+                 "24" => "Monitoring Agent for TWS Logs",
                  "87" => "Monitoring Agent for GSMA Symantec SE Agent",
                  "1B" => "Monitoring Agent for JBOSS EAP 5.1",
                  "2N" => "Agentless Agent",
                  "3Z" => "Monitoring Agent for Active Directory",
                  "4S" => "Monitoring Agent for SSL Certificate Expiration Agent",
+                 "5D" => "Monitoring Agent for Unix SAN Multipath",
+                 "5E" => "Monitoring Agent for Windows SAN Multipath",
                  "A2" => "AF/Remote Alert Adapter",
                  "A4" => "Monitoring Agent for i5/OS",
                  "AH" => "System Automation for z/OS",
@@ -459,6 +462,7 @@ my %knownpc = (
                  "IT" => "TEC GUI Integration",
                  "IV" => "IBM Tivoli Enterprise Portal Server Extensions Update",
                  "IW" => "IBM Tivoli Enterprise Portal Server Extensions",
+                 "JJ" => "IBM OMEGAMON for JVM on z/OS",
                  "JM" => "Embedded JVM",
                  "JR" => "Tivoli Enterprise-supplied JRE",
                  "JS" => "Monitoring Agent for mySAP JMX",
@@ -5910,6 +5914,8 @@ sub gettime
 # 1.53000  : Add more product names
 #          : Add hostaddr to several reports
 # 1.54000  : Get some reports sorted for easier regression testing
+# 1.55000  : Add some new agent types
+#          : Add some table sizes
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
