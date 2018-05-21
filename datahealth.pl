@@ -36,7 +36,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.55000";
+my $gVersion = "1.56000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -367,6 +367,8 @@ my %knownpc = (
                  "08" => "Monitoring Agent for GSMA BlueCARE Linux OS",
                  "09" => "Monitoring Agent for GSMA BlueCARE Solaris OS",
                  "10" => "Monitoring Agent for GSMA BlueCARE HP-UX OS",
+                 "13" => "Monitoring Agent for GSMA BLUECARE TSM",
+                 "14" => "Monitoring Agent for GSMA BlueCARE TWS",
                  "24" => "Monitoring Agent for TWS Logs",
                  "87" => "Monitoring Agent for GSMA Symantec SE Agent",
                  "1B" => "Monitoring Agent for JBOSS EAP 5.1",
@@ -569,7 +571,7 @@ my %knownpc = (
                  "SA" => "IBM Tivoli OMEGAMON XE for R/3",
                  "SB" => "shared probes",
                  "SD" => "Status Data Manager",
-                 "SE" => "SCM MySQL",
+                 "SE" => "Monitoring Agent for MySQL",
                  "SH" => "Tivoli Enterprise Monitoring SOAP Server",
                  "SJ" => "Best Practices for WebSphere",
                  "SK" => "Reporting Agent for Tivoli Storage Manager",
@@ -5916,6 +5918,7 @@ sub gettime
 # 1.54000  : Get some reports sorted for easier regression testing
 # 1.55000  : Add some new agent types
 #          : Add some table sizes
+# 1.56000  : Add some new agent types
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
