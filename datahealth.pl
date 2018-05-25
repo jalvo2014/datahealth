@@ -36,7 +36,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.56000";
+my $gVersion = "1.57000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -545,6 +545,7 @@ my %knownpc = (
                  "QI" => "Monitoring for WebSphere Integration Brokers",
                  "QL" => "Monitoring Agent for Microsoft Lync Server",
                  "QP" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: SharePoint Portal Server",
+                 "QQ" => "IBM DB2 Query Monitor for z/OS",
                  "QR" => "Monitoring Agent for Microsoft Virtual Server",
                  "QT" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: Content Management Server",
                  "QU" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: UDDI Services",
@@ -5919,6 +5920,7 @@ sub gettime
 # 1.55000  : Add some new agent types
 #          : Add some table sizes
 # 1.56000  : Add some new agent types
+# 1.57000  : Add some new agent types
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
