@@ -36,7 +36,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.57000";
+my $gVersion = "1.58000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -462,6 +462,7 @@ my %knownpc = (
                  "IP" => "OMEGAMON XE for IMS on z/OS",
                  "IS" => "IBM Tivoli Composite Application Manager for Internet Service Monitoring",
                  "IT" => "TEC GUI Integration",
+                 "IU" => "BM HTTP Server",
                  "IV" => "IBM Tivoli Enterprise Portal Server Extensions Update",
                  "IW" => "IBM Tivoli Enterprise Portal Server Extensions",
                  "JJ" => "IBM OMEGAMON for JVM on z/OS",
@@ -634,6 +635,7 @@ my %knownpc = (
                  "YB" => "IBM Tivoli Information Management for z/OS",
                  "YJ" => "Monitoring Agent for J2EE",
                  "YN" => "ITCAM for Web Resources",
+                 "ZA" => "Monitoring Agent for TADDM Serviceabily",
                  "ZE" => "Tivoli zEnterprise Monitoring Agent",
               );
 
@@ -5921,6 +5923,7 @@ sub gettime
 #          : Add some table sizes
 # 1.56000  : Add some new agent types
 # 1.57000  : Add some new agent types
+# 1.58000  : Add some new agent types
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
