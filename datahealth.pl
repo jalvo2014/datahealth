@@ -30,13 +30,18 @@
 
 # When same system [ip address] but different hostname, advisory on unable to use remote deploy, also possible TEP issues.
 
+# APAR: IV96304 - AIX Unix OS Agent only *MISSING process
+# Risky if 6.3.7 IF<2  or 6.3.5 IF<8
+# Require Persist=2
+# Might belong in Situation Audit
+
 #use warnings::unused; # debug used to check for unused variables
 use strict;
 use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.58000";
+my $gVersion = "1.59000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -76,6 +81,11 @@ my $sx;
 my $i;
 my $tlstdate;                            # tomorrow date expressed in ITM Stamp
 my $top20;
+
+my $outline;
+my @oline;
+my $cnt = -1;
+my $f;
 
 # forward declarations of subroutines
 
@@ -223,6 +233,8 @@ my $hub_tems_version = "";               # hub TEMS version
 my $hub_tems_no_tnodesav = 0;            # hub TEMS nodeid missing from TNODESAV
 my $hub_tems_ct = 0;                     # total agents managed by a hub TEMS
 
+my $affchars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz*#";
+
 my %tepsx;
 my $tepsi = -1;
 my @teps = ();
@@ -357,6 +369,7 @@ my %advcx = (
               "DATAHEALTH1106W" => "90",
               "DATAHEALTH1107W" => "96",
               "DATAHEALTH1108W" => "50",
+              "DATAHEALTH1109W" => "90",
             );
 
 
@@ -644,6 +657,7 @@ my $advkey = "";
 my $advtext = "";
 my $advline;
 my %advgotx = ();
+my %advrptx = ();
 
 my $advi = -1;
 my @advonline = ();
@@ -651,6 +665,8 @@ my @advsit = ();
 my @advimpact = ();
 my @advcode = ();
 my %advx = ();
+
+
 my $hubi;
 my $max_impact = 0;
 my $isFTO = 0;
@@ -1025,6 +1041,10 @@ while (<main::DATA>)
 }
 $advtextx{$advkey} = $advtext;
 
+my $rptkey;
+
+
+
 # option and ini file variables variables
 
 my $opt_txt;                    # input from .txt files
@@ -1351,7 +1371,10 @@ for (my $i=0;$i<=$temsi;$i++) {
          # The following test is how a hub TEMS is distinguished from a remote TEMS
          # This checks an affinity capability flag which indicates the policy microscope
          # is available. I tried many ways and failed before finding this.
-         if (substr($tems_affinities[$i],40,1) eq "O") {
+         my $testc = substr($tems_affinities[$i],40,1);
+         my $testi = index($affchars,$testc);
+         my $test1 = $testi & 0x10;         # affinity bit for FTO
+         if ($test1 != 0) {
             $isFTO += 1;
             $FTOver{$tems[$i]} = $tems_version[$i];
          }
@@ -1397,6 +1420,8 @@ if ($tems_packages > 510) {
    $advsit[$advi] = "Package.cat";
 }
 
+my %agenthubx;
+my %agenthubnx;
 for ($i=0; $i<=$nsavei; $i++) {
    my $node1 = $nsave[$i];
    next if $nsave_product[$i] eq "EM";
@@ -1444,6 +1469,30 @@ for ($i=0; $i<=$nsavei; $i++) {
          }
       }
    }
+   my $rtemsi = 0;
+   if ($isFTO > 0) {
+      $rtemsi = $temsi - $isFTO;
+   } elsif ($temsi > 0) {
+      $rtemsi = $temsi - 1;
+   }
+
+   if ($nsave_product[$i] ne "EM") {  # record agents configured to hub TEMS
+      $nsx = $nlistvx{$node1};
+      if ($rtemsi >= 0) {
+         if (defined $nsx) {
+            my $thru1 = $nlistv_thrunode[$nsx];
+            my $prod1 = $nsave_product[$i];
+            if ($thru1 eq $hub_tems) {
+               if ($prod1 ne "CQ") {
+                  $agenthubnx{$node1} = $nsave_product[$i] if index("HD SY",$prod1) != -1;
+                  $agenthubx{$node1} = $nsave_product[$i] if index("HD SY",$prod1) == -1;
+               }
+            }
+         }
+      }
+   }
+
+
    if (index($node1,"::MQ") !=  -1) {
       $advi++;$advonline[$advi] = "MQ Agent name has missing hostname qualifier";
       $advcode[$advi] = "DATAHEALTH1073W";
@@ -2003,7 +2052,7 @@ foreach my $f (keys %ipx) {
 }
 
 if ($tema_multi > 0) {
-   $advi++;$advonline[$advi] = "Systems [$tema_multi] running agents with multiple TEMA levels - see later report";
+   $advi++;$advonline[$advi] = "Systems [$tema_multi] running agents with multiple TEMA levels - see DATAREPORT014";
    $advcode[$advi] = "DATAHEALTH1096W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = "TEMA";
@@ -2255,21 +2304,21 @@ for ($i=0;$i<=$nsavei;$i++) {
 }
 
 if ($danger_IZ76410 > 0) {
-   $advi++;$advonline[$advi] = "Agents[$danger_IZ76410] using TEMA in IZ76410 danger zone - see following report";
+   $advi++;$advonline[$advi] = "Agents[$danger_IZ76410] using TEMA in IZ76410 danger zone - see DATAREPORT011";
    $advcode[$advi] = "DATAHEALTH1042E";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = "APAR";
 }
 
 if ($danger_IV18016 > 0) {
-   $advi++;$advonline[$advi] = "Agents[$danger_IV18016] using TEMA in IV18016 danger zone - see following report";
+   $advi++;$advonline[$advi] = "Agents[$danger_IV18016] using TEMA in IV18016 danger zone - see DATAREPORT012";
    $advcode[$advi] = "DATAHEALTH1090W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = "APAR";
 }
 
 if ($danger_IV30473 > 0) {
-   $advi++;$advonline[$advi] = "Agents[$danger_IV30473] using TEMA in IV30473 danger zone - see following report";
+   $advi++;$advonline[$advi] = "Agents[$danger_IV30473] using TEMA in IV30473 danger zone - see DATAREPORT013";
    $advcode[$advi] = "DATAHEALTH1093W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = "APAR";
@@ -2463,10 +2512,6 @@ for ($i=0;$i<=$obji;$i++) {
 }
 
 
-if ($opt_nohdr == 0) {
-   print OH "ITM Database Health Report $gVersion\n";
-   print OH "\n";
-}
 
    my $remote_limit = 1500;
 if ($hub_tems_no_tnodesav == 0) {
@@ -2489,7 +2534,10 @@ if ($hub_tems_no_tnodesav == 0) {
    }
 
 
-   print OH "Hub,$hub_tems,$hub_tems_ct\n";
+
+
+   $rptkey = "DATAREPORT001";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="$rptkey: Hub,$hub_tems,$hub_tems_ct\n";
    for (my $i=0;$i<=$temsi;$i++) {
       if ($tems_ct[$i] > $remote_limit){
          $advi++;$advonline[$advi] = "TEMS has $tems_ct[$i] managed systems which exceeds limits $remote_limit";
@@ -2546,7 +2594,7 @@ if ($hub_tems_no_tnodesav == 0) {
          $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = "$tems[$i]";
       }
-      print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_hostaddr[$i]\n";
+      $cnt++;$oline[$cnt]="TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_hostaddr[$i]\n";
    }
    for (my $i=0;$i<=$tepsi;$i++) {
       my $poffline = "Offline";
@@ -2555,22 +2603,22 @@ if ($hub_tems_no_tnodesav == 0) {
       if (defined $nx) {
          $poffline = "Online" if $nsave_o4online[$nx] eq "Y";
       }
-      print OH "TEPS,$teps[$i],,$poffline,$teps_version[$i],$teps_arch[$i],\n";
+      $cnt++;$oline[$cnt]="TEPS,$teps[$i],,$poffline,$teps_version[$i],$teps_arch[$i],\n";
    }
-   print OH "\n";
+   $cnt++;$oline[$cnt]="\n";
 
-   print OH "i/5 Agent Level report\n";
+   $cnt++;$oline[$cnt]="i/5 Agent Level report\n";
    foreach my $f (sort { $a cmp $b } keys %ka4x) {
       my $i = $ka4x{$f};
       my $ka4_ct = $ka4_version_count[$ka4x{$f}];
-      print OH $ka4_product[$i] . "," . $ka4_version[$i] . "," . $ka4_version_count[$i] . ",\n";
+      $cnt++;$oline[$cnt]=$ka4_product[$i] . "," . $ka4_version[$i] . "," . $ka4_version_count[$i] . ",\n";
    }
-   print OH "\n";
+   $cnt++;$oline[$cnt]="\n";
 
 
    # One case had 3 TEMS in FTO mode - so check for 2 or more
    if ($isFTO >= 2){
-      print OH "Fault Tolerant Option FTO enabled Status[$opt_fto]\n\n";
+      $cnt++;$oline[$cnt]="Fault Tolerant Option FTO enabled Status[$opt_fto]\n\n";
       if ($tems_ctnok[$hubi] > 0) {
          $advi++;$advonline[$advi] = "FTO hub TEMS has $tems_ctnok[$hubi] agents configured which is against FTO best practice";
          $advcode[$advi] = "DATAHEALTH1020W";
@@ -2674,7 +2722,7 @@ if ($eventx_last != -1) {
    $eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
 }
 if ($top20 != 0) {
-   print OH "Total,$eventx_dur seconds,\n";
+   $cnt++;$oline[$cnt]="Total,$eventx_dur seconds,\n";
 }
 
 # check for ghost situation event status
@@ -2735,93 +2783,82 @@ foreach my $f (keys %ipx) {
    }
 }
 if ($iprerr_ct > 0) {
-   $advi++;$advonline[$advi] = "Systems [$iprerr_ct] with agents that disagree on hostname - see following Multiple Hostname report";
+   $advi++;$advonline[$advi] = "Systems [$iprerr_ct] with agents that disagree on hostname - see DATAREPORT015";
    $advcode[$advi] = "DATAHEALTH1106W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = "TEMS";
 }
+my $agenthubi = scalar keys %agenthubx;
+my $agenthubni = scalar keys %agenthubnx;
 
-$tadvi = $advi + 1;
-print OH "Advisory messages,$tadvi\n";
-
-if ($advi != -1) {
-   print OH "\n";
-   print OH "Impact,Advisory Code,Object,Advisory\n";
-   for (my $a=0; $a<=$advi; $a++) {
-       my $mysit = $advsit[$a];
-       my $myimpact = $advimpact[$a];
-       my $mykey = $mysit . "|" . $a;
-       $advx{$mykey} = $a;
-   }
-   foreach my $f ( sort { $advimpact[$advx{$b}] <=> $advimpact[$advx{$a}] ||
-                          $advcode[$advx{$a}] cmp $advcode[$advx{$b}] ||
-                          $advsit[$advx{$a}] cmp $advsit[$advx{$b}] ||
-                          $advonline[$advx{$a}] cmp $advonline[$advx{$b}]
-                        } keys %advx ) {
-      my $j = $advx{$f};
-
-      print OH "$advimpact[$j],$advcode[$j],$advsit[$j],$advonline[$j]\n";
-      $max_impact = $advimpact[$j] if $advimpact[$j] > $max_impact;
-      $advgotx{$advcode[$j]} = $advimpact[$j];
-   }
+if ($agenthubi > 0) {
+   $advi++;$advonline[$advi] = "Agents [$agenthubi] connected via hub TEMS when Remote TEMS are available";
+   $advcode[$advi] = "DATAHEALTH1109W";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = "TEMS";
 }
 
 
-print OH "\n";
-print OH "Top 20 most recently added or changed Situations\n";
-print OH "LSTDATE,Situation,Formula\n";
+
+$rptkey = "DATAREPORT002";$advrptx{$rptkey} = 1;         # record report key
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="$rptkey: Top 20 most recently added or changed Situations\n";
+$cnt++;$oline[$cnt]="LSTDATE,Situation,Formula\n";
 $top20 = 0;
 foreach my $f ( sort { $sit_lstdate[$sitx{$b}] cmp $sit_lstdate[$sitx{$a}]} keys %sitx) {
    $top20 += 1;
    my $j = $sitx{$f};
-   print OH "=\"$sit_lstdate[$j]\",$sit_psit[$j],$sit_pdt[$j],\n";
+   $cnt++;$oline[$cnt]="=\"$sit_lstdate[$j]\",$sit_psit[$j],$sit_pdt[$j],\n";
    last if $top20 >= 20;
 }
 
 if ($tema_total_count > 0 ){
-   print OH "\n";
-   print OH "TEMA Deficit Report Summary - 132 TEMA APARs to latest maintenance ITM 630 FP6\n";
+   $rptkey = "DATAREPORT003";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: TEMA Deficit Report Summary - 132 TEMA APARs to latest maintenance ITM 630 FP6\n";
    $oneline = $tema_total_count . ",Agents with TEMA,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $oneline = $tema_total_good_count . ",Agents with TEMA version same as TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $oneline = $tema_total_deficit_count . ",Agents with TEMA version lower than TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $oneline = $tema_total_post_count . ",Agents with TEMA version higher than TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $fraction = ($tema_total_deficit_count*100) / $tema_total_count;
    $pfraction = sprintf( "%.2f", $fraction);
    $oneline = $pfraction . "%,Per cent TEMAs less than TEMS version,";
    $tema_total_deficit_percent = $pfraction;
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $oneline = $tema_total_days . ",Total Days TEMA version less than TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $fraction = 0;
    $fraction = ($tema_total_days) / $tema_total_apars if $tema_total_apars > 0;
    $oneline = sprintf( "%.0f", $fraction) . ",Average days/APAR TEMA version less than TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $oneline = $tema_total_apars . ",Total APARS TEMA version less than TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $fraction = ($tema_total_apars) / $tema_total_count;
+   $cnt++;$oline[$cnt]="$oneline\n";
    $oneline = sprintf( "%.0f", $fraction) . ",Average APARS TEMA version less than TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $oneline = $tema_total_max_days . ",Total Days TEMA version less than latest TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $fraction = 0;
    $fraction = ($tema_total_max_days) / $tema_total_max_apars if $tema_total_max_apars > 0;
    $oneline = sprintf( "%.0f", $fraction) . ",Average days/APAR TEMA version less than latest TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $oneline = $tema_total_max_apars . ",Total APARS TEMA version less than latest TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    $fraction = ($tema_total_max_apars) / $tema_total_count;
    $oneline = sprintf( "%.0f", $fraction) . ",Average APARS TEMA version less than latest TEMS version,";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
 }
 
 if ($npc_ct > 0 ) {
-   print OH "\n";
-   print OH "Product Summary Report\n";
-   print OH "Product[Agent],Count,Versions,TEMAs,Name,\n";
+   $rptkey = "DATAREPORT004";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: Product Summary Report\n";
+   $cnt++;$oline[$cnt]="Product[Agent],Count,Versions,TEMAs,Name,\n";
    foreach my $f (sort { $a cmp $b } keys %pcx) {
       my $pc_ref = $pcx{$f};
       $oneline = $f . "," . $pc_ref->{count} . ",";
@@ -2860,16 +2897,17 @@ if ($npc_ct > 0 ) {
       }
       $oneline .= $pcname . ",";
 
-      print OH "$oneline\n";
+      $cnt++;$oline[$cnt]="$oneline\n";
    }
 
 }
 
 
 if ($opt_event == 1){
-   print OH "\n";
-   print OH "Flapper Situation Report\n";
-   print OH "Situation,Atomize,Count,Open,Close,Node,Thrunode,Interval\n";
+   $rptkey = "DATAREPORT005";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: Flapper Situation Report\n";
+   $cnt++;$oline[$cnt]="Situation,Atomize,Count,Open,Close,Node,Thrunode,Interval\n";
    foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
                          $a cmp $b
                         } keys %eventx) {
@@ -2886,13 +2924,13 @@ if ($opt_event == 1){
          $oneline .=  $eventx{$f}->{origin}{$g}->{node} . ",";
          $oneline .=  $eventx{$f}->{origin}{$g}->{thrunode} . ",";
          $oneline .=  $eventx{$f}->{reeval} . ",";
-         print OH "$oneline\n";
+         $cnt++;$oline[$cnt]="$oneline\n";
       }
    }
-   print OH "\n";
-
-   print OH "Pure Situations with DisplayItems Report\n";
-   print OH "Situation,Atomize,Count,Open,Close,Thrunode,Interval\n";
+   $rptkey = "DATAREPORT006";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: Pure Situations with DisplayItems Report\n";
+   $cnt++;$oline[$cnt]="Situation,Atomize,Count,Open,Close,Thrunode,Interval\n";
    foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
                          $a cmp $b
                        } keys %eventx) {
@@ -2907,15 +2945,16 @@ if ($opt_event == 1){
 #      my $ncount = keys %{$eventx{$f}->{origin}};
 #      $oneline .=  $ncount . ",";
          $oneline .=  $eventx{$f}->{reeval} . ",";
-         print OH "$oneline\n";
+         $cnt++;$oline[$cnt]="$oneline\n";
       }
    }
 }
 
 if ($tema_total_eos > 0 ) {
-   print OH "\n";
-   print OH "End of Service TEMAs\n";
-   print OH "Node,Maint,Type,Date\n";
+   $rptkey = "DATAREPORT007";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: End of Service TEMAs\n";
+   $cnt++;$oline[$cnt]="Node,Maint,Type,Date\n";
    for ($i=0; $i<=$nsavei; $i++) {
       my $node1 = $nsave[$i];
       my $tlevel = substr($nsave_temaver[$i],0,5);
@@ -2928,7 +2967,7 @@ if ($tema_total_eos > 0 ) {
       $oneline .= "EOS" . ",";
       $oneline .= $tlevel_ref->{date} . ",";
       $oneline .= $nsave_hostaddr[$i] . ",";
-      print OH "$oneline\n";
+      $cnt++;$oline[$cnt]="$oneline\n";
    }
    for ($i=0; $i<=$nsavei; $i++) {
       my $node1 = $nsave[$i];
@@ -2942,11 +2981,9 @@ if ($tema_total_eos > 0 ) {
       $oneline .= "FutureEOS" . ",";
       $oneline .= $tlevel_ref->{date} . ",";
       $oneline .= $nsave_hostaddr[$i] . ",";
-      print OH "$oneline\n";
+      $cnt++;$oline[$cnt]="$oneline\n";
    }
 }
-print OH "\n";
-
 
 # Calculate for same agent inserted into TNODELST multiple times more then most common
 # This is an important signal about identically named agents on different systems.
@@ -2956,8 +2993,10 @@ foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
                     } keys %eibnodex) {
    last if $eibnodex{$f}->{count} <= $online_mode;
    if ($top20 == 0) {
-      print OH "Maximum Top 20 agents showing online status more than $online_mode times - the most common number\n";
-      print OH "OnlineCount,Node,ThrunodeCount,Thrunodes\n";
+      $rptkey = "DATAREPORT008";$advrptx{$rptkey} = 1;         # record report key
+      $cnt++;$oline[$cnt]="\n";
+      $cnt++;$oline[$cnt]="$rptkey: Maximum Top 20 agents showing online status more than $online_mode times - the most common number\n";
+      $cnt++;$oline[$cnt]="OnlineCount,Node,ThrunodeCount,Thrunodes\n";
    }
    $top20 += 1;
    $oneline = $eibnodex{$f}->{count} . ",";
@@ -2970,16 +3009,18 @@ foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
       $pthrunode .= $g;
    }
    $oneline .= $pthruct . "," . $pthrunode . ",";
-   print OH "$oneline\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
    last if $top20 > 19;
 }
-print OH "\n" if $top20 > 0;
+$cnt++;$oline[$cnt]="\n"  if $top20 > 0;     ;
 
 
 $top20 = 0;
 $eventx_dur = 0;
-print OH "Top 20 Situation Event Report\n";
-print OH "Situation,Count,Open,Close,NodeCount,Interval,Atomize,Rate,Nodes\n";
+$rptkey = "DATAREPORT009";$advrptx{$rptkey} = 1;         # record report key
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="$rptkey: Top 20 Situation Event Report\n";
+$cnt++;$oline[$cnt]="Situation,Count,Open,Close,NodeCount,Interval,Atomize,Rate,Nodes\n";
 if ($event_ct > 0) {
    foreach my $f (sort { $eventx{$b}->{count} <=> $eventx{$a}->{count} ||
                          $a cmp $b
@@ -3010,7 +3051,7 @@ if ($event_ct > 0) {
          $pnodes .= $onenode . ";";
       }
       $oneline .=  $pnodes . ",";
-      print OH "$oneline\n";
+      $cnt++;$oline[$cnt]="$oneline\n";
    }
 }
 $eventx_dur = 1;
@@ -3018,13 +3059,14 @@ if ($eventx_last != -1) {
    $eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
 }
 if ($top20 != 0) {
-   print OH "Total,$eventx_dur seconds,\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
 }
 
-print OH "\n";
-print OH "TEMS Situation Load Impact Report\n";
-print OH "Hub,$hub_tems,$hub_tems_ct\n";
-print OH ",TEMSnodeid,Count,Status,Version,Arch,SampSit,SampLoad/min,PureSit,DDSampSit,DDSampLoad/min,DDPureSit,Max1,Max1_ct,Max5,Max5_ct,DDMax1,DDMax1_ct,DDMax5,DDMax5_ct,\n";
+$rptkey = "DATAREPORT010";$advrptx{$rptkey} = 1;         # record report key
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="$rptkey: TEMS Situation Load Impact Report\n";
+$cnt++;$oline[$cnt]="Hub,$hub_tems,$hub_tems_ct\n";
+$cnt++;$oline[$cnt]=",TEMSnodeid,Count,Status,Version,Arch,SampSit,SampLoad/min,PureSit,DDSampSit,DDSampLoad/min,DDPureSit,Max1,Max1_ct,Max5,Max5_ct,DDMax1,DDMax1_ct,DDMax5,DDMax5_ct,\n";
 for (my $i=0;$i<=$temsi;$i++) {
    my $poffline = "Offline";
    my $node1 = $tems[$i];
@@ -3117,53 +3159,58 @@ for (my $i=0;$i<=$temsi;$i++) {
       $cmax5dd_ct += 1 if $peak5dd[$j] == $cmax5dd;
    }
 
-   print OH "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_sampsit[$i],$psit_rate,$tems_puresit[$i],$tems_sampsit_dedup[$i],$psit_rate_dedup,$tems_puresit_dedup[$i],$cmax1,$cmax1_ct,$cmax5,$cmax5_ct,$cmax1dd,$cmax1dd_ct,$cmax5dd,$cmax5dd_ct\n";
+   $oneline = "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_sampsit[$i],$psit_rate,$tems_puresit[$i],$tems_sampsit_dedup[$i],$psit_rate_dedup,$tems_puresit_dedup[$i],$cmax1,$cmax1_ct,$cmax5,$cmax5_ct,$cmax1dd,$cmax1dd_ct,$cmax5dd,$cmax5dd_ct\n";
+   $cnt++;$oline[$cnt]="$oneline\n";
+
 }
 
 if ($danger_IZ76410 > 0) {
-   print OH "\n";
-   print OH "TEMA Agent(s) in APAR IZ76410 danger\n";
-   print OH "Agent,Hostaddr,TEMAver,\n";
+   $rptkey = "DATAREPORT011";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: TEMA Agent(s) in APAR IZ76410 danger\n";
+   $cnt++;$oline[$cnt]="Agent,Hostaddr,TEMAver,\n";
 
    for ($i=0;$i<=$nsavei;$i++) {
       next if $nsave_temaver[$i] eq "";
       if ( (substr($nsave_temaver[$i],0,8) ge "06.21.00") and (substr($nsave_temaver[$i],0,8) lt "06.21.03") or
            (substr($nsave_temaver[$i],0,8) ge "06.22.00") and (substr($nsave_temaver[$i],0,8) lt "06.22.03")) {
-         print OH "$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n" if $nsave_product[$i] ne "VA";
+         $cnt++;$oline[$cnt]="$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n" if $nsave_product[$i] ne "VA";
       }
    }
 }
 
 if ($danger_IV18016 > 0) {
-   print OH "\n";
-   print OH "TEMA Agent(s) in APAR IV18016 danger\n";
-   print OH "Agent,Hostaddr,TEMAver,\n";
-
+   $rptkey = "DATAREPORT012";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: TEMA Agent(s) in APAR IV18016 danger\n";
+   $cnt++;$oline[$cnt]="Agent,Hostaddr,TEMAver,\n";
    for ($i=0;$i<=$nsavei;$i++) {
       next if $nsave_temaver[$i] eq "";
       if ( (substr($nsave_temaver[$i],0,8) eq "06.22.07") or (substr($nsave_temaver[$i],0,8) eq "06.23.01")) {
-         print OH "$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n";
+         $cnt++;$oline[$cnt]="$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n";
       }
    }
 }
 
 if ($danger_IV30473 > 0) {
-   print OH "\n";
-   print OH "TEMA Agent(s) in APAR IV30473 danger\n";
-   print OH "Agent,Hostaddr,TEMAver,\n";
+   $rptkey = "DATAREPORT013";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: TEMA Agent(s) in APAR IV30473 danger\n";
+   $cnt++;$oline[$cnt]="Agent,Hostaddr,TEMAver,\n";
    for ($i=0;$i<=$nsavei;$i++) {
       next if $nsave_temaver[$i] eq "";
       if ( ((substr($nsave_temaver[$i],0,8) ge "06.22.07") and (substr($nsave_temaver[$i],0,8) le "06.22.09")) or
            ((substr($nsave_temaver[$i],0,8) ge "06.23.00") and (substr($nsave_temaver[$i],0,8) le "06.23.02"))) {
-         print OH "$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n";
+         $cnt++;$oline[$cnt]="$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n";
       }
    }
 }
 
 if ($tema_multi > 0) {
-   print OH "\n";
-   print OH "Systems with Multiple TEMA levels\n";
-   print OH "IP_Address,Agent,TEMAver,TEMAarch,\n";
+   $rptkey = "DATAREPORT014";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: Systems with Multiple TEMA levels\n";
+   $cnt++;$oline[$cnt]="IP_Address,Agent,TEMAver,TEMAarch,\n";
    foreach my $f (sort {$a cmp $b} keys %ipx) {
       my $ip_ref =$ipx{$f};
       next if $ip_ref->{count} < 2;
@@ -3172,7 +3219,7 @@ if ($tema_multi > 0) {
          $oneline .= $g . ",";
          $oneline .= $ip_ref->{agents}{$g} . ",";
          $oneline .= $ip_ref->{arch}{$g} . ",";
-         print OH "$oneline\n";
+         $cnt++;$oline[$cnt]="$oneline\n";
       }
    }
 }
@@ -3196,9 +3243,10 @@ foreach my $f (sort {$a cmp $b} keys %ipx) {
          $iprerr_ct += 1;
          if ($ipr_ct == 0) {
             $ipr_ct = 1;
-            print OH "\n";
-            print OH "Multiple hostname report\n";
-            print OH "IP_Address,Hostname,Agents,\n";
+            $rptkey = "DATAREPORT015";$advrptx{$rptkey} = 1;         # record report key
+            $cnt++;$oline[$cnt]="\n";
+            $cnt++;$oline[$cnt]="$rptkey: Multiple hostname report\n";
+            $cnt++;$oline[$cnt]="IP_Address,Hostname,Agents,\n";
          }
          foreach my $g (sort {$a cmp $b} keys %hostx) {
             my $iagents = $hostx{$g};
@@ -3209,61 +3257,62 @@ foreach my $f (sort {$a cmp $b} keys %ipx) {
             $oneline = $f . ",";
             $oneline .= $g . ",";
             $oneline .= "(" . $pagents . ")";
-            print OH "$oneline\n";
+            $cnt++;$oline[$cnt]="$oneline\n";
          }
       }
    }
 }
 
-print OH "\n";
-print OH "TEMS Offline Reports\n";
-print OH "Offline by Thrunode\n";
-print OH "Thrunode,Count,\n";
+$rptkey = "DATAREPORT016";$advrptx{$rptkey} = 1;         # record report key
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="$rptkey: TEMS Offline Reports\n";
+$cnt++;$oline[$cnt]="Offline by Thrunode\n";
+$cnt++;$oline[$cnt]="Thrunode,Count,\n";
 foreach my $f (sort { $a cmp $b } keys %offline_thrunodex) {
    my $offline_thrunode_ref = $offline_thrunodex{$f};
-   print OH "$f," . $offline_thrunode_ref->{count} . ",\n";
+   $cnt++;$oline[$cnt]="$f," . $offline_thrunode_ref->{count} . ",\n";
 }
 
-print OH "\n";
-print OH "Offline by Product\n";
-print OH "Product,Count,\n";
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="Offline by Product\n";
+$cnt++;$oline[$cnt]="Product,Count,\n";
 foreach my $f (sort { $a cmp $b } keys %offline_productx) {
    my $offline_product_ref = $offline_productx{$f};
-   print OH "$f," . $offline_product_ref->{count} . ",\n";
+   $cnt++;$oline[$cnt]="$f," . $offline_product_ref->{count} . ",\n";
 }
 
-print OH "\n";
-print OH "Offline by Product-Version\n";
-print OH "Product,Version,Count,\n";
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="Offline by Product-Version\n";
+$cnt++;$oline[$cnt]="Product,Version,Count,\n";
 foreach my $f (sort { $a cmp $b } keys %offline_productversionx) {
    my $offline_productversion_ref = $offline_productversionx{$f};
-   my $oline = $offline_productversion_ref->{product} . ",";
-   $oline .= $offline_productversion_ref->{version} . ",";
-   $oline .= $offline_productversion_ref->{count} . ",";
-   print OH "$oline\n";
+   $outline = $offline_productversion_ref->{product} . ",";
+   $outline .= $offline_productversion_ref->{version} . ",";
+   $outline .= $offline_productversion_ref->{count} . ",";
+   $cnt++;$oline[$cnt]="$outline\n";
 }
 
-print OH "\n";
-print OH "Offline by TEMA\n";
-print OH "TEMA,Count,\n";
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="Offline by TEMA\n";
+$cnt++;$oline[$cnt]="TEMA,Count,\n";
 foreach my $f (sort { $a cmp $b } keys %offline_temax) {
    my $offline_tema_ref = $offline_temax{$f};
-   print OH "$f," . $offline_tema_ref->{count} . ",\n";
+   $cnt++;$oline[$cnt]="$f," . $offline_tema_ref->{count} . ",\n";
 }
 
-print OH "\n";
-print OH "Offline by Agents\n";
-print OH "Agent,Count,Version,Reserved,Thrunode,Hostaddr,Hostinfo,\n";
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="Offline by Agents\n";
+$cnt++;$oline[$cnt]="Agent,Count,Version,Reserved,Thrunode,Hostaddr,Hostinfo,\n";
 foreach my $f (sort { $a cmp $b } keys %offline_agentx) {
    my $offline_agent_ref = $offline_agentx{$f};
-   my $oline = $f . ",";
-   $oline .= $offline_agent_ref->{count}  . ",";
-   $oline .= $offline_agent_ref->{version}  . ",";
-   $oline .= $offline_agent_ref->{reserved}  . ",";
-   $oline .= $offline_agent_ref->{thrunode}  . ",";
-   $oline .= $offline_agent_ref->{hostaddr}  . ",";
-   $oline .= $offline_agent_ref->{hostinfo}  . ",";
-   print OH "$oline\n";
+   $outline = $f . ",";
+   $outline .= $offline_agent_ref->{count}  . ",";
+   $outline .= $offline_agent_ref->{version}  . ",";
+   $outline .= $offline_agent_ref->{reserved}  . ",";
+   $outline .= $offline_agent_ref->{thrunode}  . ",";
+   $outline .= $offline_agent_ref->{hostaddr}  . ",";
+   $outline .= $offline_agent_ref->{hostinfo}  . ",";
+   $cnt++;$oline[$cnt]="$outline\n";
 }
 
 # calculate totals
@@ -3293,31 +3342,31 @@ foreach my $f (sort { $a cmp $b } keys %ms_offlinex) {
 my $prate;
 my $ppc;
 my $ms_rate;
-my $oline;
 my $res_pc;
 my $agents_sec;
-print OH "\n";
-print OH "MS_Offline-type Situation Report\n";
-print OH "Sitname,Eval/hour,Eval%,kds/sec,kds%,SITMON/sec,SITMON%,Notes,\n";
+$rptkey = "DATAREPORT017";$advrptx{$rptkey} = 1;         # record report key
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="$rptkey: MS_Offline-type Situation Report\n";
+$cnt++;$oline[$cnt]="Sitname,Eval/hour,Eval%,kds/sec,kds%,SITMON/sec,SITMON%,Notes,\n";
 foreach my $f (sort { $a cmp $b } keys %ms_offlinex) {
    $sx = $sitx{$f};
    next if $sit[$sx] eq "TEMS_BUSY";
    next if $sit_autostart[$sx] ne "*YES";
    next if $sit_reeval[$sx] == 0;
-   $oline = $sit[$sx] . ",";
+   $outline = $sit[$sx] . ",";
    $ms_rate = 3600/$sit_reeval[$sx];
    $prate = sprintf("%.2f",$ms_rate);
-   $oline .= $prate . ",";
+   $outline .= $prate . ",";
    $res_pc = ($ms_rate*100)/$msoff_eval_hour;
    $ppc = sprintf '%.2f%%', $res_pc;
-   $oline .= $ppc . ",";
+   $outline .= $ppc . ",";
 
    $agents_sec = ($ms_rate * $nsave_total)/3600;
    $prate = sprintf("%.2f",$agents_sec);
-   $oline .= $prate . ",";
+   $outline .= $prate . ",";
    $res_pc = ($agents_sec*100)/$msoff_kds_agents_sec if $msoff_kds_agents_sec > 0;
    $ppc = sprintf '%.2f%%', $res_pc;
-   $oline .= $ppc . ",";
+   $outline .= $ppc . ",";
 
    if ($sit_persist[$sx] == 1) {
       $agents_sec = ($ms_rate * $nsave_offline)/3600;
@@ -3325,40 +3374,110 @@ foreach my $f (sort { $a cmp $b } keys %ms_offlinex) {
       $agents_sec = ($ms_rate * $nsave_total)/3600;
    }
    $prate = sprintf("%.2f",$agents_sec);
-   $oline .= $prate . ",";
+   $outline .= $prate . ",";
    $res_pc = ($agents_sec*100)/$msoff_sitmon_agents_sec if $msoff_sitmon_agents_sec > 0;
    $ppc = sprintf '%.2f%%', $res_pc;
-   $oline .= $ppc . ",";
+   $outline .= $ppc . ",";
    my $inotes = "";
    $inotes .= "REASON test missing;" if index($sit_pdt[$sx],"Reason") == -1;
    $inotes .= "Persist=" . $sit_persist[$sx] . " >1;" if $sit_persist[$sx] > 1;
-   $oline .= $inotes . ",";
+   $outline .= $inotes . ",";
 
-
-   print OH "$oline\n";
+   $cnt++;$oline[$cnt]="$outline\n";
 }
-$oline = "Total[" . $msoff_ct . "],";
+$outline = "Total[" . $msoff_ct . "],";
 $prate = sprintf("%.2f",$msoff_eval_hour);
-$oline .= $prate . ",100%,";
+$outline .= $prate . ",100%,";
 $prate = sprintf("%.2f",$msoff_kds_agents_sec);
-$oline .= $prate . ",100%,";
+$outline .= $prate . ",100%,";
 $prate = sprintf("%.2f",$msoff_sitmon_agents_sec);
-$oline .= $prate . ",100%,";
-print OH "$oline\n";
+$outline .= $prate . ",100%,";
+$cnt++;$oline[$cnt]="$outline\n";
+
+if ($agenthubi > 0) {
+   $rptkey = "DATAREPORT018";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: Agents online to hub TEMS\n";
+   $cnt++;$oline[$cnt]="Node,Product,\n";
+   foreach my $f (sort { $a cmp $b } keys %agenthubx) {
+      $outline = $f . ",";
+      $outline .= $agenthubx{$f} . ",";
+      $cnt++;$oline[$cnt]="$outline\n";
+   }
+}
+
+if ( $agenthubni > 0) {
+   $rptkey = "DATAREPORT019";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: Normal Agents online to hub TEMS\n";
+   $cnt++;$oline[$cnt]="Node,Product,\n";
+   foreach my $f (sort { $a cmp $b } keys %agenthubnx) {
+      $outline = $f . ",";
+      $outline .= $agenthubnx{$f} . ",";
+      $cnt++;$oline[$cnt]="$outline\n";
+   }
+}
+
+if ($opt_nohdr == 0) {
+   print OH "ITM Database Health Report $gVersion\n";
+   print OH "\n";
+}
+
+$tadvi = $advi + 1;
+print OH "Advisory messages,$tadvi\n";
+
+if ($advi != -1) {
+   print OH "\n";
+   print OH "Impact,Advisory Code,Object,Advisory\n";
+   for (my $a=0; $a<=$advi; $a++) {
+       my $mysit = $advsit[$a];
+       my $myimpact = $advimpact[$a];
+       my $mykey = $mysit . "|" . $a;
+       $advx{$mykey} = $a;
+   }
+   foreach my $f ( sort { $advimpact[$advx{$b}] <=> $advimpact[$advx{$a}] ||
+                          $advcode[$advx{$a}] cmp $advcode[$advx{$b}] ||
+                          $advsit[$advx{$a}] cmp $advsit[$advx{$b}] ||
+                          $advonline[$advx{$a}] cmp $advonline[$advx{$b}]
+                        } keys %advx ) {
+      my $j = $advx{$f};
+
+      print OH "$advimpact[$j],$advcode[$j],$advsit[$j],$advonline[$j]\n";
+      $max_impact = $advimpact[$j] if $advimpact[$j] > $max_impact;
+      $advgotx{$advcode[$j]} = $advimpact[$j];
+   }
+}
+
+print OH "\n";
+
+for (my $i = 0; $i<=$cnt; $i++) {
+   print OH $oline[$i];
+}
 
 if ($advi != -1) {
    print OH "\n";
    print OH "Advisory Trace, Meaning and Recovery suggestions follow\n\n";
-   foreach my $f ( sort { $a cmp $b } keys %advgotx ) {
-      print OH "Advisory code: " . $f . "\n";
-      print OH "Impact:" . $advgotx{$f}  . "\n";
-      if (defined $advtextx{$f}) {
+   foreach $f ( sort { $a cmp $b } keys %advgotx ) {
+      next if substr($f,0,10) ne "DATAHEALTH";
+         print OH "Advisory code: " . $f  . "\n";
+         print OH "Impact:" . $advgotx{$f}  . "\n";
+         print STDERR "$f missing\n" if !defined $advtextx{$f};
          print OH $advtextx{$f};
-      } else {
-         print OH "No text yet!\n";
       }
    }
-}
+
+   my $rpti = scalar keys %advrptx;
+   if ($rpti != -1) {
+      print OH "\n";
+      print OH "Database Checker Reports - Meaning and Recovery suggestions follow\n\n";
+      foreach $f ( sort { $a cmp $b } keys %advrptx ) {
+         next if !defined $advrptx{$f};
+         print STDERR "$f missing\n" if !defined $advtextx{$f};
+         print OH "$f\n";
+         print OH $advtextx{$f};
+      }
+   }
+
 
 close OH;
 
@@ -5751,16 +5870,16 @@ sub logit
       my $iline = shift;
       my $itime = gettime();
       chop($itime);
-      my $oline = $itime . " " . $level . " " . $iline;
+      $outline = $itime . " " . $level . " " . $iline;
       if ($opt_debuglevel >= 100) {
          my $ofile = (caller(0))[1];
          my $olino = (caller(0))[2];
          if (defined $ofile) {
-            $oline = $ofile . ":" . $olino . " " . $oline;
+            $outline = $ofile . ":" . $olino . " " . $outline;
          }
       }
-      print FH "$oline\n";
-      print "$oline\n" if $opt_v == 1;
+      print FH "$outline\n";
+      print "$outline\n" if $opt_v == 1;
    }
 }
 
@@ -5924,6 +6043,8 @@ sub gettime
 # 1.56000  : Add some new agent types
 # 1.57000  : Add some new agent types
 # 1.58000  : Add some new agent types
+# 1.59000  : Advisory on agents connected directly to FTO hub TEMSes
+#          : Add Report numbers and explanations
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -6629,7 +6750,7 @@ in case a FTO configuration is planned for the future.
 --------------------------------------------------------------
 
 DATAHEALTH1042E
-Text:  Agent [agent name] using TEMA at version [version] in IZ76410 danger
+Text: Agents[count] using TEMA in IZ76410 danger zone
 
 Check: Check for agent level
 
@@ -7364,12 +7485,7 @@ Text:  Agent [agent name] using TEMA at version [version] in IV18016 danger zone
 
 Check: Check for agent level
 
-Meaning: TEMA at ITM 622 FP7 and ITM 623 FP1 have a risk of
-looping during TEMS connection. This occurs sometimes when
-embedded situations are in the situation formula. The result
-is high agent CPU until the agent is recycled.
-
-Recovery plan:   Upgrade OS Agent to levels past the danger zone.
+See DATAREPORT012 for meaning and recovery details.
 --------------------------------------------------------------
 
 DATAHEALTH1091W
@@ -7415,47 +7531,11 @@ spread out the workload.
 --------------------------------------------------------------
 
 DATAHEALTH1093W
-Text:  Agent [agent name] using TEMA at version [version] in IV30473 danger zone
+Text:  Agents[count] using TEMA in IV30473 danger zone
 
 Check: Check for agent level
 
-Meaning: At ITM maintenance levels 622 FP7-FP7 and 623 GA-FP2
-a defect was present which cause problems using the
-KDEB_INTERFACELIST and KDEB_INTERFACELIST_IPV6 controls.
-
-Anytime these are present and used to force exclusive bind
-
-KDEB_INTERFACELIST=!xxx.xxx.xxx
-
-that usage must be coordinated for all ITM processes. For
-example all processes must use exclusive bind OR all processes
-must use non-exclusive bind. If usage is accidentally mixed
-severe problems are caused which cause TEMS disruption and
-lack of monitoring.
-
-This has always been true, and is true at the latest levels.
-
-At the problematic maintenance levels, changes were introduced
-which would create exclusive binds when not intended. For example
-
-KDEB_INTERFACELIST=xxx.xxx.xxx
-
-would be treated exactly like
-
-KDEB_INTERFACELIST=!xxx.xxx.xxx
-
-Thus you could get severe problems without indending them.
-
-Recovery plan: Review the ITM processes to see if that environment
-variable is being used at the agents. If not you can ignore the
-issue. If so you have choices:
-
-Best practice is to upgrade the OS Agent to a
-more recent level to avoid the issue.
-
-If that is impossible update the uses of KDEB_INTERFACELIST so
-they are coordinated amoung all uses... all exclusive or all
-non-exclusive.
+See DATAREPORT013 for meaning and recovery details.
 --------------------------------------------------------------
 
 DATAHEALTH1094W
@@ -7736,4 +7816,379 @@ Recovery plan: Check for such cases by doing a manual
 nslookup ip_addr. If this takes a long time add the correct
 entries into the /etc/hosts file or to the DNS data the system
 is configured to use.
+--------------------------------------------------------------
+
+DATAHEALTH1109W
+Text:  Agents [count] connected via hub TEMS when Remote TEMS are available
+
+Check: TNODESAV/TNODELST check
+
+Meaning: When remote TEMSes are available, agents connecting to
+a hub TEMS have been seen to create instability. In one case
+the agent was configured to a remote TEMS and the hub TEMS as
+backup. When the remote TEMS was not available at agent startup,
+the agent took the hub TEMS as its primary connection. Subsequently
+the hub TEMS experienced instability and had to be recycled.
+
+Of course this does not apply to a single hub TEMS ITM environment.
+
+In addition it does not apply to agents which *must* connect to a
+hub TEMS - TEPS, WPA and S&P.
+
+Recovery plan: Reconfigure the agents to remote TEMSes whenever possible.
+--------------------------------------------------------------
+
+DATAREPORT001
+Text: Summary of TEMS/TEPS/FTO etc
+
+Sample Report
+Hub,HUB_girsm03x,3360
+TEMS,HUB_girsm03x,333,Online,06.30.07,aix536,<IP.SPIPE>#141.171.252.32[3660]</IP.SPIPE>
+TEMS,REMOTE_gsrsm01x,75,Online,06.30.07,aix536,<IP.SPIPE>#195.75.20.30[3660]</IP.SPIPE>
+
+Meaning: A high level summary of TEMS and TEPS and FTO.
+
+Recovery plan: Use to get overview of environment.
+--------------------------------------------------------------
+
+DATAREPORT002
+Text: Top 20 most recently added or changed Situations
+
+Sample Report
+LSTDATE,Situation,Formula
+="1180507145438000",K08_GSMA_Linux_OS_Status_Warn,*IF *VALUE K08_RESOURCESTATUS.RC *EQ 2,
+
+Meaning: Sometimes knowing the most recent situations added will point out performance
+problem cases.
+
+Recovery plan: Use to get overview of environment.
+--------------------------------------------------------------
+
+DATAREPORT003
+Text: TEMA Deficit Report Summary - 132 TEMA APARs to latest maintenance ITM 630 FP6
+
+Sample Report
+3242,Agents with TEMA,
+119,Agents with TEMA version same as TEMS version,
+3123,Agents with TEMA version lower than TEMS version,
+
+Meaning: This report records how far behind in maintenance the agents are.
+
+Recovery plan: Keep agents and central services up to date.
+--------------------------------------------------------------
+
+DATAREPORT004
+Text: Product Summary Report
+
+Sample Report
+Product[Agent],Count,Versions,TEMAs,Name,
+01,1,Versions[01.00.00.00(1)],TEMAs[06.30.05(1)],INFOs[Win2008~6.1-SP1(1)],Agent-Builder-01,
+06,612,Versions[02.10.00.00(1) 02.20.00.07(400) 02.30.00.08(158) 03.01.00.00(1) 03.01.00.05(47) 03.10.00.00(5)],TEMAs[06.23.03(1) 06.30.00(2) 06.30.04(428) 06.30.05(181)],INFOs[Win2003~5.2-SP2(11) Win2008~6.0-SP2(13) Win2008~6.1-SP1(312) Windows~6.2(276)],Monitoring Agent for GSMA BlueCARE Windows OS,
+07,341,Versions[01.10.00.00(1) 02.20.00.05(3) 02.31.00.05(203) 02.50.00.07(21) 03.00.00.00(43) 03.01.00.00(1) 03.10.00.00(22) 03.11.00.00(7) 03.12.00.00(40)],TEMAs[06.23.02(1) 06.30.00(2) 06.30.04(16) 06.30.05(289) 06.30.07(33)],INFOs[AIX~5.3(1) AIX~6.1(34) AIX~7.1(296) AIX~7.2(10)],Monitoring Agent for GSMA BlueCARE AIX OS,
+
+Meaning: This report records what agents are discovred product version and TEMA version are
+being used.
+
+Recovery plan: Increase awareness of what agents are running.
+--------------------------------------------------------------
+
+DATAREPORT005
+Text: Flapper Situation Report
+
+Sample Report
+[to be added]
+
+Meaning: Note what situations are opening and closing a lot.
+This could be a signal of a bad situation - one not really
+very useful or other conditions such as duplicate agents.
+
+Recovery plan: Study such cases and justify that the situation
+should be running.
+--------------------------------------------------------------
+
+DATAREPORT006
+Text: Pure Situations with DisplayItems Report
+
+Sample Report
+[to be added]
+
+Meaning: Pure situations with DisplayItems can create
+storage growth issues at the remote TEMS [or any TEMS
+the agent connects to.]
+
+Recovery plan: Study such cases and justify that the situation
+needs to be running with DisplayItem configured.
+--------------------------------------------------------------
+
+DATAREPORT007
+Text: End of Service TEMAs
+
+Sample Report
+Node,Maint,Type,Date
+Primary:ams_ams2kwa01as:KYNA,06.22.02,EOS,04/28/2018,ip.spipe:#10.7.49.35[20045]<NM>ams_ams2kwa01as</NM>,
+Primary:ams_ams3kwa01as:KYNA,06.22.02,EOS,04/28/2018,ip.spipe:#10.7.50.231[15949]<NM>ams_ams3kwa01as</NM>,
+
+Meaning: Products go through End of Service and this report
+tells what agents and TEMS in the environment are at
+End of Service [EOS] or Future End of Service [FEOS].
+
+IBM will give a best efforts in this cases, however deep support
+will not be available including APARs and fixes. It is possible
+to purchase extended support contracts.
+
+Recovery plan: Keep agents and TEMS within supported
+service levels.
+--------------------------------------------------------------
+
+DATAREPORT008
+Text: Maximum Top 20 agents showing online status more than count times - the most common number
+
+Sample Report
+OnlineCount,Node,ThrunodeCount,Thrunodes
+42,ams_ams4dwh11ls:LZ,2,*LINUX_SYSTEM:REMOTE_tivgwlmh1,
+8,ams_os1_tu_int:LZ,3,*LINUX_SYSTEM:REMOTE_tivgwlmh1:REMOTE_tivgwodc1,
+
+Meaning: Agents which repeatedly go online are abnormal. The most
+common reason is duplicate agent names. Another cause is agent
+mal-configuration.
+
+Recovery plan: Investigate such cases and correct the agent
+configurations.
+--------------------------------------------------------------
+
+DATAREPORT009
+Text: Top 20 Situation Event Report
+
+Sample Report
+Situation,Count,Open,Close,NodeCount,Interval,Atomize,Rate,Nodes
+all_evtlog_gnt3_win_logret_v2,1204,1204,0,1,0,Unable to log events to security log:,20.33,vig_s-flo-vm-020:NT|REMOTE_tivgwlmh1;,
+all_logscrp_g06w_win,379,373,6,379,540,N/A,24.04,acs_zigchan01:06|REMOTE_sibwi070;ams_ams0adm01ws:06|REMOTE_tivgwlmh1;ams_ams0adm11ws:06|REMOTE_tivgwlmh1;,
+
+Meaning: When situation events arise at a rapid rate, this
+often indicates a problem situation. Situation events
+should be Rare, Exceptional, Fixable, and being fixed. If
+some situation event appears overy often that usually rules
+it out from Rare and Exceptional.
+
+Recovery plan: Investigate such situation and justify why they
+need to be running.
+--------------------------------------------------------------
+
+DATAREPORT010
+Text: TEMS Situation Load Impact Report
+
+Sample Report
+Hub,HUB_girsm03x,3360
+,TEMSnodeid,Count,Status,Version,Arch,SampSit,SampLoad/min,PureSit,DDSampSit,DDSampLoad/min,DDPureSit,Max1,Max1_ct,Max5,Max5_ct,DDMax1,DDMax1_ct,DDMax5,DDMax5_ct,
+TEMS,HUB_girsm03x,333,Online,06.30.07,aix536,287,69.33,112,250,64.00,107,276,0,403,1,247,1,370,1
+TEMS,REMOTE_gsrsm01x,75,Online,06.30.07,aix536,219,38.05,36,169,29.91,35,213,0,233,1,166,1,182,1
+
+Meaning: ITM environments have been seen where too many situations
+are running. The extreme case is when a situation is given to
+each agent separately instead of distributed via MSL. In that
+case the TEMS dataserver SQL can be loaded down and cause
+extreme TEMS throughput issues.
+
+Recovery plan: Use MSLs to distribute situations.
+--------------------------------------------------------------
+
+DATAREPORT011
+Text: TEMA Agent(s) in APAR IZ76410 danger
+
+Sample Report
+Agent,Hostaddr,TEMAver,
+Primary:ams_ams2kwa01as:KYNA,ip.spipe:#10.7.49.35[20045]<NM>ams_ams2kwa01as</NM>,06.22.02,
+Primary:ams_ams3kwa01as:KYNA,ip.spipe:#10.7.50.231[15949]<NM>ams_ams3kwa01as</NM>,06.22.02,
+
+Meaning: TEMA in the range ITM 621 before FP3 and ITM 622 before
+FP3 had a severe defect whereby an agent could be connected to
+two remote TEMS at the same time. This would occur following a
+switch to secondary remote TEMS and an automatic switch back.
+The issues were many including situations running multiple
+times, Agent crashes, no situations running and many more.
+
+Recovery plan:   Upgrade OS Agent to levels past the danger zone.
+Alternatively only configure agent to a single remote TEMS.
+--------------------------------------------------------------
+
+DATAREPORT012
+Text: TEMA Agent(s) in APAR IV18016 danger
+
+Sample Report
+Agent,Hostaddr,TEMAver,
+ams_ams4dwh11ls:12,ip.spipe:#10.7.50.40[7757]<NM>ams_ams4dwh11ls</NM>,06.23.01,
+ams_ibmpsmtp1:LZ,ip.spipe:#10.72.41.4[7757]<NM>ams_ibmpsmtp1</NM>,06.23.01,
+
+Meaning: TEMA at ITM 622 FP7 and ITM 623 FP1 have a risk of
+looping during TEMS connection. This occurs sometimes when
+embedded situations are in the situation formula. The result
+is high agent CPU until the agent is recycled.
+
+Recovery plan:   Upgrade OS Agent to levels past the danger zone.
+--------------------------------------------------------------
+
+DATAREPORT013
+Text: TEMA Agent(s) in APAR IV30473 danger
+
+Sample Report
+Agent,Hostaddr,TEMAver,
+ams_ams4dwh11ls:12,ip.spipe:#10.7.50.40[7757]<NM>ams_ams4dwh11ls</NM>,06.23.01,
+ams_dwh-dbms:08,ip.spipe:#10.7.48.177[15949]<NM>ams_dwh-dbms</NM>,06.23.02,
+
+Meaning: At ITM maintenance levels 622 FP7-FP7 and 623 GA-FP2
+a defect was present which cause problems using the
+KDEB_INTERFACELIST and KDEB_INTERFACELIST_IPV6 controls.
+
+Anytime these are present and used to force exclusive bind
+
+KDEB_INTERFACELIST=!xxx.xxx.xxx
+
+that usage must be coordinated for all ITM processes. For
+example all processes must use exclusive bind OR all processes
+must use non-exclusive bind. If usage is accidentally mixed
+severe problems are caused which cause TEMS disruption and
+lack of monitoring.
+
+This has always been true, and is true at the latest levels.
+
+At the problematic maintenance levels, changes were introduced
+which would create exclusive binds when not intended. For example
+
+KDEB_INTERFACELIST=xxx.xxx.xxx
+
+would be treated exactly like
+
+KDEB_INTERFACELIST=!xxx.xxx.xxx
+
+Thus you could get severe problems without indending them.
+
+Recovery plan: Review the ITM processes to see if that environment
+variable is being used at the agents. If not you can ignore the
+issue. If so you have choices:
+
+Best practice is to upgrade the OS Agent to a
+more recent level to avoid the issue.
+
+If that is impossible update the uses of KDEB_INTERFACELIST so
+they are coordinated amoung all uses... all exclusive or all
+non-exclusive.
+--------------------------------------------------------------
+
+DATAREPORT014
+Text: Systems with Multiple TEMA levels
+
+Sample Report
+IP_Address,Agent,TEMAver,TEMAarch,
+#10.132.57.4,afisd:hpv_deehqap020hatxm:UD,06.30.05.00,aix526,
+#10.132.57.4,dwhp:hpv_deehqap020hatxm:UD,06.30.00.00,aix523,
+
+Meaning: An agent package consists of a TEMA [knows how to
+contact the TEMS, runs situations, etc] and a data collection
+process to gather the defined attribute groups. If a single
+system is using multiple TEMA levels, that means some known
+problems are not fixed. In the example above there are two
+UD agents, they are at different levels. The apparent reason
+here is that one is 64 bit and one is 32 bit.
+
+Recovery: Review such cases and if upgrade agents to make
+sure the maximum number of APAR fixes are present.
+--------------------------------------------------------------
+
+DATAREPORT015
+Text: Multiple hostname report
+
+Sample Report
+IP_Address,Hostname,Agents,
+#10.210.112.14,srt_srtchfsclus00,(srt_srtchfsclus00:Q5 )
+#10.210.112.14,srt_srtchvws0005,(srt_srtchvws0005:06 srt_srtchvws0005:NT )
+
+Meaning: An agent name by default uses the local system hostname.
+However using CTIRA_HOSTNAME and CTIRA_SYSTEM_NAME this can
+be changed. When there are agents on the same system which
+report under different hostname, this is sometimes an error
+and almost always leads to confusion.
+
+In the example report one agent srt_srtchfsclus00:Q5 implies
+a hostname of srt_srtchfsclus00 and two other agents imply
+a hostname of srt_srtchvws0005.
+
+Recovery: Review such cases and if possible configure all
+agents to represent the same hostname. This is mainly to
+avoid confusion but sometimes results in duplicate agent
+name cases.
+--------------------------------------------------------------
+
+$rptkey = "DATAREPORT016";$advrptx{$rptkey} = 1;         # record report key
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="$rptkey: TEMS Offline Reports\n";
+
+DATAREPORT016
+Text: TEMS Offline Reports
+
+Sample Report
+Offline by Thrunode
+Thrunode,Count,
+REMOTE_sibwi070,2,
+
+Meaning: This report section shows how offline agents are
+found in multiple slices
+
+Offline by Thrunode
+Offline by Product
+Offline by Product-Version
+Offline by TEMA
+Offline by Agents
+
+Recovery: Review these and see if there is a pattern. Perhaps
+some agents need to be upgraded to avoid known problems.
+--------------------------------------------------------------
+
+DATAREPORT017
+Text: MS_Offline-type Situation Report
+
+Sample Report
+Sitname,Eval/hour,Eval%,kds/sec,kds%,SITMON/sec,SITMON%,Notes,
+MS_Offline,12.00,33.33%,11.21,33.33%,11.21,49.99%,Persist=6 >1;,
+Primary_Offline,12.00,33.33%,11.21,33.33%,11.21,49.99%,Persist=12 >1;,
+
+Meaning: MS_Offline type situations can be seriously impactful
+to hub TEMS performance. See this document which explains
+many of the powerful yet dangerous aspects:
+
+Sitworld: MS_Offline: Myth and Reality
+https://www.ibm.com/developerworks/community/blogs/jalvord/entry/ms_offline_myth_and_reality?lang=en
+
+Recovery: Minimze the use of MS_Offline type situations, especially
+those with Persist>1.
+--------------------------------------------------------------
+
+DATAREPORT018
+Text: Agents online to hub TEMS
+
+Sample Report
+Node,Product,
+BRIODB:ibu_busapp02blu:UD,UD,
+IBMATADM:iat_ibmatadm:VM,VM,
+
+Meaning: In large environments only a minimum of agents
+should be directly connected to the hub TEMS. This report
+tells what agents are connected.
+
+Recovery: Minimze the number of agents that connect directly
+to the hub TEMS.
+--------------------------------------------------------------
+
+DATAREPORT019
+Text: Normal Agents online to hub TEMS
+
+Sample Report
+Node,Product,
+iat_tivgwlmh1:Warehouse,HD,
+iat_tivgwodc1:Warehouse,HD,
+ibm_girsm01x:SY,SY,
+
+Meaning: These are the agents that should be connected to
+the hub TEMS.
+
+Recovery: Better view of environment
 --------------------------------------------------------------
