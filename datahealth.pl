@@ -41,7 +41,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.59000";
+my $gVersion = "1.61000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -85,6 +85,8 @@ my $top20;
 my $outline;
 my @oline;
 my $cnt = -1;
+my @sline;
+my $scnt = -1;
 my $f;
 
 # forward declarations of subroutines
@@ -228,10 +230,12 @@ my @tems_sampload_dedup = ();            # Sampled Situaton dataserver load - wi
 my @tems_sampsit_dedup = ();             # Sampled Situation Count - without duplicate PDTs
 my @tems_puresit_dedup = ();             # Pure Situation Count - without duplicate PDTs
 my @tems_sits = ();                      # Situations hash
+my @tems_vtbl = ();                      # Virtual Hub Table hash
 my $hub_tems = "";                       # hub TEMS nodeid
 my $hub_tems_version = "";               # hub TEMS version
 my $hub_tems_no_tnodesav = 0;            # hub TEMS nodeid missing from TNODESAV
 my $hub_tems_ct = 0;                     # total agents managed by a hub TEMS
+my $tems_vtbl_ref;
 
 my $affchars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz*#";
 
@@ -2342,7 +2346,7 @@ if ($peak_rate > $opt_peak_rate) {
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $vtnode[$i];
    }
-   $advi++;$advonline[$advi] = "Virtual Hub Table updates peak $peak_rate per second more then nominal $opt_peak_rate -  per hour [$vtnode_tot_hr] - total agents $vtnode_tot_ct";
+   $advi++;$advonline[$advi] = "Virtual Hub Table updates peak $peak_rate per second more then nominal $opt_peak_rate -  per hour [$vtnode_tot_hr] - total agents $vtnode_tot_ct - See DATAREPORT020";
    $advcode[$advi] = "DATAHEALTH1018W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = "total";
@@ -2512,6 +2516,27 @@ for ($i=0;$i<=$obji;$i++) {
 }
 
 
+# second trip for UADVISORs looking for Virtual Hub Table cases distributed by TEMS [original scheme]
+# look through each Situation
+for (my $s=0;$s<=$siti;$s++) {
+   my $sitone = $sit[$s];                    # situation being looked at
+   next if $sit_autostart[$s] eq "*NO";
+   next if !defined $hSP2OS{$sitone};
+   my $iproduct = $hSP2OS{$sitone};
+   for ($i=0;$i<=$nlistvi;$i++) {
+      next if $nlistv_tems[$i] eq "";
+      $tx = $temsx{$nlistv_tems[$i]};
+      my $inode = $nlistv[$i];
+      my $nx = $nsavex{$inode};
+      if (defined $nx) {
+         if ($nsave_product[$nx] eq $iproduct) {
+            $tems_vtbl[$tx]{$iproduct} += 1;
+         }
+      }
+   }
+}
+
+
 
    my $remote_limit = 1500;
 if ($hub_tems_no_tnodesav == 0) {
@@ -2537,7 +2562,7 @@ if ($hub_tems_no_tnodesav == 0) {
 
 
    $rptkey = "DATAREPORT001";$advrptx{$rptkey} = 1;         # record report key
-   $cnt++;$oline[$cnt]="$rptkey: Hub,$hub_tems,$hub_tems_ct\n";
+   $scnt++;$sline[$scnt]="$rptkey: Hub,$hub_tems,$hub_tems_ct\n";
    for (my $i=0;$i<=$temsi;$i++) {
       if ($tems_ct[$i] > $remote_limit){
          $advi++;$advonline[$advi] = "TEMS has $tems_ct[$i] managed systems which exceeds limits $remote_limit";
@@ -2594,7 +2619,7 @@ if ($hub_tems_no_tnodesav == 0) {
          $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = "$tems[$i]";
       }
-      $cnt++;$oline[$cnt]="TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_hostaddr[$i]\n";
+      $scnt++;$sline[$scnt]="TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_hostaddr[$i]\n";
    }
    for (my $i=0;$i<=$tepsi;$i++) {
       my $poffline = "Offline";
@@ -2603,17 +2628,17 @@ if ($hub_tems_no_tnodesav == 0) {
       if (defined $nx) {
          $poffline = "Online" if $nsave_o4online[$nx] eq "Y";
       }
-      $cnt++;$oline[$cnt]="TEPS,$teps[$i],,$poffline,$teps_version[$i],$teps_arch[$i],\n";
+      $scnt++;$sline[$scnt]="TEPS,$teps[$i],,$poffline,$teps_version[$i],$teps_arch[$i],\n";
    }
-   $cnt++;$oline[$cnt]="\n";
+   $scnt++;$sline[$scnt]="\n";
 
-   $cnt++;$oline[$cnt]="i/5 Agent Level report\n";
+   $scnt++;$sline[$scnt]="i/5 Agent Level report\n";
    foreach my $f (sort { $a cmp $b } keys %ka4x) {
       my $i = $ka4x{$f};
       my $ka4_ct = $ka4_version_count[$ka4x{$f}];
-      $cnt++;$oline[$cnt]=$ka4_product[$i] . "," . $ka4_version[$i] . "," . $ka4_version_count[$i] . ",\n";
+      $scnt++;$sline[$scnt]=$ka4_product[$i] . "," . $ka4_version[$i] . "," . $ka4_version_count[$i] . ",\n";
    }
-   $cnt++;$oline[$cnt]="\n";
+   $scnt++;$sline[$scnt]="\n";
 
 
    # One case had 3 TEMS in FTO mode - so check for 2 or more
@@ -2722,7 +2747,7 @@ if ($eventx_last != -1) {
    $eventx_dur = get_epoch($eventx_last) - get_epoch($eventx_start);
 }
 if ($top20 != 0) {
-   $cnt++;$oline[$cnt]="Total,$eventx_dur seconds,\n";
+   $scnt++;$sline[$scnt]="Event Duration,$eventx_dur seconds,\n";
 }
 
 # check for ghost situation event status
@@ -3012,7 +3037,9 @@ foreach my $f (sort { $eibnodex{$b}->{count} <=> $eibnodex{$a}->{count} ||
    $cnt++;$oline[$cnt]="$oneline\n";
    last if $top20 > 19;
 }
-$cnt++;$oline[$cnt]="\n"  if $top20 > 0;     ;
+if ($top20 > 0) {
+   $cnt++;$oline[$cnt]="\n";
+}
 
 
 $top20 = 0;
@@ -3174,7 +3201,9 @@ if ($danger_IZ76410 > 0) {
       next if $nsave_temaver[$i] eq "";
       if ( (substr($nsave_temaver[$i],0,8) ge "06.21.00") and (substr($nsave_temaver[$i],0,8) lt "06.21.03") or
            (substr($nsave_temaver[$i],0,8) ge "06.22.00") and (substr($nsave_temaver[$i],0,8) lt "06.22.03")) {
-         $cnt++;$oline[$cnt]="$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n" if $nsave_product[$i] ne "VA";
+         if ($nsave_product[$i] ne "VA") {
+            $cnt++;$oline[$cnt]="$nsave[$i],$nsave_hostaddr[$i],$nsave_temaver[$i],\n";
+         }
       }
    }
 }
@@ -3418,12 +3447,46 @@ if ( $agenthubni > 0) {
    }
 }
 
+$rptkey = "DATAREPORT020";$advrptx{$rptkey} = 1;         # record report key
+$cnt++;$oline[$cnt]="\n";
+$cnt++;$oline[$cnt]="$rptkey: Virtual Hub Table impact by TEMS\n";
+$cnt++;$oline[$cnt]="TEMS,Nodes,Hour,Peak_Second,Details,\n";
+for (my $t=0;$t<=$temsi;$t++) {
+   $outline = $tems[$t] . ",";
+   my $tems_peak = 0;
+   my $tems_hour = 0;
+   my $tems_agents = 0;
+   my $pvtbl = "";
+   foreach my $f ( sort {$a cmp $b} keys %{$tems_vtbl[$t]}) {
+      my $iagents = $tems_vtbl[$t]{$f};
+      my $vx = $vtnodex{$f};
+      my $node_hr = (60/$vtnode_rate[$vx])*$vtnode_tab[$vx];
+      my $per_hour = $node_hr*$iagents;
+      my $per_peak = $iagents * $vtnode_tab[$vx];
+      $tems_hour += $per_hour;
+      $tems_peak += $per_peak;
+      $tems_agents += $iagents;
+      $pvtbl .= "[" . $f . "/" . $iagents . "/" . $per_hour . "/" . $per_peak . "] ";
+   }
+   chop($pvtbl) if $pvtbl ne "";
+   $outline .=  $tems_agents . ",";
+   $outline .=  $tems_hour . ",";
+   $outline .=  $tems_peak . ",";
+   $outline .=  $pvtbl . ",";
+   $cnt++;$oline[$cnt]="$outline\n";
+}
+
 if ($opt_nohdr == 0) {
    print OH "ITM Database Health Report $gVersion\n";
    print OH "\n";
 }
 
+for (my $i = 0; $i<=$scnt; $i++) {
+   print OH $sline[$i];
+}
+
 $tadvi = $advi + 1;
+print OH "\n";
 print OH "Advisory messages,$tadvi\n";
 
 if ($advi != -1) {
@@ -6045,6 +6108,9 @@ sub gettime
 # 1.58000  : Add some new agent types
 # 1.59000  : Advisory on agents connected directly to FTO hub TEMSes
 #          : Add Report numbers and explanations
+# 1.60000  : Position TEMS/TEPS summary report before advisories
+#          : Add report020 for details of virtual hub Table impact per TEMS
+# 1.61000  : Correct syntax error
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -8191,4 +8257,28 @@ Meaning: These are the agents that should be connected to
 the hub TEMS.
 
 Recovery: Better view of environment
+--------------------------------------------------------------
+
+DATAREPORT020
+Text: Virtual Hub Table impact by TEMS
+
+Sample Report
+TEMS,Nodes,Hour,Peak_Second,Details,
+HUB_us98fam030wlpxa,0,0,0,,
+REMOTE_va10plvapp302,21,2520,84,[OQ/21/2520/84],
+REMOTE_va10plvtem022,37,4440,148,[OQ/37/4440/148],
+
+Meaning: See DATAHEALTH1018W advisory explanation above . This
+report shows which TEMSes are most heavily impacted. The remote
+TEMS get impacted and this followed by a hub TEMS impact.
+
+The details represent
+
+Poduct Code
+Number of Agents
+Virtual Hub Table updates per hour
+Virtual Hub Table peak updates in a single second
+
+Recovery: Follow the recovery action documented here
+https://ibm.biz/BdRW3z.
 --------------------------------------------------------------
