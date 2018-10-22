@@ -41,7 +41,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.61000";
+my $gVersion = "1.64000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -1114,6 +1114,9 @@ my $opt_miss;                   # when 1 create a missing.sql file
 my $opt_miss_fn;                # missing file SQL name
 my $opt_nodist;                 # TGROUP names which are planned as non-distributed
 my $opt_fto = "";               # HUB or MIRROR
+my $opt_crit = "";
+my $critical_fn = "datahealth.crit";
+my @crits;
 
 # do basic initialization from parameters, ini file and standard input
 
@@ -1976,6 +1979,8 @@ if ($kds_per_sec > 30) {
       $advcode[$advi] = "DATAHEALTH1087E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
+      my $crit_line = "7,MS_Offline dataserver evaluation rate $prate agents/sec dangerously high. See DATAREPORT017  ";
+      push @crits,$crit_line;
    } else {
       $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $prate agents/sec somewhat high";
       $advcode[$advi] = "DATAHEALTH1086W";
@@ -1991,6 +1996,8 @@ if ($sitmon_per_sec > 30) {
       $advcode[$advi] = "DATAHEALTH1089E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
+      my $crit_line = "7,MS_Offline SITMON evaluation rate $prate agents/sec dangerously high. See DATAREPORT017  ";
+      push @crits,$crit_line;
    } else {
       $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $prate agents/sec somewhat high";
       $advcode[$advi] = "DATAHEALTH1088W";
@@ -2350,6 +2357,8 @@ if ($peak_rate > $opt_peak_rate) {
    $advcode[$advi] = "DATAHEALTH1018W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = "total";
+   my $crit_line = "5,Virtual Hub Table updates peak $peak_rate per second more then nominal $opt_peak_rate -  per hour [$vtnode_tot_hr] - total agents $vtnode_tot_ct - See DATAREPORT020";
+   push @crits,$crit_line;
 }
 
 for ($i=0;$i<=$mlisti;$i++) {
@@ -2644,11 +2653,13 @@ if ($hub_tems_no_tnodesav == 0) {
    # One case had 3 TEMS in FTO mode - so check for 2 or more
    if ($isFTO >= 2){
       $cnt++;$oline[$cnt]="Fault Tolerant Option FTO enabled Status[$opt_fto]\n\n";
-      if ($tems_ctnok[$hubi] > 0) {
-         $advi++;$advonline[$advi] = "FTO hub TEMS has $tems_ctnok[$hubi] agents configured which is against FTO best practice";
-         $advcode[$advi] = "DATAHEALTH1020W";
-         $advimpact[$advi] = $advcx{$advcode[$advi]};
-         $advsit[$advi] = $hub_tems;
+      if (defined $hubi) {
+         if ($tems_ctnok[$hubi] > 0) {
+            $advi++;$advonline[$advi] = "FTO hub TEMS has $tems_ctnok[$hubi] agents configured which is against FTO best practice";
+            $advcode[$advi] = "DATAHEALTH1020W";
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
+            $advsit[$advi] = $hub_tems;
+         }
       }
    }
 }
@@ -3186,7 +3197,7 @@ for (my $i=0;$i<=$temsi;$i++) {
       $cmax5dd_ct += 1 if $peak5dd[$j] == $cmax5dd;
    }
 
-   $oneline = "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_sampsit[$i],$psit_rate,$tems_puresit[$i],$tems_sampsit_dedup[$i],$psit_rate_dedup,$tems_puresit_dedup[$i],$cmax1,$cmax1_ct,$cmax5,$cmax5_ct,$cmax1dd,$cmax1dd_ct,$cmax5dd,$cmax5dd_ct\n";
+   $oneline = "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_sampsit[$i],$psit_rate,$tems_puresit[$i],$tems_sampsit_dedup[$i],$psit_rate_dedup,$tems_puresit_dedup[$i],$cmax1,$cmax1_ct,$cmax5,$cmax5_ct,$cmax1dd,$cmax1dd_ct,$cmax5dd,$cmax5dd_ct,";
    $cnt++;$oline[$cnt]="$oneline\n";
 
 }
@@ -3373,6 +3384,7 @@ my $ppc;
 my $ms_rate;
 my $res_pc;
 my $agents_sec;
+my $miss_reason = 0;
 $rptkey = "DATAREPORT017";$advrptx{$rptkey} = 1;         # record report key
 $cnt++;$oline[$cnt]="\n";
 $cnt++;$oline[$cnt]="$rptkey: MS_Offline-type Situation Report\n";
@@ -3409,6 +3421,7 @@ foreach my $f (sort { $a cmp $b } keys %ms_offlinex) {
    $outline .= $ppc . ",";
    my $inotes = "";
    $inotes .= "REASON test missing;" if index($sit_pdt[$sx],"Reason") == -1;
+   $miss_reason += 1 if  index($sit_pdt[$sx],"Reason") == -1;
    $inotes .= "Persist=" . $sit_persist[$sx] . " >1;" if $sit_persist[$sx] > 1;
    $outline .= $inotes . ",";
 
@@ -3422,6 +3435,10 @@ $outline .= $prate . ",100%,";
 $prate = sprintf("%.2f",$msoff_sitmon_agents_sec);
 $outline .= $prate . ",100%,";
 $cnt++;$oline[$cnt]="$outline\n";
+if ($miss_reason > 0) {
+   my $crit_line = "7,MS_Offline type situations - $miss_reason are missing the Reason *NE FA test. See DATAREPORT017";
+   push @crits,$crit_line;
+}
 
 if ($agenthubi > 0) {
    $rptkey = "DATAREPORT018";$advrptx{$rptkey} = 1;         # record report key
@@ -3544,6 +3561,12 @@ if ($advi != -1) {
 
 close OH;
 
+
+
+
+
+
+
 # Some cases get run which appear to be hub
 # TEMSes but are not really. This identifies
 # such cases and causes them to be ignored by the
@@ -3568,6 +3591,20 @@ if ($opt_s ne "") {
            print SH $oneline . "\n";
            close SH;
         }
+   }
+}
+
+if ($max_impact > 0 ) {
+   if ($opt_crit ne "") {
+      if ($#crits != -1) {
+         my $critfn = $opt_crit . $critical_fn;
+         open(CRIT,">$critfn");
+         for my $cline (@crits) {
+            my $crit_line = $cline . "\n";
+            print CRIT $crit_line;
+         }
+         close(CRIT);
+      }
    }
 }
 
@@ -5699,6 +5736,13 @@ sub init {
          shift(@ARGV);
          $opt_nodist = shift(@ARGV);
          die "option -nodist with no following name specification\n" if !defined $opt_nodist;
+      } elsif ( $ARGV[0] eq "-crit") {
+         shift(@ARGV);
+         $opt_crit = shift(@ARGV);
+         if (!defined $opt_crit) {
+            print STDERR "option -crit with no following crit directory";
+            exit 1;
+         }
       } else {
          print STDERR "SITAUDIT001E Unrecognized command line option - $ARGV[0]\n";
          exit 1;
@@ -5712,6 +5756,14 @@ sub init {
    if (!defined $opt_debuglevel) {$opt_debuglevel=90;}         # debug logging level - low number means fewer messages
    if (!defined $opt_debug) {$opt_debug=0;}                    # debug - turn on rare error cases
    if (!defined $opt_nodist) {$opt_nodist="";}                  # don't skip objects
+
+   if ($opt_crit ne "") {
+      if ($gWin == 1) {
+         $opt_crit .= "\\" if substr($opt_crit,-1,1) ne "\\";
+      } else {
+         $opt_crit .= "\/" if substr($opt_crit,-1,1) ne "\/";
+      }
+   }
 
    # ini control file must be present
 
@@ -6111,6 +6163,9 @@ sub gettime
 # 1.60000  : Position TEMS/TEPS summary report before advisories
 #          : Add report020 for details of virtual hub Table impact per TEMS
 # 1.61000  : Correct syntax error
+# 1.62000  : Handle case of unknown hub TEMS
+# 1.63000  : Accept crit directory and populate crit file
+# 1.64000  : No crits when not a hub TEMS
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
