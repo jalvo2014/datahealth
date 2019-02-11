@@ -41,7 +41,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.64000";
+my $gVersion = "1.66000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -105,6 +105,8 @@ sub fill_tnodelstv;                      # reprocess new TNODELST NODETYPE=V dat
 sub valid_lstdate;                       # validate the LSTDATE
 sub get_epoch;                           # convert from ITM timestamp to epoch seconds
 sub sitgroup_get_sits;                   # calculate situations associated with Situation Group
+
+my %dupndx;
 
 my %ms_offlinex;
 
@@ -360,7 +362,7 @@ my %advcx = (
               "DATAHEALTH1093W" => "75",
               "DATAHEALTH1094W" => "95",
               "DATAHEALTH1095W" => "100",
-              "DATAHEALTH1096W" => "60",
+              "DATAHEALTH1096W" => "80",
               "DATAHEALTH1097W" => "50",
               "DATAHEALTH1098E" => "100",
               "DATAHEALTH1099W" => "25",
@@ -370,7 +372,7 @@ my %advcx = (
               "DATAHEALTH1103W" => "90",
               "DATAHEALTH1104E" => "100",
               "DATAHEALTH1105E" => "100",
-              "DATAHEALTH1106W" => "90",
+              "DATAHEALTH1106W" => "60",
               "DATAHEALTH1107W" => "96",
               "DATAHEALTH1108W" => "50",
               "DATAHEALTH1109W" => "90",
@@ -867,7 +869,7 @@ my %klevelx = ( '06.30' => 1,
                 '06.10' => 1,
               );
 
-my %eoslevelx = ( '06.23' => {date=>'12/31/2019',count=>0,future=>1},
+my %eoslevelx = ( '06.23' => {date=>'04/30/2019',count=>0,future=>1},
                   '06.22' => {date=>'04/28/2018',count=>0,future=>0},
                   '06.21' => {date=>'09/30/2015',count=>0,future=>0},
                   '06.20' => {date=>'09/30/2015',count=>0,future=>0},
@@ -1655,6 +1657,7 @@ for ($i=0; $i<=$cali; $i++) {
       $advcode[$advi] = "DATAHEALTH1058E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $cal[$i];
+      $dupndx{"TCALENDAR"} = 1;
    }
 }
 
@@ -1664,6 +1667,7 @@ for ($i=0; $i<=$tcai; $i++) {
       $advi++;$advonline[$advi] = "TOVERRIDE duplicate key ID";
       $advcode[$advi] = "DATAHEALTH1059E";
       $advsit[$advi] = $tca[$i];
+      $dupndx{"TOVERRIDE"} = 1;
    }
    my $onesit = $tca_sitname[$i];
    if (!defined $sitx{$onesit}){
@@ -1765,6 +1769,7 @@ foreach my $f (sort { $a cmp $b } keys %pcyx) {
       $advcode[$advi] = "DATAHEALTH1054E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $f;
+      $dupndx{"TPCYDESC"} = 1;
    }
    foreach my $g (sort { $a cmp $b } keys %{$pcy_ref->{sit}}) {
       my $onesit = $g;
@@ -1851,6 +1856,7 @@ for ($i=0;$i<=$nsavei;$i++) {
    $advcode[$advi] = "DATAHEALTH1007E";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $nsave[$i];
+   $dupndx{"TNODESAV"} = 1;
 }
 
 # Advisory on more than one T3 agent
@@ -1892,6 +1898,7 @@ for ($i=0;$i<=$siti;$i++) {
    $advcode[$advi] = "DATAHEALTH1021E";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $sit[$i];
+   $dupndx{"TSITDESC"} = 1;
 }
 
 for ($i=0;$i<=$nami;$i++) {
@@ -1900,6 +1907,7 @@ for ($i=0;$i<=$nami;$i++) {
    $advcode[$advi] = "DATAHEALTH1022E";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $nam[$i];
+   $dupndx{"TNAME"} = 1;
 }
 
 for ($i=0;$i<=$nami;$i++) {
@@ -2034,6 +2042,7 @@ for ($i=0;$i<=$hsavei;$i++) {
    $advcode[$advi] = "DATAHEALTH1010W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $hsave[$i];
+   $dupndx{"TNODESAV"} = 1;
 }
 
 foreach my $f (keys %sysnamex) {
@@ -2076,6 +2085,7 @@ for ($i=0;$i<=$nlistvi;$i++) {
       $advcode[$advi] = "DATAHEALTH1008E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $nlistv[$i];
+      $dupndx{"TNODELST"} = 1;
    }
    my $thru1 = $nlistv_thrunode[$i];
    $nsx = $nsavex{$thru1};
@@ -2173,6 +2183,7 @@ for ($i=0;$i<=$obji;$i++){
       $advcode[$advi] = "DATAHEALTH1028E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = $obj[$i];
+      $dupndx{"TOBJACCL"} = 1;
    }
    my $objname1 = $obj_objname[$i];
    my $nodel1 = $obj_nodel[$i];
@@ -2368,6 +2379,7 @@ for ($i=0;$i<=$mlisti;$i++) {
    $advcode[$advi] = "DATAHEALTH1009E";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $mlist[$i];
+   $dupndx{"TNODELST"} = 1;
 }
 
 # Following logic estimates the dataserver load per TEMS based on number of situations.
@@ -2804,13 +2816,7 @@ foreach my $f (keys %ipx) {
    if ($hcount > 1) {
       my %hostx;
       foreach my $g (keys %{$ip_ref->{hostname}}) {
-         my $iagents = $ip_ref->{hostname}{$g};
-         foreach my $h (keys %{$iagents}) {
-            my $vsx = $nlistvx{$h};
-            next if !defined $vsx;
-            next if $nlistv_tems[$vsx] eq "";
-            $hostx{$g}{$h} = 1;
-         }
+         $hostx{$g} = 1;
       }
       $hcount = scalar keys %hostx;
       if ($hcount > 1) {
@@ -3252,13 +3258,18 @@ if ($tema_multi > 0) {
    $cnt++;$oline[$cnt]="$rptkey: Systems with Multiple TEMA levels\n";
    $cnt++;$oline[$cnt]="IP_Address,Agent,TEMAver,TEMAarch,\n";
    foreach my $f (sort {$a cmp $b} keys %ipx) {
-      my $ip_ref =$ipx{$f};
+      my $ip_ref = $ipx{$f};
       next if $ip_ref->{count} < 2;
       foreach my $g (sort {$a cmp $b} keys %{$ip_ref->{agents}}) {
+         next if !defined $ip_ref->{agents}{$g};
+         my $iarch = "";
+         $iarch = $ip_ref->{arch}{$g} if defined $ip_ref->{arch}{$g};
+         next if !defined $ip_ref->{agents}{$g};
+         next if $ip_ref->{agents}{$g} eq "";
          $oneline = $f . ",";
          $oneline .= $g . ",";
          $oneline .= $ip_ref->{agents}{$g} . ",";
-         $oneline .= $ip_ref->{arch}{$g} . ",";
+         $oneline .= $iarch . ",";
          $cnt++;$oline[$cnt]="$oneline\n";
       }
    }
@@ -3270,13 +3281,7 @@ foreach my $f (sort {$a cmp $b} keys %ipx) {
    if ($hcount > 1) {
       my %hostx;
       foreach my $g (keys %{$ip_ref->{hostname}}) {
-         my $iagents = $ip_ref->{hostname}{$g};
-         foreach my $h (keys %{$iagents}) {
-            my $vsx = $nlistvx{$h};
-            next if !defined $vsx;
-            next if $nlistv_tems[$vsx] eq "";
-            $hostx{$g}{$h} = 1;
-         }
+         $hostx{$g} = 1;
       }
       $hcount = scalar keys %hostx;
       if ($hcount > 1) {
@@ -3286,19 +3291,20 @@ foreach my $f (sort {$a cmp $b} keys %ipx) {
             $rptkey = "DATAREPORT015";$advrptx{$rptkey} = 1;         # record report key
             $cnt++;$oline[$cnt]="\n";
             $cnt++;$oline[$cnt]="$rptkey: Multiple hostname report\n";
-            $cnt++;$oline[$cnt]="IP_Address,Hostname,Agents,\n";
+            $cnt++;$oline[$cnt]="IP_Address,Hostnames,Agents,\n";
          }
-         foreach my $g (sort {$a cmp $b} keys %hostx) {
-            my $iagents = $hostx{$g};
-            my $pagents = "";
-            foreach my $h (sort {$a cmp $b} keys %{$iagents}) {
-               $pagents .= $h . " ";
-            }
-            $oneline = $f . ",";
-            $oneline .= $g . ",";
-            $oneline .= "(" . $pagents . ")";
-            $cnt++;$oline[$cnt]="$oneline\n";
+         my $pagents = "";
+         foreach my $g (keys %{$ip_ref->{agents}}) {
+            $pagents .= $g . " ";
          }
+         my $phostname = "";
+         foreach my $g (keys %hostx) {
+            $phostname .= $g . " ";
+         }
+         $oneline = $f . ",";
+         $oneline .= "(" . $phostname . ")";
+         $oneline .= "(" . $pagents . ")";
+         $cnt++;$oline[$cnt]="$oneline\n";
       }
    }
 }
@@ -3491,6 +3497,13 @@ for (my $t=0;$t<=$temsi;$t++) {
    $outline .=  $tems_peak . ",";
    $outline .=  $pvtbl . ",";
    $cnt++;$oline[$cnt]="$outline\n";
+}
+
+my $dupndx_ct = scalar keys %dupndx;
+
+if ($dupndx_ct > 0) {
+   my $crit_line = "1,Database Tables[$dupndx_ct] with duplicate indexes - See Database Health Checker report";
+   push @crits,$crit_line;
 }
 
 if ($opt_nohdr == 0) {
@@ -4218,6 +4231,7 @@ sub new_tnodesav {
                   $ip_ref = \%ipref;
                   $ipx{$isysip}  = \%ipref;
                }
+               $ip_ref->{agents}{$inode} = "";
                if ($nsave_common[$nsx] ne "") {
                   my $tema_level = $nsave_common[$nsx];
                   $tema_level =~ /(\S+):(\S+)/;
@@ -4225,10 +4239,10 @@ sub new_tnodesav {
                   my $tema_arch = $2;
                   if (defined $tema_level) {
                      if (!defined $ip_ref->{level}{$tema_level}) {
-                        $ip_ref->{count} += 1;
                         $ip_ref->{level}{$tema_level} = 1;
-                        $ip_ref->{agents}{$inode} = $tema_level;
                         $ip_ref->{arch}{$inode} = $tema_arch;
+                        $ip_ref->{agents}{$inode} = $tema_level;
+                        $ip_ref->{count} += 1;
                      }
                   }
                }
@@ -4246,7 +4260,7 @@ sub new_tnodesav {
                } elsif ($ncolons == 2) {
                   $ihostname = $wnodes[1];
                }
-               $ip_ref->{hostname}{$ihostname}{$inode} = 1;
+               $ip_ref->{hostname}{$ihostname}{count} += 1 if $ihostname ne "";
             }
          }
       }
@@ -5739,10 +5753,7 @@ sub init {
       } elsif ( $ARGV[0] eq "-crit") {
          shift(@ARGV);
          $opt_crit = shift(@ARGV);
-         if (!defined $opt_crit) {
-            print STDERR "option -crit with no following crit directory";
-            exit 1;
-         }
+         $opt_crit = "" if !defined $opt_crit;
       } else {
          print STDERR "SITAUDIT001E Unrecognized command line option - $ARGV[0]\n";
          exit 1;
@@ -6166,14 +6177,15 @@ sub gettime
 # 1.62000  : Handle case of unknown hub TEMS
 # 1.63000  : Accept crit directory and populate crit file
 # 1.64000  : No crits when not a hub TEMS
+# 1.65000  : Add type 1 critical issue for duplicate indexes
+# 1.66000  : Correct logic for multiple TEMAs and Mulltiple hostname reports
+#          : Update ITM 623 EOS date
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
 __END__
 DATAHEALTH1001E
 Text: Node present in node status but missing in TNODELST Type V records
-
-Handle datahealth.pl running on a Linux/Unix perl; Correct 1075W logic, should ignore protocol; Add report on mixed up hostnames from same system;
 
 Check: For every NODE in TNODESAV, there must be a TNODELST
 NODETYPE=V with matching TNODELST column
@@ -7909,7 +7921,7 @@ the time of this writing].
 
 If you are seeing the symptoms of high numbers of offline agents,
 and you are collecting Agent Operation Log, please turn off that
-historical data collection and observe for increased stabilty.
+historical data collection and observe for increased stability.
 
 In most people's opinion, that collected data is not terribly
 worthwhile because the data collected is mostly for the use of
