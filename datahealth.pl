@@ -41,7 +41,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.66000";
+my $gVersion = "1.67000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -2042,7 +2042,6 @@ for ($i=0;$i<=$hsavei;$i++) {
    $advcode[$advi] = "DATAHEALTH1010W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $hsave[$i];
-   $dupndx{"TNODESAV"} = 1;
 }
 
 foreach my $f (keys %sysnamex) {
@@ -3502,7 +3501,12 @@ for (my $t=0;$t<=$temsi;$t++) {
 my $dupndx_ct = scalar keys %dupndx;
 
 if ($dupndx_ct > 0) {
-   my $crit_line = "1,Database Tables[$dupndx_ct] with duplicate indexes - See Database Health Checker report";
+   my $ptable = "";
+   foreach my $r (sort {$a cmp $b} keys %dupndx) {
+      $ptable .= $r . " ";
+   }
+   chomp($ptable) if $ptable ne "";
+   my $crit_line = "1,Database Tables[$ptable] with duplicate indexes - See Database Health Checker report";
    push @crits,$crit_line;
 }
 
@@ -3617,6 +3621,12 @@ if ($max_impact > 0 ) {
             print CRIT $crit_line;
          }
          close(CRIT);
+      }
+   } else {
+      if ($#crits != -1) {
+         for my $cline (@crits) {
+            print STDERR $cline . "\n";
+         }
       }
    }
 }
@@ -6178,8 +6188,9 @@ sub gettime
 # 1.63000  : Accept crit directory and populate crit file
 # 1.64000  : No crits when not a hub TEMS
 # 1.65000  : Add type 1 critical issue for duplicate indexes
-# 1.66000  : Correct logic for multiple TEMAs and Mulltiple hostname reports
+# 1.66000  : Correct logic for multiple TEMAs and Multiple hostname reports
 #          : Update ITM 623 EOS date
+# 1.67000  : Improved duplicate index critical issue report line
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
