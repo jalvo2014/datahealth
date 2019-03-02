@@ -28,6 +28,8 @@
 # Identify cases where TEMA 32 bit *NE TEMA 64 bit level at a system
 # when calculating send status, subtract hub TEMS reconnects
 
+## calculate STSH wrap time
+
 # When same system [ip address] but different hostname, advisory on unable to use remote deploy, also possible TEP issues.
 
 # APAR: IV96304 - AIX Unix OS Agent only *MISSING process
@@ -41,7 +43,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.67000";
+my $gVersion = "1.68000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -187,6 +189,11 @@ my @nsave_common = ();
 
 my $nsave_online = 0;
 my $nsave_offline = 0;
+
+my %agtosx = ( 'NT' => 1,
+               'LZ' => 1,
+               'UX' => 1,
+             );
 
 # TNODESAV HOSTADDR duplications
 my $hsx;
@@ -376,6 +383,7 @@ my %advcx = (
               "DATAHEALTH1107W" => "96",
               "DATAHEALTH1108W" => "50",
               "DATAHEALTH1109W" => "90",
+              "DATAHEALTH1110W" => "95",
             );
 
 
@@ -402,6 +410,7 @@ my %knownpc = (
                  "AM" => "IBM Tivoli Alert Adapter for OMEGACENTER Gateway",
                  "AU" => "CA-Unicenter Alert Emitter",
                  "AX" => "IBM Tivoli Monitoring Shared Libraries",
+                 "B2" => "Monitoring Agent for Symantec Endpoint Protection",
                  "BB" => "RAS1 programming building blocks",
                  "BC" => "ITCAM System Edition for WebSphere DataPower",
                  "BL" => "CASP Directory Server Monitoring Agent",
@@ -3308,6 +3317,85 @@ foreach my $f (sort {$a cmp $b} keys %ipx) {
    }
 }
 
+my %rdpx;
+foreach my $f (sort {$a cmp $b} keys %ipx) {
+   my $ip_ref = $ipx{$f};
+   my $hcount = scalar keys %{$ip_ref->{hostname}};
+   if ($hcount > 1) {
+      my $osagent = "";
+      my $ihostname = "";
+      foreach my $g (keys %{$ip_ref->{agents}}) {
+         $nsx = $nsavex{$g};
+         next if !defined $nsx;
+         my $iproduct = $nsave_product[$nsx];
+         next if !defined $agtosx{$iproduct};
+         $osagent = $g;
+         last;
+      }
+      if ($osagent ne "") {
+         my $tnode = $osagent;
+         $tnode =~ s/[^:]//g;
+         my $ncolons = length($tnode);
+         my @wnodes = split(":",$osagent);
+         if ($ncolons == 0) {
+            $ihostname = $osagent;
+         } elsif ($ncolons == 1) {
+            $ihostname = $wnodes[0];
+         } elsif ($ncolons == 2) {
+            $ihostname = $wnodes[1];
+         }
+      }
+      foreach my $g (keys %{$ip_ref->{agents}}) {
+         $nsx = $nsavex{$g};
+         next if !defined $nsx;
+         next if $g eq $osagent;
+         next if $nsave_product[$nsx] eq "EM";
+         my $nhostname;
+         my $tnode = $g;
+         $tnode =~ s/[^:]//g;
+         my $ncolons = length($tnode);
+         my @wnodes = split(":",$g);
+         if ($ncolons == 0) {
+            $nhostname = $g;
+         } elsif ($ncolons == 1) {
+            $nhostname = $wnodes[0];
+         } elsif ($ncolons == 2) {
+            $nhostname = $wnodes[1];
+         }
+         next if $nhostname eq $ihostname;
+         {
+            my %rdpdef = ( osagent => $osagent,
+                           oshostname => $ihostname,
+                           agthostname => $nhostname,
+                           ip => $f,
+                         );
+            $rdpx{$g} = \%rdpdef;
+         }
+      }
+   }
+}
+my $rdp_ct = scalar keys %rdpx;
+if ($rdp_ct > 0 ) {
+   $rptkey = "DATAREPORT021";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: Agents unable to use Remote Deploy because of OS Agent hostname conflict\n";
+   $cnt++;$oline[$cnt]="Agent,Agent_Hostname,OS_Hostname,IP_Addr,OS_Agent,\n";
+   foreach my $g (keys %rdpx) {
+      my $rdp_ref = $rdpx{$g};
+      $oneline = $g . ",";
+      $oneline .= $rdp_ref->{agthostname} . ",",
+      $oneline .= $rdp_ref->{oshostname} . ",",
+      $oneline .= $rdp_ref->{ip} . ",",
+      $oneline .= $rdp_ref->{osagent} . ",",
+      $cnt++;$oline[$cnt]="$oneline\n";
+   }
+   $advi++;$advonline[$advi] = "Agents [$rdp_ct] unable to use Remote Deploy because of OS Agent hostname conflict - See $rptkey";
+   $advcode[$advi] = "DATAHEALTH1110W";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = "TEMS";
+}
+
+
 $rptkey = "DATAREPORT016";$advrptx{$rptkey} = 1;         # record report key
 $cnt++;$oline[$cnt]="\n";
 $cnt++;$oline[$cnt]="$rptkey: TEMS Offline Reports\n";
@@ -6191,6 +6279,7 @@ sub gettime
 # 1.66000  : Correct logic for multiple TEMAs and Multiple hostname reports
 #          : Update ITM 623 EOS date
 # 1.67000  : Improved duplicate index critical issue report line
+# 1.68000  : Improve explanation on ::CONFIG systems
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -7390,11 +7479,15 @@ MQ Configuration Agent. By product design there should be only
 one such agent in an ITM environment and it must be configured
 only to the hub TEMS.
 
-The process is a coordination process between XXX::RCACFG agents.
-The extra CONFIG agents connecting to remote TEMSes have no purpose
-and will cause remote TEMS performance issues and confusion.
+The formal product name is ITCAM Configure for MQ and is also
+known as ITCAM MQ Configuration. At this writing [Feb 2019) Version
+710 and 730 are supported.
 
-Recovery plan:   For each remote TEMS with this issue make these
+The CONFIG process is used by XXX::RCACFG agents. The extra CONFIG
+systems on remote TEMSes have no purpose and will cause remote TEMS
+and hub TEMS resource drains to no benefit.
+
+Recovery plan: For each remote TEMS with this issue make these
 changes and recycle the remote TEMS.
 
 Windows: Remove "KCFFEPRB.KCFCCTII" from KDS_RUN in
@@ -7421,8 +7514,12 @@ only one such agent in an ITM environment and it must be
 configured only to the hub TEMS and the TEMS must not be
 in FTO mode.
 
-Recovery plan:   For each remote TEMS with this issue make these
-changes and recycle the remote TEMS.
+The formal product name is ITCAM Configure for MQ and is also
+known as ITCAM MQ Configuration. At this writing Version
+710 and 730 are supported.
+
+Recovery plan: For each TEMS where this component is not
+needed make the changes below and recycle the TEMS.
 
 Windows: Remove "KCFFEPRB.KCFCCTII" from KDS_RUN in
 <installdir>\cms\KBBENV.
@@ -7982,6 +8079,22 @@ hub TEMS - TEPS, WPA and S&P.
 Recovery plan: Reconfigure the agents to remote TEMSes whenever possible.
 --------------------------------------------------------------
 
+DATAHEALTH1110W
+Text:  Agents [count] unable to use Remote Deploy because of OS Agent hostname conflict
+
+Check: TNODESAV/TNODELST check
+
+Meaning: In order to perform a remote deploy operation such as a
+upgrade or even a tacmd settrace, the agent name must have a
+hostname where there is a matching OS Agent with the same name.
+
+Most often this is because there is a CTIRA_HOSTNAME and a
+CTIRA_SYSTEM_NAME which has been specified unwisely.
+
+Recovery plan: Reconfigure the agents so agent hostname match
+the OS Agent hostname.
+--------------------------------------------------------------
+
 DATAREPORT001
 Text: Summary of TEMS/TEPS/FTO etc
 
@@ -8359,4 +8472,20 @@ Virtual Hub Table peak updates in a single second
 
 Recovery: Follow the recovery action documented here
 https://ibm.biz/BdRW3z.
+--------------------------------------------------------------
+
+DATAREPORT021
+Text: Agents unable to use Remote Deploy because of OS Agent hostname conflict
+
+Sample Report
+Agent,Agent_Hostname,OS_Hostname,IP_Addr,OS_Agent,
+MSSQLSERVER:aia_id_cgkdcpwscm01a,MSSQLSERVER,aia_id_cgkdcpwscm01a,#9.9.9.9,aia_id_cgkdcpwscm01a:NT,
+Primary:aia_cgkdcplcase01a:KYJA,aia_cgkdcplcase01a,aia_id_cgkdcplcase01a,#9.9.9.8,aia_id_cgkdcplcase01a:LZ,
+MSSQLSERVER:aia_shadcpwscl01n2:M,aia_shadcpwscl01n2,aia_cn_shadcpwscl01n2,#9.9.9.7,aia_cn_shadcpwscl01n2:NT,
+
+Meaning: See DATAHEALTH1110W advisory explanation above . This
+report shows which agents are unable to use remote deploy functions.
+
+Recovery: Reconfigure the agents so the hostname matches the
+OS Agent hostname.
 --------------------------------------------------------------
