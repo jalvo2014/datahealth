@@ -43,7 +43,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.68000";
+my $gVersion = "1.69000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -3361,6 +3361,8 @@ foreach my $f (sort {$a cmp $b} keys %ipx) {
             $nhostname = $wnodes[0];
          } elsif ($ncolons == 2) {
             $nhostname = $wnodes[1];
+         } elsif ($ncolons == 3) {
+            $nhostname = $wnodes[2];
          }
          next if $nhostname eq $ihostname;
          {
@@ -6280,6 +6282,7 @@ sub gettime
 #          : Update ITM 623 EOS date
 # 1.67000  : Improved duplicate index critical issue report line
 # 1.68000  : Improve explanation on ::CONFIG systems
+# 1.69000  : Handle managed systems with 4 segments
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
