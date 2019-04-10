@@ -43,7 +43,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.69000";
+my $gVersion = "1.70000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -176,6 +176,7 @@ my $nsavei = -1;
 my @nsave = ();
 my %nsavex = ();
 my @nsave_product = ();
+my @nsave_arch = ();
 my @nsave_version = ();
 my @nsave_subversion = ();
 my @nsave_hostaddr = ();
@@ -589,6 +590,7 @@ my %knownpc = (
                  "RA" => "distributed agent remote manager",
                  "RC" => "IBM Tivoli Monitoring for Rational Applications",
                  "RG" => "IBM Tivoli Advanced Audit for DFSMShsm",
+                 "RH" => "IBM Tivoli Advanced Reporting for DFSMShsm",
                  "RJ" => "IBM Tivoli Allocation Optimizer for z/OS",
                  "RK" => "IBM Tivoli Automated Tape Allocation Manager",
                  "RN" => "IBM Tivoli Advanced Catalog Management for z/OS",
@@ -658,6 +660,8 @@ my %knownpc = (
                  "WW" => "OMEGAMON XE for WebSphere Application Server on OS/390",
                  "YB" => "IBM Tivoli Information Management for z/OS",
                  "XA" => "Citrix XenApp Agent",
+                 "XB" => "CMA/XML support libraries",
+                 "XF" => "Ping Probe",
                  "XH" => "PHP",
                  "XI" => "Monitoring Agent for Citrix XenServer",
                  "YB" => "IBM Tivoli Information Management for z/OS",
@@ -1496,7 +1500,7 @@ for ($i=0; $i<=$nsavei; $i++) {
 
    if ($nsave_product[$i] ne "EM") {  # record agents configured to hub TEMS
       $nsx = $nlistvx{$node1};
-      if ($rtemsi >= 0) {
+      if ($rtemsi > 0) {
          if (defined $nsx) {
             my $thru1 = $nlistv_thrunode[$nsx];
             my $prod1 = $nsave_product[$i];
@@ -3382,8 +3386,11 @@ if ($rdp_ct > 0 ) {
    $cnt++;$oline[$cnt]="\n";
    $cnt++;$oline[$cnt]="$rptkey: Agents unable to use Remote Deploy because of OS Agent hostname conflict\n";
    $cnt++;$oline[$cnt]="Agent,Agent_Hostname,OS_Hostname,IP_Addr,OS_Agent,\n";
+   my $rdp_ct = 0;
    foreach my $g (keys %rdpx) {
       my $rdp_ref = $rdpx{$g};
+      next if $rdp_ref->{oshostname} eq "";
+      $rdp_ct += 1;
       $oneline = $g . ",";
       $oneline .= $rdp_ref->{agthostname} . ",",
       $oneline .= $rdp_ref->{oshostname} . ",",
@@ -3391,10 +3398,12 @@ if ($rdp_ct > 0 ) {
       $oneline .= $rdp_ref->{osagent} . ",",
       $cnt++;$oline[$cnt]="$oneline\n";
    }
-   $advi++;$advonline[$advi] = "Agents [$rdp_ct] unable to use Remote Deploy because of OS Agent hostname conflict - See $rptkey";
-   $advcode[$advi] = "DATAHEALTH1110W";
-   $advimpact[$advi] = $advcx{$advcode[$advi]};
-   $advsit[$advi] = "TEMS";
+   if ($rdp_ct > 0) {
+      $advi++;$advonline[$advi] = "Agents [$rdp_ct] unable to use Remote Deploy because of OS Agent hostname conflict - See $rptkey";
+      $advcode[$advi] = "DATAHEALTH1110W";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "TEMS";
+   }
 }
 
 
@@ -4146,6 +4155,11 @@ sub new_tnodesav {
             $advsit[$advi] = $inode;
             $iversion = "00.00.00";
          }
+      }
+      $nsave_arch[$nsx] = "";
+      if ($ireserved ne "") {
+         $ireserved =~ /:(\S+?)\;/;
+         $nsave_arch[$nsx] = $1 if defined $1;
       }
       $nsave_version[$nsx] = $iversion;
       $nsave_subversion[$nsx] = "";
@@ -5939,7 +5953,7 @@ sub init {
    if (!defined $opt_txt) {$opt_txt = 0;}                      # default no txt input
    if (!defined $opt_lst) {$opt_lst = 0;}                      # default no lst input
    if (!defined $opt_subpc_warn) {$opt_subpc_warn=90;}         # default warn on 90% of maximum subnode list
-   if (!defined $opt_peak_rate) {$opt_peak_rate=32;}           # default warn on 32 virtual hub table updates per second
+   if (!defined $opt_peak_rate) {$opt_peak_rate=64;}           # default warn on 64 virtual hub table updates per second
    if (!defined $opt_vndx) {$opt_vndx=0;}                      # default vndx off
    if (!defined $opt_mndx) {$opt_mndx=0;}                      # default mndx off
    if (!defined $opt_miss) {$opt_miss=0;}                      # default mndx off
@@ -6283,6 +6297,9 @@ sub gettime
 # 1.67000  : Improved duplicate index critical issue report line
 # 1.68000  : Improve explanation on ::CONFIG systems
 # 1.69000  : Handle managed systems with 4 segments
+# 1.70000  : Update some table sizes
+#          : Update default VTBL test to 64/second
+#          : correct 1109W logic - when no remote TEMSes are present
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
