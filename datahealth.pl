@@ -37,13 +37,18 @@
 # Require Persist=2
 # Might belong in Situation Audit
 
+# SP1 signal in cinfo.info
+# Windows: Host Name  : USMDCEDAP6024         Installer : Ver: 063007060
+# AIX: Host name : catrhom011itdxa-nim Installer Lvl:06.30.07.06
+# Linux: Host name : hlxd00tm03_bak   Installer Lvl:06.30.07.06
+
 #use warnings::unused; # debug used to check for unused variables
 use strict;
 use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.70000";
+my $gVersion = "1.70001";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -564,7 +569,7 @@ my %knownpc = (
                  "Q4" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: ISA Server 2004",
                  "Q5" => "Monitoring Agent for Microsoft Cluster Server",
                  "Q7" => "Microsoft Internet Information Services (IIS) Agent",
-                 "Q8" => "agent workload",
+                 "Q8" => "Monitoring Agent for IBM PureApplication System",
                  "Q9" => "agent pureapplication",
                  "QA" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: ISA Server 2000",
                  "QB" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: BizTalk Server",
@@ -3122,7 +3127,7 @@ $rptkey = "DATAREPORT010";$advrptx{$rptkey} = 1;         # record report key
 $cnt++;$oline[$cnt]="\n";
 $cnt++;$oline[$cnt]="$rptkey: TEMS Situation Load Impact Report\n";
 $cnt++;$oline[$cnt]="Hub,$hub_tems,$hub_tems_ct\n";
-$cnt++;$oline[$cnt]=",TEMSnodeid,Count,Status,Version,Arch,SampSit,SampLoad/min,PureSit,DDSampSit,DDSampLoad/min,DDPureSit,Max1,Max1_ct,Max5,Max5_ct,DDMax1,DDMax1_ct,DDMax5,DDMax5_ct,\n";
+$cnt++;$oline[$cnt]=",SampLoad/min,TEMSnodeid,Count,Status,Version,Arch,SampSit,PureSit,DDSampSit,DDSampLoad/min,DDPureSit,Max1,Max1_ct,Max5,Max5_ct,DDMax1,DDMax1_ct,DDMax5,DDMax5_ct,\n";
 for (my $i=0;$i<=$temsi;$i++) {
    my $poffline = "Offline";
    my $node1 = $tems[$i];
@@ -3215,7 +3220,7 @@ for (my $i=0;$i<=$temsi;$i++) {
       $cmax5dd_ct += 1 if $peak5dd[$j] == $cmax5dd;
    }
 
-   $oneline = "TEMS,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_sampsit[$i],$psit_rate,$tems_puresit[$i],$tems_sampsit_dedup[$i],$psit_rate_dedup,$tems_puresit_dedup[$i],$cmax1,$cmax1_ct,$cmax5,$cmax5_ct,$cmax1dd,$cmax1dd_ct,$cmax5dd,$cmax5dd_ct,";
+   $oneline = "TEMS,$psit_rate,$tems[$i],$tems_ct[$i],$poffline,$tems_version[$i],$tems_arch[$i],$tems_sampsit[$i],$psit_rate,$tems_puresit[$i],$tems_sampsit_dedup[$i],$psit_rate_dedup,$tems_puresit_dedup[$i],$cmax1,$cmax1_ct,$cmax5,$cmax5_ct,$cmax1dd,$cmax1dd_ct,$cmax5dd,$cmax5dd_ct,";
    $cnt++;$oline[$cnt]="$oneline\n";
 
 }
@@ -6300,6 +6305,7 @@ sub gettime
 # 1.70000  : Update some table sizes
 #          : Update default VTBL test to 64/second
 #          : correct 1109W logic - when no remote TEMSes are present
+# 1.71000  : Put Sampload at start
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
