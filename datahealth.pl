@@ -48,7 +48,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.70001";
+my $gVersion = "1.71000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -112,6 +112,10 @@ sub fill_tnodelstv;                      # reprocess new TNODELST NODETYPE=V dat
 sub valid_lstdate;                       # validate the LSTDATE
 sub get_epoch;                           # convert from ITM timestamp to epoch seconds
 sub sitgroup_get_sits;                   # calculate situations associated with Situation Group
+
+my %uadvx;
+my %sit_tarx;
+my %tar_nodex;
 
 my %dupndx;
 
@@ -357,7 +361,7 @@ my %advcx = (
               "DATAHEALTH1075W" => "60",
               "DATAHEALTH1076W" => "50",
               "DATAHEALTH1077E" => "100",
-              "DATAHEALTH1078E" => "100",
+              "DATAHEALTH1078W" => "0",
               "DATAHEALTH1079E" => "50",
               "DATAHEALTH1080W" => "95",
               "DATAHEALTH1081W" => "75",
@@ -390,6 +394,7 @@ my %advcx = (
               "DATAHEALTH1108W" => "50",
               "DATAHEALTH1109W" => "90",
               "DATAHEALTH1110W" => "95",
+              "DATAHEALTH1111W" => "95",
             );
 
 
@@ -582,6 +587,7 @@ my %knownpc = (
                  "QP" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: SharePoint Portal Server",
                  "QQ" => "IBM DB2 Query Monitor for z/OS",
                  "QR" => "Monitoring Agent for Microsoft Virtual Server",
+                 "QS" => "Monitoring Agent for IBM Workload Scheduler",
                  "QT" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: Content Management Server",
                  "QU" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: UDDI Services",
                  "QV" => "Monitoring Agent for VMware ESX",
@@ -887,7 +893,7 @@ my %klevelx = ( '06.30' => 1,
                 '06.10' => 1,
               );
 
-my %eoslevelx = ( '06.23' => {date=>'04/30/2019',count=>0,future=>1},
+my %eoslevelx = ( '06.23' => {date=>'04/30/2019',count=>0,future=>0},
                   '06.22' => {date=>'04/28/2018',count=>0,future=>0},
                   '06.21' => {date=>'09/30/2015',count=>0,future=>0},
                   '06.20' => {date=>'09/30/2015',count=>0,future=>0},
@@ -1488,7 +1494,7 @@ for ($i=0; $i<=$nsavei; $i++) {
             if (defined $tx) {
                if ($thrunode1 ne $hub_tems) {
                   $advi++;$advonline[$advi] = "WPA connected to $thrunode1 which is not the hub TEMS";
-                  $advcode[$advi] = "DATAHEALTH1078E";
+                  $advcode[$advi] = "DATAHEALTH1078W";
                   $advimpact[$advi] = $advcx{$advcode[$advi]};
                   $advsit[$advi] = $node1;
                }
@@ -1905,7 +1911,26 @@ for ($i=0;$i<=$siti;$i++) {
                $advcode[$advi] = "DATAHEALTH1107W";
                $advimpact[$advi] = $advcx{$advcode[$advi]};
                $advsit[$advi] = $sit[$i];
+               my $crit_line = "1,Agent Operation Log Historical Data Collection can cause communications instability";
+               push @crits,$crit_line;
             }
+         }
+         # UADVISOR_OMUNX-527E13E4D_UNIXOS
+         # UADVISOR_OMUNX_UNIXOS
+         $sit_pdt[$i] =~ / FROM (\S+) /;
+         my $atrtab = $1;
+         if (defined $atrtab) {
+            my $uadv_ref = $uadvx{$atrtab};
+            if (!defined $uadv_ref) {
+               my %advref = (
+                               sits => {},
+                               all => 0,
+                            );
+               $uadv_ref = \%advref;
+               $uadvx{$atrtab} = \%advref;
+            }
+            $uadv_ref->{sits}{$sit[$i]} = 1;
+            $uadv_ref->{all} = 1 if index($sit_pdt[$i],'SYSTEM.PARMA("NODELIST","*ALL",4)') != -1;
          }
       }
    }
@@ -3228,7 +3253,7 @@ for (my $i=0;$i<=$temsi;$i++) {
 if ($danger_IZ76410 > 0) {
    $rptkey = "DATAREPORT011";$advrptx{$rptkey} = 1;         # record report key
    $cnt++;$oline[$cnt]="\n";
-   $cnt++;$oline[$cnt]="$rptkey: TEMA Agent(s) in APAR IZ76410 danger\n";
+   $cnt++;$oline[$cnt]="$rptkey: TEMA Agent(s) at APAR IZ76410 risk [could be connected to two TEMS at same time]\n";
    $cnt++;$oline[$cnt]="Agent,Hostaddr,TEMAver,\n";
 
    for ($i=0;$i<=$nsavei;$i++) {
@@ -3245,7 +3270,7 @@ if ($danger_IZ76410 > 0) {
 if ($danger_IV18016 > 0) {
    $rptkey = "DATAREPORT012";$advrptx{$rptkey} = 1;         # record report key
    $cnt++;$oline[$cnt]="\n";
-   $cnt++;$oline[$cnt]="$rptkey: TEMA Agent(s) in APAR IV18016 danger\n";
+   $cnt++;$oline[$cnt]="$rptkey: TEMA Agent(s) in APAR IV18016 danger [Agent high CPU with embedded situations]\n";
    $cnt++;$oline[$cnt]="Agent,Hostaddr,TEMAver,\n";
    for ($i=0;$i<=$nsavei;$i++) {
       next if $nsave_temaver[$i] eq "";
@@ -3258,7 +3283,7 @@ if ($danger_IV18016 > 0) {
 if ($danger_IV30473 > 0) {
    $rptkey = "DATAREPORT013";$advrptx{$rptkey} = 1;         # record report key
    $cnt++;$oline[$cnt]="\n";
-   $cnt++;$oline[$cnt]="$rptkey: TEMA Agent(s) in APAR IV30473 danger\n";
+   $cnt++;$oline[$cnt]="$rptkey: TEMA Agent(s) in APAR IV30473 danger [KDEB_INTERFACELIST conflicts]\n";
    $cnt++;$oline[$cnt]="Agent,Hostaddr,TEMAver,\n";
    for ($i=0;$i<=$nsavei;$i++) {
       next if $nsave_temaver[$i] eq "";
@@ -3600,6 +3625,111 @@ for (my $t=0;$t<=$temsi;$t++) {
    $outline .=  $tems_peak . ",";
    $outline .=  $pvtbl . ",";
    $cnt++;$oline[$cnt]="$outline\n";
+}
+
+my $uadv_ct = 0;
+foreach my $f (keys %uadvx) {
+   my $uadv_ref = $uadvx{$f};
+   my $tab_ct = scalar keys %{$uadv_ref->{sits}};
+   next if $tab_ct == 1;
+   my %tnodex;
+   my $tarkey;
+   foreach my $g (keys %{$uadv_ref->{sits}}) {     # $g is the situation
+      my $sit_tar_ref = $sit_tarx{$g};
+      my $ipsit = $g;
+      my $ii = $sitx{$g};
+      $ipsit = $sit_psit[$ii] if defined $ipsit;
+      next if !defined $sit_tar_ref;
+      foreach my $h ( keys %{$sit_tar_ref->{targets}}) {     # $h is the target - node or nodelist or TEMS node
+         my $tar_node_ref = $tar_nodex{$h};
+         my $tarkey;
+         my $tx = $temsx{$h};
+         if (!defined $tar_node_ref) {  # no target so $h is a node or a TEMS
+            if (defined $tx) {
+               for (my $k=0; $k<=$nlistvi; $k++) {
+                  next if $nlistv_tems[$k] ne $h;
+                  my $node1 = $nlistv[$k];
+                  $tarkey = "TEMS" . "|". $h . "|" . $ipsit . "|" . $f;
+                  my $tnode_ref = $tnodex{$node1};
+                  if (!defined $tnode_ref){
+                     my %tnoderef = (
+                                       count => 0,
+                                       msl_ct => 0,
+                                       tems_ct => 0,
+                                       node_ct => 0,
+                                       types => {},
+                                    );
+                     $tnode_ref = \%tnoderef;
+                     $tnodex{$node1} = \%tnoderef;
+                  }
+                  $tnode_ref->{count} += 1;
+                  $tnode_ref->{tems_ct} += 1;
+                  $tnode_ref->{types}{$tarkey} = 1;
+               }
+            } else { # $h is a node
+               $tarkey = "NODE" . "|". $h . "|" . $ipsit . "|" . $f;
+               my $tnode_ref = $tnodex{$h};
+               if (!defined $tnode_ref){
+                  my %tnoderef = (
+                                    count => 0,
+                                    msl_ct => 0,
+                                    tems_ct => 0,
+                                    node_ct => 0,
+                                    types => {},
+                                 );
+                  $tnode_ref = \%tnoderef;
+                  $tnodex{$h} = \%tnoderef;
+               }
+               $tnode_ref->{count} += 1;
+               $tnode_ref->{node_ct} += 1;
+               $tnode_ref->{types}{$tarkey} = 1;
+            }
+         } else { # $h is a msl
+            foreach my $i (keys %{$tar_node_ref->{nodes}}) {  # $i are the end nodes
+               my $tnode_ref = $tnodex{$i};
+               $tarkey = "MSL" . "|". $h . "|" . $ipsit . "|" . $f;
+               if (!defined $tnode_ref){
+                  my %tnoderef = (
+                                    count => 0,
+                                    msl_ct => 0,
+                                    tems_ct => 0,
+                                    node_ct => 0,
+                                    types => {},
+                                 );
+                  $tnode_ref = \%tnoderef;
+                  $tnodex{$i} = \%tnoderef;
+               }
+               $tnode_ref->{count} += 1;
+               $tnode_ref->{msl_ct} += 1;
+               $tnode_ref->{types}{$tarkey} = 1;
+            }
+         }
+      }
+   }
+   foreach my $t ( keys %tnodex) {
+      my $tnode_ref = $tnodex{$t};
+      next if $tnode_ref->{count} < 2;
+      $uadv_ct += 1;
+   }
+   if ($uadv_ct > 0) {
+      $rptkey = "DATAREPORT022";$advrptx{$rptkey} = 1;         # record report key
+      $advi++;$advonline[$advi] = "Historical UADVISORs [$uadv_ct] duplicate collections on table $f - see $rptkey";
+      $advcode[$advi] = "DATAHEALTH1111W";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "UADVISOR";
+      $cnt++;$oline[$cnt]="\n";
+      $cnt++;$oline[$cnt]="$rptkey: Agents [$uadv_ct] experiencing duplicate historical data collection on table $f\n";
+      $cnt++;$oline[$cnt]="Node,Type/Target/Situation/Table,\n";
+      foreach my $t (sort {$a cmp $b} keys %tnodex) {
+         my $tnode_ref = $tnodex{$t};
+         next if $tnode_ref->{count} < 2;
+         foreach my $s (sort {$a cmp $b} keys %{$tnode_ref->{types}}) {
+            $outline = $t . ",";
+            $outline .= $s . ",";
+            $cnt++;$oline[$cnt]="$outline\n";
+         }
+      }
+   }
 }
 
 my $dupndx_ct = scalar keys %dupndx;
@@ -4042,6 +4172,18 @@ sub new_tobjaccl {
      if ($iobjname eq "UADVISOR_O4SRV_OPLOG") {
         $obj_oplog += 1;
      }
+  }
+  if (substr($iobjname,0,8) eq "UADVISOR") {
+     my $sit_tar_ref = $sit_tarx{$iobjname};
+     if (!defined $sit_tar_ref) {
+        my %sit_tarref = (
+                            targets => {},
+                         );
+        $sit_tar_ref = \%sit_tarref;
+        $sit_tarx{$iobjname} = \%sit_tarref;
+     }
+     $sit_tar_ref->{targets}{$inodel} = 1;
+     my $x = 1;
   }
 }
 
@@ -4626,6 +4768,15 @@ my ($inodetype,$inodelist,$inode,$ilstdate) = @_;
    } else {
       $nlistm_miss[$mlx] = 1;
    }
+  my $tar_node_ref = $tar_nodex{$inodelist};
+  if (!defined $tar_node_ref) {
+     my %tar_noderef = (
+                          nodes => {},
+                       );
+     $tar_node_ref = \%tar_noderef;
+     $tar_nodex{$inodelist} = \%tar_noderef;
+  }
+  $tar_node_ref->{nodes}{$inode} = 1;
 }
 
 
@@ -6306,6 +6457,9 @@ sub gettime
 #          : Update default VTBL test to 64/second
 #          : correct 1109W logic - when no remote TEMSes are present
 # 1.71000  : Put Sampload at start
+#          : Add duplicate historical data collection report/advisory
+#          : Add advisory on KBB_RAS1 trailing single quote
+#          : clarify some Agent APAR danger report titles
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -7560,7 +7714,7 @@ and
 In the future, only configure that agent to the hub TEMS.
 --------------------------------------------------------------
 
-DATAHEALTH1078E
+DATAHEALTH1078W
 Text:  WPA connected to $thrunode1 which is not the hub TEMS
 
 Check: Check managed systems for WPA connected to remote TEMS
@@ -7570,6 +7724,10 @@ to the hub TEMS. If there is to be a WPA installed on each
 remote TEMS [definitely best practice] each WPA must connect
 to the hub TEMS and use an environment variable to specify
 which remote TEMS it is responsible for.
+
+While this is the normal condition, a number of user have
+configured a TEMS specific WPA to connect to that TEMS only
+and it usually works well.
 
 Recovery plan: Configure each WPA to connect and register with
 the hub TEMS and use the KHD_WAREHOUSE_TEMS_LIST environment
@@ -8121,6 +8279,17 @@ Recovery plan: Reconfigure the agents so agent hostname match
 the OS Agent hostname.
 --------------------------------------------------------------
 
+DATAHEALTH1111W
+Text:  Historical UADVISORs [count] duplicate collections on table $f
+
+Check: TSITDESC/TNODELST/TOBJACCL check
+
+Meaning: See DATAREPORT022 explanation.
+
+Recovery plan: Change historical data collection to avoid duplicate
+historical data collection.
+--------------------------------------------------------------
+
 DATAREPORT001
 Text: Summary of TEMS/TEPS/FTO etc
 
@@ -8276,7 +8445,7 @@ Recovery plan: Use MSLs to distribute situations.
 --------------------------------------------------------------
 
 DATAREPORT011
-Text: TEMA Agent(s) in APAR IZ76410 danger
+Text: TEMA Agent(s) at APAR IZ76410 risk [could be connected to two TEMS at same time
 
 Sample Report
 Agent,Hostaddr,TEMAver,
@@ -8295,7 +8464,7 @@ Alternatively only configure agent to a single remote TEMS.
 --------------------------------------------------------------
 
 DATAREPORT012
-Text: TEMA Agent(s) in APAR IV18016 danger
+Text: TEMA Agent(s) in APAR IV18016 danger zone [Agent high CPU with embedded situations]
 
 Sample Report
 Agent,Hostaddr,TEMAver,
@@ -8311,7 +8480,7 @@ Recovery plan:   Upgrade OS Agent to levels past the danger zone.
 --------------------------------------------------------------
 
 DATAREPORT013
-Text: TEMA Agent(s) in APAR IV30473 danger
+Text: TEMA Agent(s) in APAR IV30473 danger zone [KDEB_INTERFACELIST conflicts]
 
 Sample Report
 Agent,Hostaddr,TEMAver,
@@ -8400,10 +8569,6 @@ agents to represent the same hostname. This is mainly to
 avoid confusion but sometimes results in duplicate agent
 name cases.
 --------------------------------------------------------------
-
-$rptkey = "DATAREPORT016";$advrptx{$rptkey} = 1;         # record report key
-$cnt++;$oline[$cnt]="\n";
-$cnt++;$oline[$cnt]="$rptkey: TEMS Offline Reports\n";
 
 DATAREPORT016
 Text: TEMS Offline Reports
@@ -8514,4 +8679,29 @@ report shows which agents are unable to use remote deploy functions.
 
 Recovery: Reconfigure the agents so the hostname matches the
 OS Agent hostname.
+--------------------------------------------------------------
+
+DATAREPORT022
+Text: Agents experiencing duplicate historical data collection
+
+Sample Report
+DATAREPORT022: Agents experiencing duplicate historical data collection
+Node,Type/Target/Situation/Table,
+bl58lp3:LZ,MSL|*LINUX_SYSTEM|Linux_test_disk1|KLZ.KLZDISK,
+bl58lp3:LZ,TEMS|REM_NMP183|Linux_test_disk|KLZ.KLZDISK,
+nmp180:LZ,MSL|*LINUX_SYSTEM|Linux_test_disk1|KLZ.KLZDISK,
+nmp180:LZ,TEMS|HUB_NMP180|Linux_test_disk|KLZ.KLZDISK,
+
+Meaning: If agents appear in multiple definitions for
+historical data collection, data will be collected multiple
+times which at best leads to confusion.
+
+The duplication can occur at
+
+NODE - distributed directly to node
+MSL - distributed via MSL to this node
+TEMS - Distributed via TEMS distribution to this node
+
+Recovery: Change historial data collection so agents are
+do not have duplicate historical data collection.
 --------------------------------------------------------------
