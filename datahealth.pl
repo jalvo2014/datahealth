@@ -42,13 +42,16 @@
 # AIX: Host name : catrhom011itdxa-nim Installer Lvl:06.30.07.06
 # Linux: Host name : hlxd00tm03_bak   Installer Lvl:06.30.07.06
 
+# SP2 signam in cinfo.info
+# Windows: Host Name  : ITM1101                                   Installer : Ver: 063007070
+
 #use warnings::unused; # debug used to check for unused variables
 use strict;
 use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.71000";
+my $gVersion = "1.72000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -484,6 +487,7 @@ my %knownpc = (
                  "GR" => "Graphics and Sound Library for TEP",
                  "GS" => "IBM GSKit Security Interface",
                  "GW" => "OMEGAMON XE for CICS TG on z/OS",
+                 "H8" => "Monitoring Agent for Hadoop",
                  "HC" => "HMC Alert Adapter",
                  "HD" => "Warehouse Proxy",
                  "HI" => "HP OpenView IT/Operations Alert Adapter",
@@ -1168,7 +1172,94 @@ open FH, ">>$opt_log" or die "can't open $opt_log: $!";
 
 logit(0,"SITAUDIT000I - ITM_Situation_Audit $gVersion $args_start");
 
-# process three different sources of situation data
+my $cinfopath;
+my $cinfofn;
+my $gotcin = 0;
+$cinfopath = $opt_workpath;
+if ( -e $cinfopath . "cinfo.info") {
+   $gotcin = 1;
+   $cinfopath = $opt_workpath;
+} elsif ( -e $cinfopath . "../cinfo.info") {
+   $gotcin = 1;
+   $cinfopath = $opt_workpath . "../";
+} elsif ( -e $cinfopath . "../../cinfo.info") {
+   $gotcin = 1;
+   $cinfopath = $opt_workpath . "../../";
+}
+$cinfopath = '"' . $cinfopath . '"';
+
+my $pwd = "";
+my $splevel = "";
+my $cinfo_host = "";
+my $cinfo_level = "";
+my %sphash = ('063007060' => 'SP1',
+              '063007070' => 'SP2',
+              '06.30.07.06' => 'SP1',
+              '06.30.07.07' => 'SP2',
+             );
+
+if ($gotcin == 1) {
+   if ($gWin == 1) {
+      $pwd = `cd`;
+      chomp($pwd);
+      $cinfopath = `cd $cinfopath & cd`;
+   } else {
+      $pwd = `pwd`;
+      chomp($pwd);
+      $cinfopath = `(cd $cinfopath && pwd)`;
+   }
+
+   chomp $cinfopath;
+
+   $cinfofn = $cinfopath . "/cinfo.info";
+   $cinfofn =~ s/\\/\//g;    # switch to forward slashes, less confusing when programming both environments
+
+   chomp($cinfofn);
+   chdir $pwd;
+
+   my $active_line = "";
+
+   #   open( FILE, "< $opt_ini" ) or die "Cannot open ini file $opt_ini : $!";
+   if (defined $cinfofn) {
+      open CINFO,"< $cinfofn" or warn " open cinfo.info file $cinfofn -  $!";
+      my @nts = <CINFO>;
+      close CINFO;
+
+      # sample cinfo.info outputs
+      # SP1 signal in cinfo.info
+      # Windows: Host Name  : USMDCEDAP6024         Installer : Ver: 063007060
+      # AIX: Host name : catrhom011itdxa-nim Installer Lvl:06.30.07.06
+      # Linux: Host name : hlxd00tm03_bak   Installer Lvl:06.30.07.06
+
+      # SP2 signam in cinfo.info
+      # Windows: Host Name  : ITM1101                                   Installer : Ver: 063007070
+      # sample netstat outputs
+
+      my $l = 0;
+      foreach my $oneline (@nts) {
+         $l++;
+         chomp($oneline);
+         next if $l < 3;
+         if ($gWin == 1) {
+            $oneline =~ /Host Name  : (\S+)/;
+            $cinfo_host = $1;
+            $oneline =~ /Ver: (\d+)/;
+            $cinfo_level = $1;
+         } else {
+            $oneline =~ /Host name  : (\S+)/;
+            $cinfo_host = $1;
+            $oneline =~ /Lvl: (\d+)/;
+            $cinfo_level = $1;
+         }
+         $splevel = $sphash{$cinfo_level} if defined $sphash{$cinfo_level};
+         last;
+      }
+   }
+}
+
+
+
+# process two different sources of TEMS database tables
 
 if ($opt_txt == 1) {                    # text files
    $rc = init_txt();
@@ -1967,6 +2058,7 @@ my  $ms_offline_kds_hour = 0;
 my  $ms_offline_sitmon_hour = 0;
 my  $kds_per_sec = 0;
 my  $sitmon_per_sec = 0;
+my  $ms_offline_count = 0;
 
 for ($i=0;$i<=$siti;$i++) {
    valid_lstdate("TSITDESC",$sit_lstdate[$i],$sit[$i],"SITNAME=$sit[$i]");
@@ -1990,6 +2082,7 @@ for ($i=0;$i<=$siti;$i++) {
       if($sit[$i] ne "TEMS_Busy") {
          if ($sit_autostart[$i] eq "*YES") {
             if ($sit_reeval[$i] > 0 ) {
+               $ms_offline_count += 1;
                $ms_offline_kds_hour += 3600/$sit_reeval[$i];
                $ms_offline_sitmon_hour += 3600/$sit_reeval[$i] if $sit_persist[$i] > 1;
             } else {
@@ -2026,14 +2119,14 @@ if ($ms_offline_sitmon_hour > 0) {
 if ($kds_per_sec > 30) {
     my $prate = sprintf("%.2f",$kds_per_sec);
    if ($kds_per_sec > 200) {
-      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $prate agents/sec dangerously high";
+      $advi++;$advonline[$advi] = "MS_Offline[$ms_offline_count] dataserver evaluation rate $prate agents/sec dangerously high";
       $advcode[$advi] = "DATAHEALTH1087E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
-      my $crit_line = "7,MS_Offline dataserver evaluation rate $prate agents/sec dangerously high. See DATAREPORT017  ";
+      my $crit_line = "7,MS_Offline[$ms_offline_count] dataserver evaluation rate $prate agents/sec dangerously high. See DATAREPORT017  ";
       push @crits,$crit_line;
    } else {
-      $advi++;$advonline[$advi] = "MS_Offline dataserver evaluation rate $prate agents/sec somewhat high";
+      $advi++;$advonline[$advi] = "MS_Offline[$ms_offline_count] dataserver evaluation rate $prate agents/sec somewhat high";
       $advcode[$advi] = "DATAHEALTH1086W";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
@@ -2043,14 +2136,14 @@ if ($kds_per_sec > 30) {
 if ($sitmon_per_sec > 30) {
     my $prate = sprintf("%.2f",$sitmon_per_sec);
    if ($sitmon_per_sec > 100) {
-      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $prate agents/sec dangerously high";
+      $advi++;$advonline[$advi] = "MS_Offline[$ms_offline_count] SITMON evaluation rate $prate agents/sec dangerously high";
       $advcode[$advi] = "DATAHEALTH1089E";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
-      my $crit_line = "7,MS_Offline SITMON evaluation rate $prate agents/sec dangerously high. See DATAREPORT017  ";
+      my $crit_line = "7,MS_Offline[$ms_offline_count] SITMON evaluation rate $prate agents/sec dangerously high. See DATAREPORT017  ";
       push @crits,$crit_line;
    } else {
-      $advi++;$advonline[$advi] = "MS_Offline SITMON evaluation rate $prate agents/sec somewhat high";
+      $advi++;$advonline[$advi] = "MS_Offline[$ms_offline_count] SITMON evaluation rate $prate agents/sec somewhat high";
       $advcode[$advi] = "DATAHEALTH1088W";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
@@ -2625,7 +2718,7 @@ if ($hub_tems_no_tnodesav == 0) {
 
 
    $rptkey = "DATAREPORT001";$advrptx{$rptkey} = 1;         # record report key
-   $scnt++;$sline[$scnt]="$rptkey: Hub,$hub_tems,$hub_tems_ct\n";
+   $scnt++;$sline[$scnt]="$rptkey: Hub,$hub_tems,$hub_tems_ct,$splevel,\n";
    for (my $i=0;$i<=$temsi;$i++) {
       if ($tems_ct[$i] > $remote_limit){
          $advi++;$advonline[$advi] = "TEMS has $tems_ct[$i] managed systems which exceeds limits $remote_limit";
@@ -3628,12 +3721,14 @@ for (my $t=0;$t<=$temsi;$t++) {
 }
 
 my $uadv_ct = 0;
+my %tnodex;
+my $tarkey;
 foreach my $f (keys %uadvx) {
    my $uadv_ref = $uadvx{$f};
    my $tab_ct = scalar keys %{$uadv_ref->{sits}};
    next if $tab_ct == 1;
-   my %tnodex;
-   my $tarkey;
+   %tnodex = ();
+   $uadv_ct = 0;
    foreach my $g (keys %{$uadv_ref->{sits}}) {     # $g is the situation
       my $sit_tar_ref = $sit_tarx{$g};
       my $ipsit = $g;
@@ -3687,7 +3782,7 @@ foreach my $f (keys %uadvx) {
          } else { # $h is a msl
             foreach my $i (keys %{$tar_node_ref->{nodes}}) {  # $i are the end nodes
                my $tnode_ref = $tnodex{$i};
-               $tarkey = "MSL" . "|". $h . "|" . $ipsit . "|" . $f;
+               $tarkey = "MSL" . "|". $i . "|" . $ipsit . "|" . $f;
                if (!defined $tnode_ref){
                   my %tnoderef = (
                                     count => 0,
@@ -6460,6 +6555,8 @@ sub gettime
 #          : Add duplicate historical data collection report/advisory
 #          : Add advisory on KBB_RAS1 trailing single quote
 #          : clarify some Agent APAR danger report titles
+# 1.72000  : Add number of MS_Offline situations to 4 advisories
+#          : Add Service Pack Level for hub TEMS
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -7852,7 +7949,7 @@ The agent is stopped, the situation persistence file is deleted and the agent is
 --------------------------------------------------------------
 
 DATAHEALTH1086W
-Text:  MS_Offline dataserver evaluation rate count per second somewhat high
+Text:  MS_Offline[count] dataserver evaluation rate count per second somewhat high
 
 Check: TSITDESC and TNODESAV
 
@@ -7860,12 +7957,14 @@ Meaning: There are more than 30 INODESTS evaluations per second
 in the TEMS dataserver. This is associated with MS_Offline type
 situations.
 
+count is the number of MS_Offline type situations.
+
 Recovery plan:  Run fewer MS_Offline type situations to avoid
 performance problems.
 --------------------------------------------------------------
 
 DATAHEALTH1087E
-Text:  MS_Offline dataserver evaluation rate count per second dangerously high
+Text:  MS_Offline[count] dataserver evaluation rate count per second dangerously high
 
 Check: TSITDESC and TNODESAV
 
@@ -7873,12 +7972,14 @@ Meaning: There are more than 200 INODESTS evaluations per second
 in the TEMS dataserver. This is associated with MS_Offline type
 situations. This can destablize hub TEMS operations.
 
+count is the number of MS_Offline type situations.
+
 Recovery plan:  Run fewer MS_Offline type situations to avoid
 problems.
 --------------------------------------------------------------
 
 DATAHEALTH1088W
-Text:  MS_Offline SITMON evaluation rate count per second somewhat high
+Text:  MS_Offline[count] SITMON evaluation rate count per second somewhat high
 
 Check: TSITDESC and TNODESAV
 
@@ -7886,19 +7987,23 @@ Meaning: There are more than 30 SITMODE evaluations per second
 in the TEMS dataserver. This is associated with MS_Offline type
 situations using Persist>1.
 
+count is the number of MS_Offline type situations.
+
 Recovery plan:  Avoid using MS_Offline type situations with
 Persist, which can cause severe performance problems.
 performance problems.
 --------------------------------------------------------------
 
 DATAHEALTH1089E
-Text:  MS_Offline SITMON evaluation rate count per second dangerously high
+Text:  MS_Offline[count] SITMON evaluation rate count per second dangerously high
 
 Check: TSITDESC and TNODESAV
 
 Meaning: There are more than 200 SITMODE evaluations per second
 in the TEMS dataserver. This is associated with MS_Offline type
 situations using Persist>1.
+
+count is the number of MS_Offline type situations.
 
 Recovery plan:  Avoid using MS_Offline type situations with
 Persist, which can cause severe performance problems.
@@ -8701,6 +8806,14 @@ The duplication can occur at
 NODE - distributed directly to node
 MSL - distributed via MSL to this node
 TEMS - Distributed via TEMS distribution to this node
+
+For TEMS distribution, you will see a large number of
+duplicate cases. In this case the request to collect
+historical data is broadcast to all connected agents,
+and agents that don't collect that information silently
+ignore the instruction. So, you get a large number of
+duplications but actually only a few collect duplicate
+historical data.
 
 Recovery: Change historial data collection so agents are
 do not have duplicate historical data collection.
