@@ -51,7 +51,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.72000";
+my $gVersion = "1.73000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -222,6 +222,7 @@ my %sysnamex = ();
 
 # TOBJACCL data
 my %tobjaccl = ();
+my %tgroupi = ();
 my $obji = -1;
 my @obj = ();
 my %objx = ();
@@ -398,6 +399,7 @@ my %advcx = (
               "DATAHEALTH1109W" => "90",
               "DATAHEALTH1110W" => "95",
               "DATAHEALTH1111W" => "95",
+              "DATAHEALTH1112W" => "25",
             );
 
 
@@ -845,6 +847,8 @@ $hnodelist{'KSNMP-MANAGER00'} ='*CUSTOM_SNMP-MANAGER00';
 # apars: array of TEMA APAR fixes included
 
 my %mhash= (
+            '06.30.07.07' => {date=>'10/15/2019',days=>43751,apars=>['IJ02614','IJ16462','IJ16759','IV77394',],},
+            '06.30.07.06' => {date=>'05/23/2019',days=>43606,apars=>['IJ00337','IJ01062','IJ02662','IJ04231','IJ07905','IJ08972','IJ11029','IJ12656','IV84599','IV93367','IV95269','IV97602'],},
             '06.30.07' => {date=>'01/07/2017',days=>42742,apars=>['IV78703','IV81217'],},
             '06.30.06' => {date=>'12/10/2016',days=>42346,apars=>['IV66841','IV69144','IV70115','IV73766','IV76109','IV79364'],},
             '06.30.05' => {date=>'06/30/2015',days=>42183,apars=>['IV64897','IV65775','IV67576','IV69027'],},
@@ -1142,6 +1146,10 @@ my $opt_mndx;                   # when 1 create a index for missing TNODELST NOD
 my $opt_mndx_fn;                # when opt_mndx - this is filename
 my $opt_miss;                   # when 1 create a missing.sql file
 my $opt_miss_fn;                # missing file SQL name
+my $opt_delu;                   # when 1 create a delete unused file
+my $opt_delu_cmd;               # delete unused file SQL name - Windows style
+my $opt_delu_sh;                # delete unused file SQL name - Unix/Linux style
+my $opt_delu_csv;               # delete unused file SQL name - Unix/Linux style
 my $opt_nodist;                 # TGROUP names which are planned as non-distributed
 my $opt_fto = "";               # HUB or MIRROR
 my $opt_crit = "";
@@ -1239,19 +1247,22 @@ if ($gotcin == 1) {
       foreach my $oneline (@nts) {
          $l++;
          chomp($oneline);
-         next if $l < 3;
          if ($gWin == 1) {
             $oneline =~ /Host Name  : (\S+)/;
             $cinfo_host = $1;
             $oneline =~ /Ver: (\d+)/;
             $cinfo_level = $1;
+            next if !defined $cinfo_level;
          } else {
             $oneline =~ /Host name  : (\S+)/;
             $cinfo_host = $1;
             $oneline =~ /Lvl: (\d+)/;
             $cinfo_level = $1;
+            next if !defined $cinfo_level;
          }
-         $splevel = $sphash{$cinfo_level} if defined $sphash{$cinfo_level};
+         if (defined $cinfo_level) {
+            $splevel = $sphash{$cinfo_level} if defined $sphash{$cinfo_level};
+         }
          last;
       }
    }
@@ -1282,6 +1293,12 @@ if ($opt_miss == 1) {
    open MIS, ">$opt_miss_fn" or die "can't open $opt_miss_fn: $!";
 }
 
+if ($opt_delu == 1) {
+   open DELSH, ">$opt_delu_sh" or die "can't open $opt_delu_sh: $!";
+   binmode(DELSH);
+   open DELCMD, ">$opt_delu_cmd" or die "can't open $opt_delu_cmd: $!";
+   open DELCSV, ">$opt_delu_csv" or die "can't open $opt_delu_csv: $!";
+}
 
 
 if ($hub_tems_no_tnodesav == 1) {
@@ -2692,6 +2709,31 @@ for (my $s=0;$s<=$siti;$s++) {
    }
 }
 
+# Third trip seeing if situations are distributed
+for (my $s=0;$s<=$siti;$s++) {
+   my $sitone = $sit[$s];                    # situation being looked at
+   next if defined $tobjaccl{$sitone};
+   next if defined $tgroupi{$sitone};
+   next if substr($sitone,0,8) eq "UADVISOR";
+   $advi++;$advonline[$advi] = "Situation not distributed by MSN/MSL/SitGroup";
+   $advcode[$advi] = "DATAHEALTH1112W";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = $sitone;
+   if ($opt_delu == 1) {
+      my $outsh  = "./tacmd deleteSit -s " . $sitone;
+      my $outcmd = "tacmd deleteSit -s " . $sitone;
+      my $outcsv = $sitone . "," . $sit_autostart[$s] . ",";
+      print DELSH  "$outsh\n";
+      print DELCMD "$outcmd\n";
+      print DELCSV "$outcsv\n";
+   }
+}
+
+if ($opt_delu == 1) {
+   close(DELSH);
+   close(DELCMD);
+   close(DELCSV);
+}
 
 
    my $remote_limit = 1500;
@@ -4230,6 +4272,8 @@ sub new_tgroupi {
          $advcode[$advi] = "DATAHEALTH1033E";
          $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $iobjname;
+      } else {
+         $tgroupi{$sit1} = 1;      # remember sit is indirectly distributed.
       }
    } else {
        die "Unknown TGROUPI objclass $groupi_detail_ref->{objclass} working on $igrpclass $iid $iobjclass $iobjname";
@@ -6111,6 +6155,9 @@ sub init {
       } elsif ( $ARGV[0] eq "-miss") {
          shift(@ARGV);
          $opt_miss = 1;
+      } elsif ( $ARGV[0] eq "-delu") {
+         shift(@ARGV);
+         $opt_delu = 1;
       } elsif ( $ARGV[0] eq "-nodist") {
          shift(@ARGV);
          $opt_nodist = shift(@ARGV);
@@ -6259,6 +6306,9 @@ sub init {
    $opt_vndx_fn = $opt_workpath . "QA1DNSAV.DB.VNDX";
    $opt_mndx_fn = $opt_workpath . "QA1DNSAV.DB.MNDX";
    $opt_miss_fn = $opt_workpath . "MISSING.SQL";
+   $opt_delu_cmd = $opt_workpath . "DELETESIT.CMD";
+   $opt_delu_sh  = $opt_workpath . "DELETESIT.sh";
+   $opt_delu_csv  = $opt_workpath . "DELETE.CSV";
 
 my ($isec,$imin,$ihour,$imday,$imon,$iyear,$iwday,$iyday,$iisdst) = localtime(time()+86400);
    $tlstdate = "1";
@@ -6557,6 +6607,9 @@ sub gettime
 #          : clarify some Agent APAR danger report titles
 # 1.72000  : Add number of MS_Offline situations to 4 advisories
 #          : Add Service Pack Level for hub TEMS
+# 1.73000  : Correct Service Pack Level logic
+#          : Advisory on non-distributed situations
+#          : Add -delu option to create report/cmd/sh files to delete un-distributed situations
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -8393,6 +8446,17 @@ Meaning: See DATAREPORT022 explanation.
 
 Recovery plan: Change historical data collection to avoid duplicate
 historical data collection.
+--------------------------------------------------------------
+
+DATAHEALTH1112W
+Text:  Situation not distributed by MSN/MSL/SitGroup
+
+Check: TSITDESC/TNODELST/TOBJACCL/TGROUP/TGROUPI
+
+Meaning: Situations that are AUTOSTART=*YES but have no distribution cause
+excess work at the hub and remote TEMSes and should be avoided.
+
+Recovery plan: Delete situations which are not distributed.
 --------------------------------------------------------------
 
 DATAREPORT001
