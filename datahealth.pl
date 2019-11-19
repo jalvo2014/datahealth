@@ -6178,7 +6178,8 @@ sub init {
    if ($opt_h) {&GiveHelp;}  # GiveHelp and exit program
    if (!defined $opt_debuglevel) {$opt_debuglevel=90;}         # debug logging level - low number means fewer messages
    if (!defined $opt_debug) {$opt_debug=0;}                    # debug - turn on rare error cases
-   if (!defined $opt_nodist) {$opt_nodist="";}                  # don't skip objects
+   if (!defined $opt_nodist) {$opt_nodist="";}                 # don't skip objects
+   if (!defined $opt_delu) {$opt_delu = 0;}                    # don't skip objects
 
    if ($opt_crit ne "") {
       if ($gWin == 1) {
