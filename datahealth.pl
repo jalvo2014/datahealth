@@ -51,7 +51,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.73000";
+my $gVersion = "1.74000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -157,6 +157,7 @@ my @nlistv_thrunode = ();               # agent thrunode
 my @nlistv_tems = ();                   # TEMS if thrunode is agent
 my @nlistv_ct = ();                     # count of agents
 my @nlistv_lstdate = ();                # last update date
+my @nlistv_sitx = ();                   # Situations running on Agent
 
 # TNODELST type M record data           Managed Systemlists
 my $mlx;
@@ -400,6 +401,8 @@ my %advcx = (
               "DATAHEALTH1110W" => "95",
               "DATAHEALTH1111W" => "95",
               "DATAHEALTH1112W" => "25",
+              "DATAHEALTH1113W" => "75",
+              "DATAHEALTH1114E" => "100",
             );
 
 
@@ -422,8 +425,10 @@ my %knownpc = (
                  "5E" => "Monitoring Agent for Windows SAN Multipath",
                  "A2" => "AF/Remote Alert Adapter",
                  "A4" => "Monitoring Agent for i5/OS",
+                 "AD" => "Active Directory",
                  "AH" => "System Automation for z/OS",
                  "AM" => "IBM Tivoli Alert Adapter for OMEGACENTER Gateway",
+                 "AS" => "Tivoli Enterprise Monitoring Automation Server",
                  "AU" => "CA-Unicenter Alert Emitter",
                  "AX" => "IBM Tivoli Monitoring Shared Libraries",
                  "B2" => "Monitoring Agent for Symantec Endpoint Protection",
@@ -433,6 +438,7 @@ my %knownpc = (
                  "BN" => "ITCAM Agent for WebSphere DataPower Appliance",
                  "BR" => "CASP Exchange Connector Monitoring Agent",
                  "BS" => "Basic Services",
+                 "C2" => "OMEGAMON II for CICS",
                  "C3" => "IBM Tivoli Monitoring for CICS",
                  "C5" => "IBM Tivoli OMEGAMON XE for CICS on z/OS",
                  "CA" => "Agent Management Services Watchdog",
@@ -515,6 +521,8 @@ my %knownpc = (
                  "JR" => "Tivoli Enterprise-supplied JRE",
                  "JS" => "Monitoring Agent for mySAP JMX",
                  "JU" => "Monitoring Agent for JMX JSR-77",
+                 "K3" => "ITCAM TXN MB DC",
+                 "K4" => ".NET Data Collector",
                  "KA" => "Monitoring Agent for Tivoli Enterprise Console",
                  "KF" => "IBM Eclipse Help Server",
                  "KJ" => "SCM Mongo Database",
@@ -598,11 +606,14 @@ my %knownpc = (
                  "QU" => "IBM Tivoli OMEGAMON XE for Microsoft .NET: UDDI Services",
                  "QV" => "Monitoring Agent for VMware ESX",
                  "QX" => "Monitoring Agent for Citrix Access Suite",
+                 "R0" => "Agentless Monitoring for Dell OpenManage Hardware",
                  "R2" => "Agentless Monitoring for Windows Operating Systems",
                  "R3" => "Agentless Monitoring for AIX Operating Systems",
                  "R4" => "Agentless Monitoring for Linux Operating Systems",
                  "R5" => "Agentless Monitoring for HP-UX Operating Systems",
                  "R6" => "Agentless Monitoring for Solaris Operating Systems",
+                 "R7" => "Agentless Monitoring for HP InsightManager Hardware",
+                 "R8" => "Agentless Monitoring for Sun Management Center Hardware",
                  "R9" => "Business System Manager Common Agent",
                  "RA" => "distributed agent remote manager",
                  "RC" => "IBM Tivoli Monitoring for Rational Applications",
@@ -621,6 +632,7 @@ my %knownpc = (
                  "SB" => "shared probes",
                  "SD" => "Status Data Manager",
                  "SE" => "Monitoring Agent for MySQL",
+                 "SG" => "Monitoring agent for OpenStack",
                  "SH" => "Tivoli Enterprise Monitoring SOAP Server",
                  "SJ" => "Best Practices for WebSphere",
                  "SK" => "Reporting Agent for Tivoli Storage Manager",
@@ -662,6 +674,7 @@ my %knownpc = (
                  "V5" => "Citrix XenDesktop Agent",
                  "V6" => "Cisco (UCS) Agent",
                  "VA" => "Premium Monitoring Agent for VIOS",
+                 "VD" => "Citrix Virtual Desktop Infrastructure",
                  "VI" => "HP OpenView Alert Emitter",
                  "VL" => "OMEGAMON XE on z/VM and Linux",
                  "VM" => "IBM Tivoli Monitoring for Virtual Servers",
@@ -681,6 +694,7 @@ my %knownpc = (
                  "XF" => "Ping Probe",
                  "XH" => "PHP",
                  "XI" => "Monitoring Agent for Citrix XenServer",
+                 "XY" => "Editor for Messages",
                  "YB" => "IBM Tivoli Information Management for z/OS",
                  "YJ" => "Monitoring Agent for J2EE",
                  "YN" => "ITCAM for Web Resources",
@@ -991,11 +1005,16 @@ my @sit_history_interval = ();             # If History collection file, how oft
 my @sit_history_export   = ();             # If History collection file, how many collections before export
 my $sit_distribution = 0;                  # when 1, distributions are present
 my @sit_lstdate = ();
+my @sit_correlate = ();
 
 my $sit_autostart_total = 0;
 my $sit_tems_alert = 0;
 my $sit_tems_alert_run = 0;
 my $sit_tems_alert_dist = 0;
+
+my $sit_correlated = 0;
+my $sit_correlated_ct = 0;
+my $sit_correlated_hour =0;
 
 my $nax;
 my $nami = -1;                             # count of fullname indexes
@@ -2112,6 +2131,14 @@ for ($i=0;$i<=$siti;$i++) {
       }
    }
    $sit_autostart_total += 1 if $sit_autostart[$i] eq "*YES";
+   # *IF *VALUE *HSITNAME *EQ OSR_ITMRTEMS_PROCESS_AIX_INFO *AND *VALUE *HNODE *EQ itmrtems01:PX *AND *VALUE *HDELTASTAT *EQ Y *AND *VALUE *HSITNAME *EQ OSR_ITMRTEMS_PROCESS_AIX_INFO *AND *VALUE *HNODE *EQ itmrtems02:PX *AND *VALUE *HDELTASTAT *EQ Y
+   if (index($sit_pdt[$i],"*HSITNAME") != -1) {
+      my $tcount = () = $sit_pdt[$i] =~ /\bHSITNAME\b/gi; # count number of works with HSITNAME [* is word boundary]
+      $sit_correlated += 1;
+      $sit_correlated_ct += $tcount;
+      $sit_correlated_hour += (3600/$sit_reeval[$i])*$tcount;
+      $sit_correlate[$i] = 1;
+   }
 }
 if ($nsave_online > 0){
    my $sit_ratio_percent = int(($sit_autostart_total*100)/$nsave_online);
@@ -2551,6 +2578,7 @@ for ($i=0;$i<=$obji;$i++) {
    $sx = $sitx{$sitone};
    $gx = $grpx{$sitone};
    $nlx = $nlistx{$node1};
+   $vlx = $nlistvx{$node1};
    # For each agent in found, determine thrunode/TEMS. Add to thrunode count, sampled count, pure count, sampled impact
    # handle subnode agents via the managing agent
    my $thru = "";
@@ -2562,7 +2590,6 @@ for ($i=0;$i<=$obji;$i++) {
             if (defined $mx) {
                $thru = $magent_tems[$mx];
             } else {
-               $vlx = $nlistvx{$f};
                if (defined $vlx) {
                   $thru = $nlistv_tems[$vlx];
                }
@@ -2582,6 +2609,11 @@ for ($i=0;$i<=$obji;$i++) {
                         $tems_sampload_dedup[$tx] += (3600)/$sit_reeval[$sx] if $sit_pdtseq[$sx] == 1;
                      }
                   }
+               }
+            }
+            if (defined $vlx) {
+               if (defined $sx) {
+                  $nlistv_sitx[$vlx]{$sit[$sx]} = 1;
                }
             }
          }
@@ -2728,6 +2760,32 @@ for (my $s=0;$s<=$siti;$s++) {
       print DELCSV "$outcsv\n";
    }
 }
+
+if ($sit_correlated > 0) {
+   $rptkey = "DATAREPORT023";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: Correlated Situation Report\n";
+   $cnt++;$oline[$cnt]="Situation,\n";
+   for (my $s=0;$s<=$siti;$s++) {
+      next if $sit_correlate[$s] == 0;
+      $outline = $sit_psit[$s] . ",";
+      $cnt++;$oline[$cnt]="$outline\n";
+   }
+   if ($sit_correlated_hour > 12) {
+      $advi++;$advonline[$advi] = "Correlated Situations [$sit_correlated] at $sit_correlated_hour per hour - see $rptkey";
+      $advcode[$advi] = "DATAHEALTH1114E";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "TEMS";
+      my $crit_line = "1,Correlated Situations [$sit_correlated] at $sit_correlated_hour per hour - see $rptkey'";
+      push @crits,$crit_line;
+   } else {
+      $advi++;$advonline[$advi] = "Correlated Situations [$sit_correlated] at $sit_correlated_hour per hour - see $rptkey";
+      $advcode[$advi] = "DATAHEALTH1113W";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "TEMS";
+   }
+}
+
 
 if ($opt_delu == 1) {
    close(DELSH);
@@ -3530,7 +3588,7 @@ foreach my $f (sort {$a cmp $b} keys %ipx) {
             $nhostname = $wnodes[0];
          } elsif ($ncolons == 2) {
             $nhostname = $wnodes[1];
-         } elsif ($ncolons == 3) {
+         } elsif ($ncolons >= 3) {
             $nhostname = $wnodes[2];
          }
          next if $nhostname eq $ihostname;
@@ -4391,6 +4449,7 @@ sub new_tsitdesc {
       $pdt_ref->{count} += 1;
       $pdt_ref->{sits}{$isitname} = 1;
       $sit_pdtseq[$siti] = $pdt_ref->{count};
+      $sit_correlate[$siti] = 0;
    }
   $sit_ct[$sx] += 1;
 }
@@ -4746,6 +4805,7 @@ sub new_tnodelstv {
       $nlistv_tems[$vlx] = "";
       $nlistv_ct[$vlx] = 0;
       $nlistv_lstdate[$vlx] = $ilstdate;
+      $nlistv_sitx[$vlx] = {};
    }
 
    # The $inode is the thrunode, capture that data.
@@ -6611,6 +6671,8 @@ sub gettime
 # 1.73000  : Correct Service Pack Level logic
 #          : Advisory on non-distributed situations
 #          : Add -delu option to create report/cmd/sh files to delete un-distributed situations
+# 1.74000  : Add advistory and report for correlated situations
+#            Correct hostname from agentname logic when more than 3 colons
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -8460,6 +8522,30 @@ excess work at the hub and remote TEMSes and should be avoided.
 Recovery plan: Delete situations which are not distributed.
 --------------------------------------------------------------
 
+DATAHEALTH1113W
+Text:  Correlated Situations [count] at count per hour
+
+Check: TSITDESC
+
+Meaning: Correlated situation can be very resource intensive
+At this warning level the extra work happens at 12 an hour or
+under and is unlikely to cause serious problems.
+
+Recovery plan: Avoid correlated situations
+--------------------------------------------------------------
+
+DATAHEALTH1114E
+Text:  Correlated Situations [count] at count per hour
+
+Check: TSITDESC
+
+Meaning: Correlated situation can be very resource intensive
+At this warning level the extra work happens at over 12 per hour
+and is very likely to cause serious problems.
+
+Recovery plan: Avoid correlated situations
+--------------------------------------------------------------
+
 DATAREPORT001
 Text: Summary of TEMS/TEPS/FTO etc
 
@@ -8882,4 +8968,16 @@ historical data.
 
 Recovery: Change historial data collection so agents are
 do not have duplicate historical data collection.
+--------------------------------------------------------------
+
+DATAREPORT023
+Text: Correlated Situation Report
+
+Sample Report
+DATAREPORT023: Correlated Situation Report
+Situation,
+
+Meaning: See Advisories DATAHEALTH1113W and DATAHEALTH1114E.
+
+Recovery: Avoid Correlated Situations.
 --------------------------------------------------------------
