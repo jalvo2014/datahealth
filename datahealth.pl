@@ -51,7 +51,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.74000";
+my $gVersion = "1.75000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -116,6 +116,7 @@ sub valid_lstdate;                       # validate the LSTDATE
 sub get_epoch;                           # convert from ITM timestamp to epoch seconds
 sub sitgroup_get_sits;                   # calculate situations associated with Situation Group
 
+my %asysnamex;
 my %uadvx;
 my %sit_tarx;
 my %tar_nodex;
@@ -423,6 +424,7 @@ my %knownpc = (
                  "4S" => "Monitoring Agent for SSL Certificate Expiration Agent",
                  "5D" => "Monitoring Agent for Unix SAN Multipath",
                  "5E" => "Monitoring Agent for Windows SAN Multipath",
+                 "5I" => "Monitoring Agent for Sybase IQ DB",
                  "A2" => "AF/Remote Alert Adapter",
                  "A4" => "Monitoring Agent for i5/OS",
                  "AD" => "Active Directory",
@@ -558,6 +560,7 @@ my %knownpc = (
                  "NW" => "Novell NetWare Monitoring Agent",
                  "OB" => "OMNIMON BASE",
                  "OE" => "CCC for OS/390 Unix System Services",
+                 "OF" => "Monitoring Agent for AFOper",
                  "ON" => "OMEGAMON II for Mainframe Network",
                  "OQ" => "Monitoring Agent for Microsoft SQL Server",
                  "OR" => "Monitoring Agent for Oracle",
@@ -1154,6 +1157,8 @@ my $opt_vt;                     # verbose traffic flag
 my $opt_dpr;                    # dump data structure flag
 my $opt_o;                      # output file
 my $opt_event;                  # When 1, create event reports
+my $opt_asysname;                # When 1, create sysname.csv report
+my $opt_asysname_csv;
 my $opt_s;                      # write summary line if max impact > 0
 my $opt_workpath;               # Directory to store output files
 my $opt_nohdr = 0;              # skip header to make regression testing easier
@@ -1849,7 +1854,7 @@ for ($i=0; $i<=$tcii; $i++) {
 }
 
 for ($i=0; $i<=$nsavei; $i++) {
-   next if $nsave_sysmsl[$i] == 1;
+   next if $nsave_sysmsl[$i] > 0;
    next if $nsave_product[$i] eq "EM";
    next if $nsave_product[$i] eq "CF";      # TEMS Configuration Managed System does not have TEMA - skip most tests
    my $node1 = $nsave[$i];
@@ -2224,8 +2229,11 @@ for ($i=0;$i<=$hsavei;$i++) {
    $advsit[$advi] = $hsave[$i];
 }
 
-foreach my $f (keys %sysnamex) {
+my $ssl = 0;
+foreach my $f (sort { $b cmp $a } keys %sysnamex) {
+   $ssl += 1;
    my $sysname_ref = $sysnamex{$f};
+   next if ref($sysname_ref) ne "HASH";
    next if $sysname_ref->{ipcount} == 1;
    my $pagents = "";
    foreach my $g (sort {$a cmp $b} keys %{$sysname_ref->{sysipx}}) {
@@ -3570,6 +3578,8 @@ foreach my $f (sort {$a cmp $b} keys %ipx) {
             $ihostname = $wnodes[0];
          } elsif ($ncolons == 2) {
             $ihostname = $wnodes[1];
+         } elsif ($ncolons >= 3) {
+            $ihostname = $wnodes[2];
          }
       }
       foreach my $g (keys %{$ip_ref->{agents}}) {
@@ -3882,7 +3892,7 @@ foreach my $f (keys %uadvx) {
          } else { # $h is a msl
             foreach my $i (keys %{$tar_node_ref->{nodes}}) {  # $i are the end nodes
                my $tnode_ref = $tnodex{$i};
-               $tarkey = "MSL" . "|". $i . "|" . $ipsit . "|" . $f;
+               $tarkey = "MSL" . "|". $i . "|" . $ipsit . "|" . $f . "|" . $h;
                if (!defined $tnode_ref){
                   my %tnoderef = (
                                     count => 0,
@@ -3914,7 +3924,7 @@ foreach my $f (keys %uadvx) {
       $advsit[$advi] = "UADVISOR";
       $cnt++;$oline[$cnt]="\n";
       $cnt++;$oline[$cnt]="$rptkey: Agents [$uadv_ct] experiencing duplicate historical data collection on table $f\n";
-      $cnt++;$oline[$cnt]="Node,Type/Target/Situation/Table,\n";
+      $cnt++;$oline[$cnt]="Node,Type/Target/Situation/Table/MSL,\n";
       foreach my $t (sort {$a cmp $b} keys %tnodex) {
          my $tnode_ref = $tnodex{$t};
          next if $tnode_ref->{count} < 2;
@@ -3924,6 +3934,21 @@ foreach my $f (keys %uadvx) {
             $cnt++;$oline[$cnt]="$outline\n";
          }
       }
+   }
+}
+if ($opt_asysname == 1) {
+   my $asysname_ct = scalar keys %asysnamex;
+   if ($asysname_ct > 0) {
+      open SYSNAMECSV, ">$opt_asysname_csv" or die "can't open $opt_asysname_csv: $!";
+      foreach my $f (keys %asysnamex) {
+         my $asysname_ref = $asysnamex{$f};
+         my $outcsv = $f . ",";
+         $outcsv .= $asysname_ref->{node} . ",";
+         $outcsv .= $asysname_ref->{product} . ",";
+         $outcsv .= $asysname_ref->{hostaddr} . ",";
+         print SYSNAMECSV "$outcsv\n";
+      }
+      close(SYSNAMECSV);
    }
 }
 
@@ -4481,6 +4506,7 @@ sub new_tname {
 sub new_tnodesav {
    my ($inode,$iproduct,$iversion,$io4online,$ihostaddr,$ireserved,$ithrunode,$ihostinfo,$iaffinities) = @_;
    my $itema = "";
+   my $isysname = "";
    $nsx = $nsavex{$inode};
    if (!defined $nsx) {
       $nsavei++;
@@ -4516,6 +4542,19 @@ sub new_tnodesav {
                $advcode[$advi] = "DATAHEALTH1108W";
                $advimpact[$advi] = $advcx{$advcode[$advi]};
                $advsit[$advi] = $inode;
+            }
+         }  else {
+            if (defined $agtosx{$iproduct}) {
+               $ihostaddr =~ /\<NM\>(.*)\</;
+               if (defined $1) {
+                  my $iasysname = $1;
+                  my %anoderef = (
+                                    node => $inode,
+                                    hostaddr => $ihostaddr,
+                                    product => $iproduct,
+                                 );
+                  $asysnamex{$iasysname} = \%anoderef;
+               }
             }
          }
       }
@@ -6192,6 +6231,9 @@ sub init {
       } elsif ( $ARGV[0] eq "-event") {
          shift(@ARGV);
          $opt_event = 1;
+      } elsif ( $ARGV[0] eq "-asysname") {
+         shift(@ARGV);
+         $opt_asysname = 1;
       } elsif ( $ARGV[0] eq "-txt") {
          shift(@ARGV);
          $opt_txt = 1;
@@ -6317,6 +6359,7 @@ sub init {
    if (!defined $opt_mndx) {$opt_mndx=0;}                      # default mndx off
    if (!defined $opt_miss) {$opt_miss=0;}                      # default mndx off
    if (!defined $opt_event) {$opt_event=0;}                    # default event report off
+   if (!defined $opt_asysname) {$opt_asysname=0;}                # default sysname report off
    if (!defined $opt_hub)  {$opt_hub = "";}                    # external hub nodeid not supplied
 
    $opt_workpath =~ s/\\/\//g;                                 # convert to standard perl forward slashes
@@ -6370,6 +6413,7 @@ sub init {
    $opt_delu_cmd = $opt_workpath . "DELETESIT.CMD";
    $opt_delu_sh  = $opt_workpath . "DELETESIT.sh";
    $opt_delu_csv  = $opt_workpath . "DELETE.CSV";
+   $opt_asysname_csv  = $opt_workpath . "SYSNAME.CSV";
 
 my ($isec,$imin,$ihour,$imday,$imon,$iyear,$iwday,$iyday,$iisdst) = localtime(time()+86400);
    $tlstdate = "1";
@@ -6673,6 +6717,10 @@ sub gettime
 #          : Add -delu option to create report/cmd/sh files to delete un-distributed situations
 # 1.74000  : Add advistory and report for correlated situations
 #            Correct hostname from agentname logic when more than 3 colons
+# 1.75000  : Add two more product codes
+#            Add - asysname option to create sysname.csv report
+#            Add data to report022. the MSLs in trouble
+#            Correct logic on missing system generated MSL when > 1
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -8943,9 +8991,9 @@ Text: Agents experiencing duplicate historical data collection
 Sample Report
 DATAREPORT022: Agents experiencing duplicate historical data collection
 Node,Type/Target/Situation/Table,
-bl58lp3:LZ,MSL|*LINUX_SYSTEM|Linux_test_disk1|KLZ.KLZDISK,
+bl58lp3:LZ,MSL|*LINUX_SYSTEM|Linux_test_disk1|KLZ.KLZDISK|Linux_one.
 bl58lp3:LZ,TEMS|REM_NMP183|Linux_test_disk|KLZ.KLZDISK,
-nmp180:LZ,MSL|*LINUX_SYSTEM|Linux_test_disk1|KLZ.KLZDISK,
+nmp180:LZ,MSL|*LINUX_SYSTEM|Linux_test_disk1|KLZ.KLZDISK|Linux_one,
 nmp180:LZ,TEMS|HUB_NMP180|Linux_test_disk|KLZ.KLZDISK,
 
 Meaning: If agents appear in multiple definitions for
