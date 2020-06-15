@@ -51,7 +51,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.75000";
+my $gVersion = "1.76000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -256,6 +256,7 @@ my @tems_sampsit_dedup = ();             # Sampled Situation Count - without dup
 my @tems_puresit_dedup = ();             # Pure Situation Count - without duplicate PDTs
 my @tems_sits = ();                      # Situations hash
 my @tems_vtbl = ();                      # Virtual Hub Table hash
+my @tems_spipe = ();                     # Virtual Hub Table hash
 my $hub_tems = "";                       # hub TEMS nodeid
 my $hub_tems_version = "";               # hub TEMS version
 my $hub_tems_no_tnodesav = 0;            # hub TEMS nodeid missing from TNODESAV
@@ -404,6 +405,8 @@ my %advcx = (
               "DATAHEALTH1112W" => "25",
               "DATAHEALTH1113W" => "75",
               "DATAHEALTH1114E" => "100",
+              "DATAHEALTH1115W" => "95",
+              "DATAHEALTH1116W" => "95",
             );
 
 
@@ -631,6 +634,7 @@ my %knownpc = (
                  "S1" => "ITCAM Lotus Sametime Agent",
                  "S2" => "OS/2 Monitoring Agent",
                  "S3" => "IBM Tivoli OMEGAMON XE for SMS",
+                 "S7" => "Monitoring Agent for SAP HANA Database",
                  "SA" => "IBM Tivoli OMEGAMON XE for R/3",
                  "SB" => "shared probes",
                  "SD" => "Status Data Manager",
@@ -1018,6 +1022,7 @@ my $sit_tems_alert_dist = 0;
 my $sit_correlated = 0;
 my $sit_correlated_ct = 0;
 my $sit_correlated_hour =0;
+my $sit_purettl = 0;
 
 my $nax;
 my $nami = -1;                             # count of fullname indexes
@@ -1366,6 +1371,9 @@ if ($hub_tems_no_tnodesav == 0) {
          if (($nsave_product[$nx] ne "CQ") and ($nsave_product[$nx] ne "HD") and ($nsave_product[$nx] ne "SY")) {
             $tems_ctnok[$tx] += 1;
          }
+         my $phostaddr = lc $nsave_hostaddr[$nx];
+         $tems_spipe[$tx] += 1 if index($phostaddr,"spipe") != 01;
+
          # Calculate TEMA APAR Deficit numbers
          my $agtlevel = substr($nsave_temaver[$nx],0,8);
          next if $agtlevel eq "";
@@ -1462,6 +1470,17 @@ if ($hub_tems_no_tnodesav == 0) {
          $tema_total_max_days +=  $level_ref->{days};
          $tema_total_max_apars += $level_ref->{apars};
 #        print "adding $level_ref->{apars} for $node1 $agtlevel\n";
+      }
+      if ($tems_version[$hubi] eq "06.30.07"){
+         for (my $i=0;$i<=$temsi;$i++) {
+            next if $i == $hubi;
+            next if $tems_version[$i] ne "06.30.06";
+            next if $tems_spipe[$i] == 0;
+            $advi++;$advonline[$advi] = "Remote TEMS $tems[$i] with ip.spipe connections may be unstable";
+            $advcode[$advi] = "DATAHEALTH1115W";
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
+            $advsit[$advi] = "TEMS";
+         }
       }
    }
 }
@@ -2789,6 +2808,32 @@ if ($sit_correlated > 0) {
    } else {
       $advi++;$advonline[$advi] = "Correlated Situations [$sit_correlated] at $sit_correlated_hour per hour - see $rptkey";
       $advcode[$advi] = "DATAHEALTH1113W";
+      $advimpact[$advi] = $advcx{$advcode[$advi]};
+      $advsit[$advi] = "TEMS";
+   }
+}
+
+if ($sit_purettl > 0) {
+   $rptkey = "DATAREPORT024";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: Pure Situations with TTL More than 15 minutes\n";
+   $cnt++;$oline[$cnt]="Situation,secs,ttl,\n";
+   my $dcount = 0;
+   for (my $s=0;$s<=$siti;$s++) {
+      next if $sit_until_ttl[$s] eq "";
+      my @itimes = split(":",$sit_until_ttl[$s]);
+      my $dtime = $itimes[0]*86400+$itimes[1]*3600+$itimes[2]*60+$itimes[3];
+      if ($dtime > 900) {
+         $outline = $sit_psit[$s] . ",";
+         $outline .= $dtime . ",";
+         $outline .= $sit_until_ttl[$s] . ",";
+         $cnt++;$oline[$cnt]="$outline\n";
+         $dcount += 1;
+      }
+   }
+   if ($dcount > 0) {
+      $advi++;$advonline[$advi] = "Pure situations with TTL > 15 minutes [$dcount] - see $rptkey";
+      $advcode[$advi] = "DATAHEALTH1116W";
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "TEMS";
    }
@@ -4405,7 +4450,6 @@ sub new_tobjaccl {
         $sit_tarx{$iobjname} = \%sit_tarref;
      }
      $sit_tar_ref->{targets}{$inodel} = 1;
-     my $x = 1;
   }
 }
 
@@ -4475,6 +4519,13 @@ sub new_tsitdesc {
       $pdt_ref->{sits}{$isitname} = 1;
       $sit_pdtseq[$siti] = $pdt_ref->{count};
       $sit_correlate[$siti] = 0;
+      $sit_until_ttl[$siti] = "";
+      if ($sit_reeval[$siti] == 0) {
+         if ($ipdt =~ /\*TTL (\S+) \)/) {
+            $sit_until_ttl[$siti] = $1;
+         }
+      }
+      $sit_purettl += 1 if $sit_until_ttl[$siti] ne "";
    }
   $sit_ct[$sx] += 1;
 }
@@ -4617,6 +4668,7 @@ sub new_tnodesav {
          $tems_sampload_dedup[$tx] = 0;
          $tems_sampsit_dedup[$tx] = 0;
          $tems_puresit_dedup[$tx] = 0;
+         $tems_spipe[$tx] = 0;
       }
    }
    my $arch = "";
@@ -6721,6 +6773,8 @@ sub gettime
 #            Add - asysname option to create sysname.csv report
 #            Add data to report022. the MSLs in trouble
 #            Correct logic on missing system generated MSL when > 1
+# 1.76000  : Add advisory on hub/630F7 and remote/630FP6 w/ipsipe connections
+#          : Add report and advisory on Pure situations with long TTLs
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
@@ -8594,6 +8648,35 @@ and is very likely to cause serious problems.
 Recovery plan: Avoid correlated situations
 --------------------------------------------------------------
 
+DATAHEALTH1115W
+Text:  Remote TEMS temsnodeid with ip.spipe connections may be unstable
+
+Check: TNODELST,TNODESAV
+
+Meaning: This is produced when
+
+   1) HUB tems is at ITM 630 FP7 or later
+   2) Remote TEMS is at ITM 630 FP6
+   3) Remote TEMS has some ip.spipe agent connections
+
+At two sites, the agents connecting to the remote TEMS created an
+unstable condition. One or more agents could not connect but
+the remote TEMS was stuck trying to connect. As a result the
+remote TEMS went offline at the TEMS.
+
+Recovery plan: Upgrade the remote TEMS to ITM 630 FP7 or later
+--------------------------------------------------------------
+
+DATAHEALTH1116W
+Text:  Pure situations with TTL > 15 minutes [count]
+
+Check: TSITDESC
+
+Meaning: See REPORT024 for details.
+
+Recovery plan: Edit Pure Situations and make *TTL a small-ish time.
+--------------------------------------------------------------
+
 DATAREPORT001
 Text: Summary of TEMS/TEPS/FTO etc
 
@@ -9028,4 +9111,21 @@ Situation,
 Meaning: See Advisories DATAHEALTH1113W and DATAHEALTH1114E.
 
 Recovery: Avoid Correlated Situations.
+--------------------------------------------------------------
+
+DATAREPORT024
+Text: Pure Situations with TTL More than 15 minutes
+
+Sample Report
+Situation,secs,ttl,
+RRT_Verification_Point_Failure,3600,0:00:60:00,
+bic_b1meini_gqbw_msbz,86400,1:00:00:00,
+all_diaglog_gudc_db2gsma_2,259200,3:00:00:00,
+
+Meaning: Pure situations with long Time To Live times
+will remain in storage for long periods and this can
+result in large than expected TEMS process space sizes.
+
+Recovery: Change the TTL to something like 5 minutes to
+avoid increasing TEMS process space sizes.
 --------------------------------------------------------------
