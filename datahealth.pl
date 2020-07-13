@@ -51,7 +51,7 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.76000";
+my $gVersion = "1.77000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
@@ -3398,7 +3398,7 @@ $rptkey = "DATAREPORT010";$advrptx{$rptkey} = 1;         # record report key
 $cnt++;$oline[$cnt]="\n";
 $cnt++;$oline[$cnt]="$rptkey: TEMS Situation Load Impact Report\n";
 $cnt++;$oline[$cnt]="Hub,$hub_tems,$hub_tems_ct\n";
-$cnt++;$oline[$cnt]=",SampLoad/min,TEMSnodeid,Count,Status,Version,Arch,SampSit,PureSit,DDSampSit,DDSampLoad/min,DDPureSit,Max1,Max1_ct,Max5,Max5_ct,DDMax1,DDMax1_ct,DDMax5,DDMax5_ct,\n";
+$cnt++;$oline[$cnt]=",SampLoad/min,TEMSnodeid,Count,Status,Version,Arch,SampSit,Sampload/min,PureSit,DDSampSit,DDSampLoad/min,DDPureSit,Max1,Max1_ct,Max5,Max5_ct,DDMax1,DDMax1_ct,DDMax5,DDMax5_ct,\n";
 for (my $i=0;$i<=$temsi;$i++) {
    my $poffline = "Offline";
    my $node1 = $tems[$i];
@@ -6775,6 +6775,7 @@ sub gettime
 #            Correct logic on missing system generated MSL when > 1
 # 1.76000  : Add advisory on hub/630F7 and remote/630FP6 w/ipsipe connections
 #          : Add report and advisory on Pure situations with long TTLs
+# 1.77000  : correct a report title
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
