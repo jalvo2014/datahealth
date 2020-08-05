@@ -19,6 +19,9 @@
 #    # remember debug breakpoint
 # $DB::single=2;   # remember debug breakpoint
 
+my $gVersion = "1.78000";
+my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
+
 ## todos
 #  QA1DAPPL     TAPPLPROPS  ??
 #  QA1CSPRD     TUSER       ??
@@ -51,8 +54,6 @@ use warnings;
 
 # See short history at end of module
 
-my $gVersion = "1.77000";
-my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 use Data::Dumper;               # debug only
 
@@ -6776,6 +6777,7 @@ sub gettime
 # 1.76000  : Add advisory on hub/630F7 and remote/630FP6 w/ipsipe connections
 #          : Add report and advisory on Pure situations with long TTLs
 # 1.77000  : correct a report title
+# 1.78000  : correct a report title
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
