@@ -19,7 +19,7 @@
 #    # remember debug breakpoint
 # $DB::single=2;   # remember debug breakpoint
 
-my $gVersion = "1.78000";
+my $gVersion = "1.79000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 ## todos
@@ -45,7 +45,7 @@ my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 # AIX: Host name : catrhom011itdxa-nim Installer Lvl:06.30.07.06
 # Linux: Host name : hlxd00tm03_bak   Installer Lvl:06.30.07.06
 
-# SP2 signam in cinfo.info
+# SP2 signal in cinfo.info
 # Windows: Host Name  : ITM1101                                   Installer : Ver: 063007070
 
 #use warnings::unused; # debug used to check for unused variables
@@ -709,6 +709,80 @@ my %knownpc = (
                  "ZA" => "Monitoring Agent for TADDM Serviceabily",
                  "ZE" => "Tivoli zEnterprise Monitoring Agent",
               );
+
+# outline of tracking product codes and related managed system lists
+
+#my %sgmslx =  (  "PA" => [PA,"*AFT_PERF_ANALYZER_WHSE_AGENT"],
+#                 "SY" => [SY,"*AGGREGATION_AND_PRUNING"],
+#                 "EM" => [,"*ALL_CMS"],
+#                 "OY" => [SYB,"*ALL_SYBASE "],
+#                 "UX" => [KUX,"*ALL_UNIX"],
+#                 "HT" => [KHTP,"*CAM_APACHE_WEB_SERVER"],
+#                 "YN" => [KYNS,"*CAM_WAS_SERVER"],
+#                 "T3" => [T3,"*EM_DB"],
+#                 "Q7" => [Q7,"*IBM_IIS"],
+#                 "LO" => [LO,"*IBM_KLO"],
+#                 "LO" => [LO,"*IBM_KLOpro"],
+#                 "XA" => [XA,"*IBM_KXA"],
+#                 "XA" => [XA6,"*IBM_KXAXA6"],
+#                 "RZ" => [RDB,"*IBM_OracleAgentRDB"],
+#                 "RZ" => [RZ,"*IBM_OracleAgents"],
+#                 "HT" => [KHTA,"*ITCAM_WEB_SERVER_AGENT"],
+#                 "YN" => [KYNA,"*ITCAM_WEBSPHERE_AGENT"],
+#                 "LZ" => [LZ,"*LINUX_SYSTEM"],
+#                 "GB" => [GB,"*LOTUS_DOMINO"],
+#                 "MC" => [RCACFG,"*MQ_AGENT"],
+#                 "Q5" => [Q5,"MS_CLUSTER"],
+#                 "OQ" => [MSS,"*MS_SQL_SERVER"],
+#                 "MQ" => [MQ,"*MVS_MQM"],
+#                 "EX" => [EX,"*NT_EXCHANGE"],
+#                 "NT" => [NT,"*NT_SYSTEM"],
+#                 "CQ" => [TEPS,"*TEPS"],
+#                 "UM" => [UA,"*UNIVERSAL"],
+#                 "UD" => [UD,"*UNIVERSAL_DATABASE"],
+#                 "UL" => [UL,"*UNIX_LOG_ALERT"],
+#                 "VM" => [VM,"*VMWARE_VI_AGENT"],
+#                 "HD" => [Warehouse,"*WAREHOUSE_PROXY"],
+#              );
+#
+#
+#              (
+#                 "*AFT_PERF_ANALYZER_WHSE_AGENT" =>  [PA,PA],
+#                 "*AGGREGATION_AND_PRUNING"      =>  [SY,SY],
+#                 "*ALL_CMS"                      =>  [EM],
+#                 "*ALL_SYBASE "                  =>  [OY,SYB],
+#                 "*ALL_UNIX"                     =>  [UX,KUX],
+#                 "*CAM_APACHE_WEB_SERVER"        =>  [HT,KHTP,KHTA],
+#                 "*CAM_WAS_SERVER"               =>  [YN,KYNS],
+#                 "*EM_DB"                        =>  [T3.T3],
+#                 "*IBM_IIS"                      =>  [Q7,Q7],
+#                 "*IBM_KLO"                      =>  [LO,LO],
+#                 "*IBM_KLOpro"                   =>  [LO.LO],
+#                 "*IBM_KXA"                      =>  [XA,XA],
+#                 "*IBM_KXAXA6"                   =>  [XA,XA6],
+#                 "*IBM_OracleAgentRDB"           =>  [RZ,RDB],
+#                 "*IBM_OracleAgents"             =>  [RZ,RZ],
+#                 "*ITCAM_WEB_SERVER_AGENT"       =>  [HT,KHTA],
+#                 "*ITCAM_WEBSPHERE_AGENT"        =>  [YN,KYNA],
+#                 "*LINUX_SYSTEM"                 =>  [LZ,LZ],
+#                 "*LOTUS_DOMINO"                 =>  [GB,GB]
+#                 "*MQ_AGENT"                     =>  [MC,RCACFG],
+#                 "*MS_CLUSTER"                   =>  [Q5,Q5],
+#                 "*MS_SQL_SERVER"                =>  [OQ,MSS],
+#                 "*MVS_MQM"                      =>  [MQ,MQ],
+#                 "*NT_EXCHANGE"                  =>  [EX,EX],
+#                 "*NT_SYSTEM"                    =>  [NT,NT],
+#                 "*TEPS"                         =>  [CQ,TEPS].
+#                 "*UNIVERSAL"                    =>  [UM,UA],
+#                 "*UNIVERSAL_DATABASE"           =>  [UD,UD],
+#                 "*UNIX_LOG_ALERT"               =>  [UL,UL],
+#                 "*VMWARE_VI_AGENT"              =>  [VM,VM],
+#                 "*WAREHOUSE_PROXY"              =>  [HD,Warehouse],
+#              );
+
+
+
+
 
 my %advtextx = ();
 my $advkey = "";
@@ -3819,7 +3893,7 @@ $prate = sprintf("%.2f",$msoff_sitmon_agents_sec);
 $outline .= $prate . ",100%,";
 $cnt++;$oline[$cnt]="$outline\n";
 if ($miss_reason > 0) {
-   my $crit_line = "7,MS_Offline type situations - $miss_reason are missing the Reason *NE FA test. See DATAREPORT017";
+   my $crit_line = "7,MS_Offline[$ms_offline_count] type situations - $miss_reason are missing the Reason *NE FA test. See DATAREPORT017";
    push @crits,$crit_line;
 }
 
@@ -4088,9 +4162,9 @@ close OH;
 # TEMSes but are not really. This identifies
 # such cases and causes them to be ignored by the
 # AOA controller task itm_ref_checker.pl
-if ($max_impact == 105) {
-   $max_impact = 0 if $hub_tems_ct == 0;
-}
+#if ($max_impact == 105) {
+#   $max_impact = 0 if $hub_tems_ct == 0;
+#}
 
 if ($opt_s ne "") {
    if ($max_impact > 0 ) {
@@ -6778,6 +6852,8 @@ sub gettime
 #          : Add report and advisory on Pure situations with long TTLs
 # 1.77000  : correct a report title
 # 1.78000  : correct a report title
+# 1.79000  : Add ms-offline count to one critical error
+#          : Eliminate rc=105 check
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
