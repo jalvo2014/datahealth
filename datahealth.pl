@@ -19,7 +19,7 @@
 #    # remember debug breakpoint
 # $DB::single=2;   # remember debug breakpoint
 
-my $gVersion = "1.79000";
+my $gVersion = "1.80000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 ## todos
@@ -27,16 +27,13 @@ my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 #  QA1CSPRD     TUSER       ??
 #  STSH - multi-row events... 001->998
 # The pure event situation of the Extended Oracle Database agent does not fire on the subnode where the subnode ID is longer than or equal to 25 characters.
-# https://eclient.lenexa.ibm.com:9445/search/?fetch=source/TechNote/1430630
+# https://www.ibm.com/support/pages/node/406769
 # Identify cases where TEMA 32 bit *NE TEMA 64 bit level at a system
 # when calculating send status, subtract hub TEMS reconnects
 
-## calculate STSH wrap time
-
-# When same system [ip address] but different hostname, advisory on unable to use remote deploy, also possible TEP issues.
-
 # APAR: IV96304 - AIX Unix OS Agent only *MISSING process
-# Risky if 6.3.7 IF<2  or 6.3.5 IF<8
+# Risky if 6.3.0.7 IF<2  or 6.3.0.5 IF<8
+# 6.3.0.7-TIV-ITM-SP0001
 # Require Persist=2
 # Might belong in Situation Audit
 
@@ -77,6 +74,12 @@ use Data::Dumper;               # debug only
 # This can cause requests from clients, such as TEP and an RTEMS,
 # to take an excessively long time to complete.
 
+# Finally, when you spot agents going offline and online unexpectedly, that is a clue to investigate
+
+# The Node List record associated with the agent's THRUNODE, (the RTEMS *ALL_CMS System MSL record), was missing.
+# collect list of EM agents and make sure all are present in *ALL_CMS MSL
+#   hub TEMS + EM with THRUNODE=hub TEMS
+
 my $args_start = join(" ",@ARGV);      # capture arguments for later processing
 my $run_status = 0;                    # A count of pending runtime errors - used to allow multiple error detection before stopping process
 
@@ -99,6 +102,7 @@ my $cnt = -1;
 my @sline;
 my $scnt = -1;
 my $f;
+my $x;
 
 # forward declarations of subroutines
 
@@ -117,6 +121,8 @@ sub valid_lstdate;                       # validate the LSTDATE
 sub get_epoch;                           # convert from ITM timestamp to epoch seconds
 sub sitgroup_get_sits;                   # calculate situations associated with Situation Group
 
+my %allemx;
+my %allcmsx;
 my %asysnamex;
 my %uadvx;
 my %sit_tarx;
@@ -149,6 +155,8 @@ my %offline_thrunodex;
 my %offline_productx;
 my %offline_productversionx;
 my %offline_temax;
+
+my $inactive_historical = 0;
 
 # TNODELST type V record data           Alive records - list thrunode most importantly
 my $vlx;                                # Access index
@@ -199,6 +207,7 @@ my @nsave_hostinfo = ();
 my @nsave_sysmsl = ();
 my @nsave_ct = ();
 my @nsave_o4online = ();
+my @nsave_thrunode = ();
 my @nsave_affinities = ();
 my @nsave_temaver = ();
 my @nsave_common = ();
@@ -408,6 +417,10 @@ my %advcx = (
               "DATAHEALTH1114E" => "100",
               "DATAHEALTH1115W" => "95",
               "DATAHEALTH1116W" => "95",
+              "DATAHEALTH1117W" => "98",
+              "DATAHEALTH1118E" => "100",
+              "DATAHEALTH1119W" => "80",
+              "DATAHEALTH1120E" => "100",
             );
 
 
@@ -462,7 +475,7 @@ my %knownpc = (
                  "CW" => "Tivoli Enterprise Portal Browser Client",
                  "CZ" => "IBM Tivoli Monitoring CommandPro",
                  "D3" => "IBM Tivoli Monitoring for DB2",
-                 "D4" => "ITCAM for SOA",
+                 "D4" => "ITCAM for SOA (Service-Oriented Architecture)",
                  "D5" => "OMEGAMON XE for PE and PM on z/OS",
                  "D9" => "ITM Systems Director",
                  "DC" => "distributed communications",
@@ -529,6 +542,7 @@ my %knownpc = (
                  "JU" => "Monitoring Agent for JMX JSR-77",
                  "K3" => "ITCAM TXN MB DC",
                  "K4" => ".NET Data Collector",
+                 "K7" => ".NET Data Collector",
                  "KA" => "Monitoring Agent for Tivoli Enterprise Console",
                  "KF" => "IBM Eclipse Help Server",
                  "KJ" => "SCM Mongo Database",
@@ -587,6 +601,8 @@ my %knownpc = (
                  "PI" => "Tivoli Performance Analyzer Domain for ITCAM RT",
                  "PK" => "Base Monitoring Agent for CEC",
                  "PL" => "CandleLight Workstation",
+                 "PN" => "PostgreSQL",
+                 "PP" => "Monitoring Agent for zTPF",
                  "PS" => "PeopleSoft Monitoring Agent",
                  "PT" => "Peregrine ServiceCenter Alert Adapter",
                  "PU" => "Tivoli Performance Analyzer Domain for VMware",
@@ -742,11 +758,30 @@ my %knownpc = (
 #                 "UD" => [UD,"*UNIVERSAL_DATABASE"],
 #                 "UL" => [UL,"*UNIX_LOG_ALERT"],
 #                 "VM" => [VM,"*VMWARE_VI_AGENT"],
+#                 "ESX" => [ESX,"*VMWARE_VI"],
 #                 "HD" => [Warehouse,"*WAREHOUSE_PROXY"],
+#                 "PX" => [PX,"*AIX_PREMIUM"],
+#                 "PK" => [PK,"*CEC_BASE"],
+#                 "CONFIG" => [CONFIG,"*GENERIC_CONFIG"],
+#                 "CEIRA" => [CEIRA,"*IBM_CICSplexes"],
+#                 "MQIRA" => [MQIRA,"*MQIRA_MGR"],
+#                 "IMS" => [IMS,"*MVS_IMSPLEX"],
+#                 "BN" => [BN,"*IBM_KBN"],
+#                 "??" => [??,"*MVS_CICS"],
+#                 "MSS" => [MSS,"*MS_SQL_SERVER"],
 #              );
 #
 #
 #              (
+#                 "*MS_SQL_SERVER" => [MSS.MSS],
+#                 "*AIX_PREMIUM" =>  [PX,PX],
+#                 "*CEC_BASE" =>  [PK,PK],
+#                 "*GENERIC_CONFIG" =>  [CONFIG,CONFIG],
+#                 "*IBM_CICSplexes" => [CEIRA,CEIRA],
+#                 "*MQIRA_MGR"  => [MQIRA,MQIRA],
+#                 "*MVS_IMSPLEX" => [IMS,MVS],
+#                 "*IBM_KBN" => [BN.BN],
+#                 "*VMWARE_VI" => [ESX,ESX],
 #                 "*AFT_PERF_ANALYZER_WHSE_AGENT" =>  [PA,PA],
 #                 "*AGGREGATION_AND_PRUNING"      =>  [SY,SY],
 #                 "*ALL_CMS"                      =>  [EM],
@@ -919,7 +954,7 @@ my %hnodelist = (
    KUAGENT00 => '*CUSTOM_UAGENT00',                              # UA
    KKUL => '*UNIX_LOG_ALERT',                                    # UL
    KUA  => '*UNIVERSAL',                                         # UM
-   KKUX => '*ALL_UNIX',                                          # UX
+   KKUX  => '*ALL_UNIX',                                          # UX
    KVA => '*VIOS_PREMIUM',                                       # VA
    KVL => '*OMXE_VM',                                            # VL
    KKYJA => '*ITCAM_J2EE_AGENT',                                 # YJ
@@ -931,6 +966,8 @@ my %hnodelist = (
    KDSGROUP => '*MVS_DB2',                                       # D5
    KPlexview => '*MVS_DB2',                                      # D5
    KSYSPLEX => '*MVS_SYSPLEX',                                   # M5
+   KPN      => '*IBM_KPN',                                       # PN
+   KZA      => '*IBM_KZA',                                       # ZA
 );
 $hnodelist{'KSNMP-MANAGER00'} ='*CUSTOM_SNMP-MANAGER00';
 
@@ -1560,6 +1597,20 @@ if ($hub_tems_no_tnodesav == 0) {
    }
 }
 
+if ($hub_tems ne "") {
+   for ($i=0; $i<=$nsavei; $i++) {
+      next if $nsave_product[$i] ne "EM";
+      my $node1 = $nsave[$i];
+      next if $nsave_thrunode[$i] ne $node1;
+      next if defined $allcmsx{$node1};
+      # TEMS not included in *ALL_CMS MSL
+     $advi++;$advonline[$advi] = "TEMS Agent $node1 is missing from the *ALL_CMS MSL";
+     $advcode[$advi] = "DATAHEALTH1120E";
+     $advimpact[$advi] = $advcx{$advcode[$advi]};
+     $advsit[$advi] = "TEMS";
+   }
+}
+
 # calculate Agent Summary Report Section
 my $npc_ct = 0;
 for ($i=0; $i<=$nsavei; $i++) {
@@ -1770,6 +1821,7 @@ for ($i=0; $i<=$nsavei; $i++) {
    }
 }
 
+my $unknown_product = 0;
 for ($i=0; $i<=$nsavei; $i++) {
    my $node1 = $nsave[$i];
    next if $nsave_product[$i] eq "EM";
@@ -1784,15 +1836,16 @@ for ($i=0; $i<=$nsavei; $i++) {
         my $tx = $temsx{$thru1};
         $subn = 1 if !defined $tx;
       }
+      my $known_ext = 0;
       if ($subn == 0) {
-         next if length($node1) < 32;
-         my $known_ext = 0;
          @words = split(":",$node1);
          if ($#words > 0) {
             my $lastseg = $words[$#words];
             my $keyseg = "K" . $lastseg;
            $known_ext = 1 if defined $hnodelist{$keyseg};
+           $unknown_product += 1 if !defined $hnodelist{$keyseg};
          }
+         next if length($node1) < 32;
          next if $known_ext == 1;
          $advi++;$advonline[$advi] = "Node Name at 32 characters and might be truncated - product[$product1]";
          $advcode[$advi] = "DATAHEALTH1013W";
@@ -1804,6 +1857,74 @@ for ($i=0; $i<=$nsavei; $i++) {
          $advcode[$advi] = "DATAHEALTH1014W";
          $advimpact[$advi] = $advcx{$advcode[$advi]};
          $advsit[$advi] = $node1;
+      }
+   }
+}
+
+if ($unknown_product > 0) {
+   my $would_report=0;
+   for ($i=0; $i<=$nsavei; $i++) {
+      my $node1 = $nsave[$i];
+      next if $nsave_product[$i] eq "EM";
+      my $product1 = $nsave_product[$i];
+      $nsx = $nlistvx{$node1};
+      if (defined $nsx) {
+         my $subn = 0;
+         my $thru1 = $nlistv_thrunode[$nsx];
+         if ($thru1 eq "") {
+           $subn = 1;
+         } else {
+           my $tx = $temsx{$thru1};
+           $subn = 1 if !defined $tx;
+         }
+         my $known_ext = 0;
+         if ($subn == 0) {
+            @words = split(":",$node1);
+            if ($#words > 0) {
+               my $lastseg = $words[$#words];
+               if ($lastseg =~ /[^0-9]+/) {
+                  my $keyseg = "K" . $lastseg;
+                  next if defined $hnodelist{$keyseg};
+                  $would_report += 1;
+               }
+            }
+         }
+      }
+   }
+   if ($would_report > 0) {
+      $rptkey = "DATAREPORT025";$advrptx{$rptkey} = 1;         # record report key
+      $cnt++;$oline[$cnt]="\n";
+      $cnt++;$oline[$cnt]="$rptkey: Nodes with missing Products\n";
+      $cnt++;$oline[$cnt]="Node,Product,\n";
+      for ($i=0; $i<=$nsavei; $i++) {
+         my $node1 = $nsave[$i];
+         next if $nsave_product[$i] eq "EM";
+         my $product1 = $nsave_product[$i];
+         $nsx = $nlistvx{$node1};
+         if (defined $nsx) {
+            my $subn = 0;
+            my $thru1 = $nlistv_thrunode[$nsx];
+            if ($thru1 eq "") {
+              $subn = 1;
+            } else {
+              my $tx = $temsx{$thru1};
+              $subn = 1 if !defined $tx;
+            }
+            my $known_ext = 0;
+            if ($subn == 0) {
+               @words = split(":",$node1);
+               if ($#words > 0) {
+                  my $lastseg = $words[$#words];
+                  if ($lastseg =~ /[^0-9]+/) {
+                     my $keyseg = "K" . $lastseg;
+                     next if defined $hnodelist{$keyseg};
+                     $outline = $node1 . ",";
+                     $outline .= $product1 . ",";
+                     $cnt++;$oline[$cnt]="$outline\n";
+                  }
+               }
+            }
+         }
       }
    }
 }
@@ -2053,6 +2174,16 @@ foreach my $f (sort { $a cmp $b } keys %pcyx) {
          }
       }
    }
+   if (length($pcy_ref->{pcyopt}) >= 3) {
+      if (substr($pcy_ref->{pcyopt},0,1) eq "Y") {
+         if (substr($pcy_ref->{pcyopt},2,1) eq "3") {
+            $advi++;$advonline[$advi] = "Workflow Policy $f correlation mode HOSTNAME which is often an error";
+            $advcode[$advi] = "DATAHEALTH1119W";
+            $advimpact[$advi] = $advcx{$advcode[$advi]};
+            $advsit[$advi] = $f;
+         }
+      }
+   }
 }
 
 
@@ -2157,6 +2288,17 @@ for ($i=0;$i<=$siti;$i++) {
             }
             $uadv_ref->{sits}{$sit[$i]} = 1;
             $uadv_ref->{all} = 1 if index($sit_pdt[$i],'SYSTEM.PARMA("NODELIST","*ALL",4)') != -1;
+         }
+         # Does the UADVISOR *SYN record have a distribution
+         if (substr($sit[$i],0,8) eq "UADVISOR") {
+            my $sit_tar_ref = $sit_tarx{$sit[$i]};
+            if (!defined $sit_tar_ref) {
+               $advi++;$advonline[$advi] = "UADVISOR $sit[$i] has no distribution and cannot do historical data collection";
+               $advcode[$advi] = "DATAHEALTH1118E";
+               $advimpact[$advi] = $advcx{$advcode[$advi]};
+               $advsit[$advi] = $sit[$i];
+               $inactive_historical += 1;
+            }
          }
       }
    }
@@ -2291,6 +2433,12 @@ if ($sitmon_per_sec > 30) {
       $advimpact[$advi] = $advcx{$advcode[$advi]};
       $advsit[$advi] = "MS_Offline";
    }
+}
+
+if ($inactive_historical > 0) {
+   my $crit_line = "1,Inactive Historical Collection situations [$inactive_historical] - history not collecting";
+   push @crits,$crit_line;
+
 }
 
 
@@ -2460,11 +2608,13 @@ for ($i=0;$i<=$nlisti;$i++) {
 for ($i=0;$i<=$obji;$i++){
    valid_lstdate("TOBJACCL",$obj_lstdate[$i],$obj_objname[$i],"NODEL=$obj_nodel[$i] OBJCLASS=$obj_objclass[$i] OBJNAME=$obj_objname[$i]");
    if ($obj_ct[$i] > 1) {
-      $advi++;$advonline[$advi] = "TOBJACCL duplicate nodes";
-      $advcode[$advi] = "DATAHEALTH1028E";
-      $advimpact[$advi] = $advcx{$advcode[$advi]};
-      $advsit[$advi] = $obj[$i];
-      $dupndx{"TOBJACCL"} = 1;
+      if (substr($obj_objname[$i],0,3) ne "_Z_") {
+         $advi++;$advonline[$advi] = "TOBJACCL duplicate nodes";
+         $advcode[$advi] = "DATAHEALTH1028E";
+         $advimpact[$advi] = $advcx{$advcode[$advi]};
+         $advsit[$advi] = $obj[$i];
+         $dupndx{"TOBJACCL"} = 1;
+      }
    }
    my $objname1 = $obj_objname[$i];
    my $nodel1 = $obj_nodel[$i];
@@ -2844,6 +2994,7 @@ for (my $s=0;$s<=$siti;$s++) {
 }
 
 # Third trip seeing if situations are distributed
+my $sit_missing_dist = 0;
 for (my $s=0;$s<=$siti;$s++) {
    my $sitone = $sit[$s];                    # situation being looked at
    next if defined $tobjaccl{$sitone};
@@ -2853,6 +3004,7 @@ for (my $s=0;$s<=$siti;$s++) {
    $advcode[$advi] = "DATAHEALTH1112W";
    $advimpact[$advi] = $advcx{$advcode[$advi]};
    $advsit[$advi] = $sitone;
+   $sit_missing_dist += 1 if $sit_autostart[$s] eq "*YES";
    if ($opt_delu == 1) {
       my $outsh  = "./tacmd deleteSit -s " . $sitone;
       my $outcmd = "tacmd deleteSit -s " . $sitone;
@@ -2861,6 +3013,16 @@ for (my $s=0;$s<=$siti;$s++) {
       print DELCMD "$outcmd\n";
       print DELCSV "$outcsv\n";
    }
+}
+
+if ($sit_missing_dist >= .25*$sit_autostart_total) {
+   my $res_pc = 0;
+   $res_pc = ($sit_missing_dist*100)/$sit_autostart_total if $sit_autostart_total > 0;
+   my $ppc = sprintf '%.2f%%', $res_pc;
+   $advi++;$advonline[$advi] = "$ppc Autostarted Situations[$sit_autostart_total] with no distribution [$sit_missing_dist]";
+   $advcode[$advi] = "DATAHEALTH1117W";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = "TEMS";
 }
 
 if ($sit_correlated > 0) {
@@ -4356,7 +4518,7 @@ sub new_tactypcy {
 }
 
 sub new_tpcydesc {
-   my ($ipcyname,$ilstdate,$iautostart) = @_;
+   my ($ipcyname,$ilstdate,$iautostart,$ipcyopt) = @_;
    my $pcy_ref = $pcyx{$ipcyname};
    if (!defined $pcy_ref) {
       my %pcy_sit = ();
@@ -4367,6 +4529,7 @@ sub new_tpcydesc {
                       sit  => \%pcy_sit,    # hash of Wait on Sits
                       eval => \%pcy_eval,   # hash of Evaluation Sit
                       autostart => $iautostart, # is policy operational
+                      pcyopt => $ipcyopt,   # policy options
                    );
       $pcyx{$ipcyname} = \%pcyref;
       $pcy_ref = \%pcyref;
@@ -4642,6 +4805,7 @@ sub new_tnodesav {
       $nsave_sysmsl[$nsx] = 0;
       $nsave_product[$nsx] = $iproduct;
       $nsave_affinities[$nsx] = $iaffinities;
+      $nsave_thrunode[$nsx] = $ithrunode;
       if ($iversion ne "") {
          my $tversion = $iversion;
          $tversion =~ s/[0-9\.]+//g;
@@ -5096,6 +5260,8 @@ my ($inodetype,$inodelist,$inode,$ilstdate) = @_;
    }
    $mlist_ct[$mlx] += 1;
 
+   $allcmsx{$inode} = 1 if $inodelist eq "*ALL_CMS";
+
    $nlx = $nlistx{$inodelist};
    if (!defined $nlx) {
       $nlisti += 1;
@@ -5327,6 +5493,7 @@ sub init_txt {
 
    my @kpcyf_data;
    my $ipcyname;
+   my $ipcyopt;
 
    my @kactp_data;
    my $itypestr;
@@ -5652,7 +5819,9 @@ sub init_txt {
       $ilstdate =~ s/\s+$//;   #trim trailing whitespace
       $iautostart = substr($oneline,50,4);
       $iautostart =~ s/\s+$//;   #trim trailing whitespace
-      new_tpcydesc($ipcyname,$ilstdate,$iautostart);
+      $ipcyopt = substr($oneline,60,8);
+      $ipcyopt =~ s/\s+$//;   #trim trailing whitespace
+      new_tpcydesc($ipcyname,$ilstdate,$iautostart,$ipcyopt);
    }
 
    open(KACTP, "< $opt_txt_tactypcy") || die("Could not open TACTYPCY $opt_txt_tactypcy\n");
@@ -5936,6 +6105,7 @@ sub init_lst {
 
    my @kpcyf_data;
    my $ipcyname;
+   my $ipcyopt;
 
    my @kactp_data;
    my $itypestr;
@@ -6198,9 +6368,9 @@ sub init_lst {
       next if substr($oneline,0,1) ne "[";                    # Look for starting point
       chop $oneline;
       $oneline .= " " x 400;
-      # KfwSQLClient /e "SELECT PCYNAME,LSTDATE FROM O4SRV.TPCYDESC" >QA1DPCYF.DB.LST
-      ($ipcyname,$ilstdate,$iautostart) = parse_lst(3,$oneline);
-      new_tpcydesc($ipcyname,$ilstdate,$iautostart);
+      # KfwSQLClient /e "SELECT PCYNAME,LSTDATE,AUTOSTART,PCYOPT FROM O4SRV.TPCYDESC" >QA1DPCYF.DB.LST
+      ($ipcyname,$ilstdate,$iautostart,$ipcyopt) = parse_lst(4,$oneline);
+      new_tpcydesc($ipcyname,$ilstdate,$iautostart,$ipcyopt);
    }
 
    open(KACTP, "< $opt_lst_tactypcy") || die("Could not open TACTYPCY $opt_lst_tactypcy\n");
@@ -6276,7 +6446,7 @@ sub init_lst {
       $oneline .= " " x 400;
       ($igbltmstmp,$iobjname,$ioperation,$itable) = parse_lst(4,$oneline);
       next if $ioperation ne "I";
-      next if $itable != 5529;
+      next if $itable ne "5529";
       new_teiblogt($igbltmstmp,$iobjname,$ioperation,$itable);
    }
 
@@ -6854,7 +7024,12 @@ sub gettime
 # 1.78000  : correct a report title
 # 1.79000  : Add ms-offline count to one critical error
 #          : Eliminate rc=105 check
+# 1.80000  : Add alert for many non-distributed but autostarted agents.
+#          : Ignore TOBJACCL duplicate for OBJNAME starting _Z_
+#          : Add advisory for historical collections with no distribution.
+#          : Add advisory for Policies using HOSTNAME correlation
 # Following is the embedded "DATA" file used to explain
+
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
 __END__
@@ -8682,7 +8857,7 @@ the OS Agent hostname.
 --------------------------------------------------------------
 
 DATAHEALTH1111W
-Text:  Historical UADVISORs [count] duplicate collections on table $f
+Text: /Historical UADVISORs [count] duplicate collections on table $f
 
 Check: TSITDESC/TNODELST/TOBJACCL check
 
@@ -8754,6 +8929,68 @@ Check: TSITDESC
 Meaning: See REPORT024 for details.
 
 Recovery plan: Edit Pure Situations and make *TTL a small-ish time.
+--------------------------------------------------------------
+
+DATAHEALTH1117W
+Text:  [per_cent] Autostarted Situations[count] with no distribution [count]
+
+Check: TSITDESC
+
+Meaning: 25% or more autostarted situations have no distribution. This suggest
+a potential problem with the TOBJACCL and/or the TNODELST table. The impact
+is that situations may not be running as expected.
+
+Recovery plan: Review situation distributions.
+--------------------------------------------------------------
+
+DATAHEALTH1118E
+Text:  UADVISOR name has no distribution and cannot do historical data collection
+
+Check: TSITDESC and TOBJACCL
+
+Meaning: UADVISOR situations like UADVISOR_KLZ_KLZCPU are used to drive
+historical data collection. If there is no distribution, history data
+is not collected. This was seen to happen after a broken TEMS database
+table condition.
+
+One situation is to have a regular backup procedure as documented here
+
+Sitworld: Best Practice TEMS Database Backup and Recovery
+https://itmsitworld.com/2013/07/12/sitworld-best-practice-tems-database-backup-and-recovery/
+
+Recovery plan: Contact IBM Support and determine if there are any database backups.
+Alternatively work through all the Historical Data configuration in TEPS and restore
+the proper distributions.
+--------------------------------------------------------------
+
+DATAHEALTH1119W
+Text:  Workflow Policy <name> correlation mode HOSTNAME which is often an error
+
+Check: TPCYDESC
+
+Meaning: Workflow Policies had a correlation setting to match situation
+result data to the polices. The default option "by-Hostname" often causes
+problems. It is used in the rare case where a policy has to manage
+results from multiple agents on the same system.
+
+The most common case is "by-Managed System" which means the results
+are correlated only from a single agent. The most common side effect
+is that the workflow policy just doesn't work as expected.
+
+Recovery plan: Review the workflow policy and change the correlation
+as appropriate.
+--------------------------------------------------------------
+
+DATAHEALTH1120E
+Text:  Agent <TEMS nodeid> is missing from the *ALL_CMS MSL
+
+Check: TNODELST and TNODESAV
+
+Meaning: All TEMSes should be listed in the *ALL_CMS Managed Syste List.
+The absence of one or more will cause certain functions like
+tacmd executeCommand to fail.
+
+Recovery plan: Involve IBM Support to repair the condition.
 --------------------------------------------------------------
 
 DATAREPORT001
@@ -9207,4 +9444,16 @@ result in large than expected TEMS process space sizes.
 
 Recovery: Change the TTL to something like 5 minutes to
 avoid increasing TEMS process space sizes.
+--------------------------------------------------------------
+
+DATAREPORT025
+Text: Nodes with missing Products
+
+Sample Report
+Node,Product,
+
+Meaning: There is a built in table of known products. This
+report helps refine the datahealth logic.
+
+Recovery: Information only for developer
 --------------------------------------------------------------
