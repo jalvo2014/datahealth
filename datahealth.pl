@@ -19,7 +19,7 @@
 #    # remember debug breakpoint
 # $DB::single=2;   # remember debug breakpoint
 
-my $gVersion = "1.80000";
+my $gVersion = "1.81000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 ## todos
@@ -80,6 +80,11 @@ use Data::Dumper;               # debug only
 # collect list of EM agents and make sure all are present in *ALL_CMS MSL
 #   hub TEMS + EM with THRUNODE=hub TEMS
 
+# If a situation has an action command configured to run at the agent
+#    and the situation is distributed to a TEMS
+#    the result is a null output failure because the action command must run at the TEMS.
+#    There is no "agent" process in a TEMS.
+
 my $args_start = join(" ",@ARGV);      # capture arguments for later processing
 my $run_status = 0;                    # A count of pending runtime errors - used to allow multiple error detection before stopping process
 
@@ -120,6 +125,11 @@ sub fill_tnodelstv;                      # reprocess new TNODELST NODETYPE=V dat
 sub valid_lstdate;                       # validate the LSTDATE
 sub get_epoch;                           # convert from ITM timestamp to epoch seconds
 sub sitgroup_get_sits;                   # calculate situations associated with Situation Group
+
+
+my %sitpcyx = ();
+my %sitdistx = ();                       # hash of sits and what are the distributions
+my %pcydistx = ();                       # hash of pcys and what are the distributions
 
 my %allemx;
 my %allcmsx;
@@ -421,6 +431,7 @@ my %advcx = (
               "DATAHEALTH1118E" => "100",
               "DATAHEALTH1119W" => "80",
               "DATAHEALTH1120E" => "100",
+              "DATAHEALTH1121W" => "90",
             );
 
 
@@ -881,71 +892,72 @@ my %hSP2OS = (
 
 my $snx;
 
+
 my %hnodelist = (
-   KKT3S => '*EM_SERVER_DB',                                     # T3
-   KKYJW => '*CAM_J2EE_WLS_SERVER',                              # YJ
-   KWMI => '*IBM_RemoteWinOS_WMI',                               # R2
-   KR2 => '*IBM_RemoteWinOS',                                    # R2
-   KRZ => '*IBM_OracleAgents',                                   # RZ
-   KEX => '*NT_EXCHANGE',                                        # EX
-   KRDB => '*IBM_OracleAgentRD',                                 # RZ
-   KSVR => '*HMC_BASE_SERVERS',                                  # SVR
-   KM6 => '*IBM_WM',                                             # M6
-   KFTE => '*IBM_WMQFTEAgent',                                   # FTE
-   KVM => '*VMWARE_VI_AGENT',                                    # VM
-   KT5 => '*EM_WRM',                                             # T5
-   KT3 => '*EM_DB',                                              # T3
-   KQS => '*IBM_KQS',                                            # QS
-   KIS => '*NETCOOL_ISM_AGENT',                                  # IS
-   KUD => '*UNIVERSAL_DATABASE',                                 # UD
-   KQ8 => '*IBM_IPAS_A',                                         # Q8
-   KQ7 => '*IBM_IIS',                                            # Q7
-   KQ5 => '*MS_CLUSTER',                                         # Q5
-   KR3 => '*IBM_RmtAIXOS',                                       # R3
-   KMSS => '*MS_SQL_SERVER',                                     # OQ
-   KORA => '*ALL_ORACLE',                                        # OR
-   KKA4 => '*OS400_OM',                                          # A4
-   KTO => '*IBM_ITCAMfT_KTO',                                    # TO
-   KIns => '*SAP_R3',                                            # SA
-   KNT => '*NT_SYSTEM',                                          # NT
-   KKT3A => '*EM_APPLICATION_DB',                                # T3
-   KESX => '*VMWARE_VI',                                         # ES
-   KTEPS => '*TEPS',                                             # CQ
-   KKSDSDE => '*SDMSESS',                                        # SD
-   KMQQSG => '*MQ_QSG',                                          # MQ
-   KKHTA => '*ITCAM_WEB_SERVER_AGENT',                           # HT
-   KR4 => '*IBM_RLinuxOS',                                       # R4
-   KTU => '*IBM_KTU',                                            # TU
-   KBN => '*IBM_KBN' ,                                           # BN
-   KOS => '*CS_K0S',                                             # OS
-     # 0S:custommq:M05 *CS_K0SM05
-   KCPIRA => '*CPIRA_MGR',                                       # CP
-   KKYNT => '*CAM_WAS_PROCESS_SERVER',                           # KY
-   KKYJT => '*CAM_J2EE_TOMCAT_SERVER',                           # KJ
-   KKHTP => '*CAM_APACHE_WEB_SERVER',                            # KH
-   KD4 => '*SERVICES_MANAGEMENT_AGENT',                          # D4
+   KKT3S => '*EM_SERVER_DB',                                     # T3  *
+   KKYJW => '*CAM_J2EE_WLS_SERVER',                              # YJ  *
+   KWMI => '*IBM_RemoteWinOS_WMI',                               # R2  *
+   KR2 => '*IBM_RemoteWinOS',                                    # R2  *
+   KRZ => '*IBM_OracleAgents',                                   # RZ  *
+   KEX => '*NT_EXCHANGE',                                        # EX  *
+   KRDB => '*IBM_OracleAgentRD',                                 # RZ  *
+   KSVR => '*HMC_BASE_SERVERS',                                  # SVR *
+   KM6 => '*IBM_WM',                                             # M6  *
+   KFTE => '*IBM_WMQFTEAgent',                                   # FTE *
+   KVM => '*VMWARE_VI_AGENT',                                    # VM  *
+   KT5 => '*EM_WRM',                                             # T5  *
+   KT3 => '*EM_DB',                                              # T3  *
+   KQS => '*IBM_KQS',                                            # QS  *
+   KIS => '*NETCOOL_ISM_AGENT',                                  # IS  *
+   KUD => '*UNIVERSAL_DATABASE',                                 # UD  *
+   KQ8 => '*IBM_IPAS_A',                                         # Q8  *
+   KQ7 => '*IBM_IIS',                                            # Q7  *
+   KQ5 => '*MS_CLUSTER',                                         # Q5  *
+   KR3 => '*IBM_RmtAIXOS',                                       # R3  *
+   KMSS => '*MS_SQL_SERVER',                                     # OQ  *
+   KORA => '*ALL_ORACLE',                                        # OR  *
+   KKA4 => '*OS400_OM',                                          # A4  *
+   KTO => '*IBM_ITCAMfT_KTO',                                    # TO  *
+   KIns => '*SAP_R3',                                            # SA  *
+   KNT => '*NT_SYSTEM',                                          # NT  *
+   KKT3A => '*EM_APPLICATION_DB',                                # T3  *
+   KESX => '*VMWARE_VI',                                         # ES  *
+   KTEPS => '*TEPS',                                             # CQ  *
+   KKSDSDE => '*SDMSESS',                                        # SD  *
+   KMQQSG => '*MQ_QSG',                                          # MQ  *
+   KKHTA => '*ITCAM_WEB_SERVER_AGENT',                           # HT  *
+   KR4 => '*IBM_RLinuxOS',                                       # R4  *
+   KTU => '*IBM_KTU',                                            # TU  *
+   KBN => '*IBM_KBN' ,                                           # BN  *
+   KOS => '*CS_K0S',                                             # OS  ?
+     # 0S:custommq:M05 *CS_K0SM05                                #     ?
+   KCPIRA => '*CPIRA_MGR',                                       # CP  *
+   KKYNT => '*CAM_WAS_PROCESS_SERVER',                           # KY  *
+   KKYJT => '*CAM_J2EE_TOMCAT_SERVER',                           # KJ  *
+   KKHTP => '*CAM_APACHE_WEB_SERVER',                            # KH  *
+   KD4 => '*SERVICES_MANAGEMENT_AGENT',                          # D4  *
      # D4:06c17c5e:nzxpap159-Prod-NCAL  M        *SERVICES_MANAGEMENT_AGENT_ENVIR
-   KLO => '*IBM_KLO',                                            # LO
+   KLO => '*IBM_KLO',                                            # LO  *
      # LO:nzapps5_OMPlus =>  *IBM_KLOpro
-   K07 => '*GSMA_K07',                                           # 07
-   KCONFIG => '*GENERIC_CONFIG',                                 # CF
-   KDB2 => '*MVS_DB2',                                           # D5
-   KGB => '*LOTUS_DOMINO',                                       # GB
-   KWarehouse => '*WAREHOUSE_PROXY',                             # HD
-   KIGASCUSTOM_UA00 => '*CUSTOM_IGASCUSTOM_UA00',                # IG
-   KLZ => '*LINUX_SYSTEM',                                       # LZ
-   KMVSSYS => '*MVS_SYSTEM',                                     # M5
-   KRCACFG => '*MQ_AGENT',                                       # MC
-   KMQ => '*MVS_MQM',                                            # MQ
-   KMQIRA => '*MQIRA_MGR',                                       # MQ
-   KMQESA => '*MVS_MQM',                                         # MQ
-   KKQIA => '*MQSI_AGENT',                                       # QI
-   KPH => '*HMC_BASE',                                           # PH
-   KPK => '*CEC_BASE',                                           # PK
-   KPV => '*VIOS_BASE',                                          # PV
-   KPX => '*AIX_PREMIUM',                                        # PX
-   KKQIB => '*MQSI_BROKER,*MQSI_BROKER_V7',                      # QI ???
-   KSTORAGE => '*OMEGAMONXE_SMS,*OM_SMS',                        # S3
+   K07 => '*GSMA_K07',                                           # 07  *
+   KCONFIG => '*GENERIC_CONFIG',                                 # CF  *
+   KDB2 => '*MVS_DB2',                                           # D5  *
+   KGB => '*LOTUS_DOMINO',                                       # GB  *
+   KWarehouse => '*WAREHOUSE_PROXY',                             # HD  *
+   KIGASCUSTOM_UA00 => '*CUSTOM_IGASCUSTOM_UA00',                # IG  *
+   KLZ => '*LINUX_SYSTEM',                                       # LZ  *
+   KMVSSYS => '*MVS_SYSTEM',                                     # M5  *
+   KRCACFG => '*MQ_AGENT',                                       # MC  *
+   KMQ => '*MVS_MQM',                                            # MQ  *
+   KMQIRA => '*MQIRA_MGR',                                       # MQ  *
+   KMQESA => '*MVS_MQM',                                         # MQ  *
+   KKQIA => '*MQSI_AGENT',                                       # QI  *
+   KPH => '*HMC_BASE',                                           # PH  *
+   KPK => '*CEC_BASE',                                           # PK  *
+   KPV => '*VIOS_BASE',                                          # PV  *
+   KPX => '*AIX_PREMIUM',                                        # PX  *
+   KKQIB => '*MQSI_BROKER,*MQSI_BROKER_V7',                      # QI *???
+   KSTORAGE => '*OMEGAMONXE_SMS,*OM_SMS',                        # S3  *
                                                                 #    OMIICT:7VSG:STORAGE         managing agent?
                                                                 #    IRAM:OMIICMS:NADH:STORAGE   [subnode??]
    KmySAP => '*SAP_AGENT',                                       # SA
@@ -954,7 +966,7 @@ my %hnodelist = (
    KUAGENT00 => '*CUSTOM_UAGENT00',                              # UA
    KKUL => '*UNIX_LOG_ALERT',                                    # UL
    KUA  => '*UNIVERSAL',                                         # UM
-   KKUX  => '*ALL_UNIX',                                          # UX
+   KKUX  => '*ALL_UNIX',                                         # UX
    KVA => '*VIOS_PREMIUM',                                       # VA
    KVL => '*OMXE_VM',                                            # VL
    KKYJA => '*ITCAM_J2EE_AGENT',                                 # YJ
@@ -968,8 +980,115 @@ my %hnodelist = (
    KSYSPLEX => '*MVS_SYSPLEX',                                   # M5
    KPN      => '*IBM_KPN',                                       # PN
    KZA      => '*IBM_KZA',                                       # ZA
+   PA       => '*AFT_PERF_ANALYZER_WHSE_AGENT',                  # PA
+   GWIRA    => '*GWIRA_MGR',                                     # GW   CICSTG00:RVE1:GWIRA
+   JVM      => '*JVM_Monitor',                                   # JJ   KJJ1:SYP1:JVM
+   # XEDB2:RVE1  *MVS_DB2                                        # DP   XEDB2:RVE1
+   # PXE0G:SYE1:OMEGD5:KOBDRA   *CMS                             # OB   PXE0G:SYE1:OMEGD5:KOBDRA
+   # RKCPXM00.SYE2::CEIRA    *IBM_CICSplexes                     # CE   RKCPXM00.SYE2::CEIRA
+   # SYSPLEX:SYSPLEX:PLEXVIEW  *MVS_SYSPLEX                      # M5   SYSPLEX:SYSPLEX:PLEXVIEW
 );
 $hnodelist{'KSNMP-MANAGER00'} ='*CUSTOM_SNMP-MANAGER00';
+
+# problem to solve, RZ shows up as two different system generated MSLs
+# maybe if multiple possibilities, chose by last part of MSN
+# todo handle leading or trailing MSN identifier
+
+#my %hpcmsl = (
+#                'T3' => { 'KRDB' => '*EM_SERVER_DB',
+#                          'KT3'  => '*EM_DB',
+#                          'KKT3A' => *EM_APPLICATION_DB', },
+#                'YJ' => { 'KKYJW' =>'*CAM_J2EE_WLS_SERVER'},
+#                'R2' => { 'KWMI' => '*IBM_RemoteWinOS_WMI',
+#                          'KR2'  => ''*IBM_RemoteWinOS'},
+#                'RZ' => { 'KRZ' => '*IBM_OracleAgents',
+#                          'KRDB' => '*IBM_OracleAgentRD',}
+#                'EX' => { 'KEX' => '*NT_EXCHANGE',}.
+#                'QF' => { 'QF' => '*MS_NET_FMWK',}.
+#                '3Z' => { '3Z' => '*WINDOWS_SERVER_ADSI',}.
+#                'NO' => { 'NO' => '*OMNIBUS_SERVER_AGENT',}.
+#                'SVR' => { 'KSVR' => '*HMC_BASE_SERVERS', },
+#                'M6' => { 'KM6' => '*IBM_WM',},
+#                'FTE' => { 'KFTE' => *IBM_WM', },
+#                'VM' => { 'KVM' => '*VMWARE_VI_AGENT', },
+#                'T5' => { 'KT5' => '*EM_WRM', },
+#                'QS' => { 'KQS' => '*IBM_KQS',}.
+#                'IS' => { 'KIS' => '*NETCOOL_ISM_AGENT', },
+#                'UD' => ( 'KUD' => '*UNIVERSAL_DATABASE',),
+#                'Q8' => { 'KQ8' => '*IBM_IPAS_A',},
+#                'Q7' => { 'KQ7' => '*IBM_IIS',},
+#                'Q5' => { 'KQ5' => '*MS_CLUSTER',},
+#                'R3' => { 'KR3' => '*IBM_RmtAIXOS',},
+#                'OQ' => { 'KMSS' => '*MS_SQL_SERVER', },
+#                'OR' => { 'KKRA' => '*ALL_ORACLE', },
+#                'A4' => { 'KKA4' => '*OS400_OM', },
+#                'TO' => { 'KTO' => '*IBM_ITCAMfT_KTO', },
+#                'SA' => { 'KIns' => '*SAP_R3', },
+#                'NT' => { 'NT' => '*NT_SYSTEM',}.
+#                'ES' => { 'KESX' => '*VMWARE_VI',},
+#                'CQ' => { 'TEPS' => '*TEPS',},
+#                'SD' => { 'KKSDSDE' => '**SDMSESS',},
+#                'MQ' => { 'KMQQSG' => '*MQ_QSG',},
+#                'HT' => { 'KKHTA' => '*ITCAM_WEB_SERVER_AGENT',},
+#                'R4' => { 'KR4' => '*IBM_RLinuxOS',},
+#                'TU' => { 'KTU' => '*IBM_KTU',},
+#                'BN' => { 'KBN' => '*IBM_KBN',},
+#                'OS' => { 'KOS' => '*CS_K0S',},
+#                'CP' => { 'KOS' => '*CS_K0S',},
+#                'KY' => { 'KKYNT' => '*CAM_WAS_PROCESS_SERVER',},
+#                'KJ' => { 'KKYJT' => '*CAM_J2EE_TOMCAT_SERVER',},
+#                'KH' => { 'KKHTP' => '*CAM_APACHE_WEB_SERVER',},
+#                'D4' => { 'KD4' => '*SERVICES_MANAGEMENT_AGENT',},  # D4 Lead - *SERVICES_MANAGEMENT_AGENT_ENVIR
+#                'LO' => { 'KLO' => '*IBM_KLO',},                    # LO Lead - *IBM_KLOpro
+#                '07' => { 'K07' => '*GSMA_K07',},
+#                'CF' => { 'KCONFIG' => '**GENERIC_CONFIG',},
+#                'D5' => { 'KDB2' => '*MVS_DB2',},
+#                'GB' => { 'KGB' => '*LOTUS_DOMINO',},
+#                'HD' => { 'Warehouse' => '*WAREHOUSE_PROXY',},
+#                'LZ' => { 'KLZ' => '*LINUX_SYSTEM',},
+#                'M5' => { 'KMVSSYS' => '*MVS_SYSTEM',},
+#                'MC' => { 'KRCACFG' => '*MQ_AGENT',},
+#                'MQ' => { 'KMQ' => '*MVS_MQM',
+#                          'KMQESA' => '*MVS_MQM'.
+#                          'KMQIRA' => '*MVS_MQM'.},
+#                'QI' => { 'KKQIA' => '*MQSI_AGENT',},
+#                'PH' => { 'KPH' => '*HMC_BASE',},
+#                'PK' => { 'KPK' => '*CEC_BASE',},
+#                'PV' => { 'KPV' => '*VIOS_BASE',},
+#                'PX' => { 'KPX' => '*MQ_AGENT',},
+#                'QI' => { 'KKQIB' => '*MQSI_BROKER',
+#                '         'KKQIB' => '*MQSI_BROKER_V7',},
+#                'S3' => { 'KSTORAGE' => '*OMEGAMONXE_SMS',
+#                          'KSTORAGE' => '*OM_SMS',},
+   # XEDB2:RVE1  *MVS_DB2                                        # DP   XEDB2:RVE1
+   # PXE0G:SYE1:OMEGD5:KOBDRA   *CMS                             # OB   PXE0G:SYE1:OMEGD5:KOBDRA
+   # RKCPXM00.SYE2::CEIRA    *IBM_CICSplexes                     # CE   RKCPXM00.SYE2::CEIRA
+#                'SA' => { 'KmySAP' => '*SAP_AGENT',},
+#                'SK' => { 'KSK' => '*IBM_TSM_Agent',},
+#                'SY' => { 'KSY' => '*AGGREGATION_AND_PRUNING',},
+#                'UL' => { 'KUL' => '*UNIX_LOG_ALERT',},
+#                'UX  => { 'KUX' => '*ALL_UNIX',},
+#                'VA' => { 'KVA' => '*VIOS_PREMIUM',},
+#                'VL' => { 'KVL' => '*OMXE_VM',},
+#                'YJ' => { 'KKYJA' => '*ITCAM_J2EE_AGENT',
+#                          'KKYJN' => '*CAM_J2EE_NETWEAVER_SERVER',},
+#                'YN' => { 'KKYNA' => '*ITCAM_WEBSPHERE_AGENT',
+#                          'KKYNR' => '*CAM_WAS_PORTAL_SERVER',
+#                          'KKYNP' => '*CAM_WAS_PROCESS_SERVER',
+#                          'KKYNS' => '*CAM_WAS_SERVER',},
+#                'D5' => { 'KDSGROUP' => '*MVS_DB2',
+#                          'KPlexview' => *MVS_DB2',},
+#                'M5' => { 'KSYSPLEX' => '*MVS_SYSPLEX',
+#                          'PLEXVIEW' => '*MVS_SYSPLEX',},
+#                'PN' => { 'KPN' => '*IBM_KPN',},
+#                'ZA' => { 'KZA' => '*IBM_KZA',},
+#                'PA' => { 'PA' =>  '*AFT_PERF_ANALYZER_WHSE_AGENT',},
+#                'GW' => { 'GWIRA' =>  '*GWIRA_MGR',},
+#                'JJ' => { 'JVM' => '*JVM_Monitor',},
+#                'DP' => '
+#                'OB' => '
+#                'CE' => '
+#             );
 
 # Following is a hard calculated collection  of how many TEMA apars are at each maintenance level.
 #
@@ -1117,6 +1236,7 @@ my @sit_reeval = ();                       # sampling interval in seconds
 my @sit_filter = ();                       # Where filtered
 my @sit_dist = ();                         # When 1, distributed
 my @sit_dist_objaccl = ();                 # Situation Distributions in TOBJACCL and TGROUP/TGROUPI
+my @sit_agents = ();                       # Situation Distributions to agents
 my @sit_process = ();                      # Process type attribute group
 my @sit_fileinfo = ();                     # File Information type attribute group
 my @sit_history_collect  = ();             # If History collection file, where collected - IRA or CMS
@@ -1294,6 +1414,9 @@ my $opt_delu_csv;               # delete unused file SQL name - Unix/Linux style
 my $opt_nodist;                 # TGROUP names which are planned as non-distributed
 my $opt_fto = "";               # HUB or MIRROR
 my $opt_crit = "";
+my $opt_101es = 0;              # collect DATAHEALTH1101E data
+my $opt_101es_fn = "";          # collect DATAHEALTH1101E data filename
+my %h101es = ();
 my $critical_fn = "datahealth.crit";
 my @crits;
 
@@ -1432,6 +1555,10 @@ if ($opt_mndx == 1) {
 
 if ($opt_miss == 1) {
    open MIS, ">$opt_miss_fn" or die "can't open $opt_miss_fn: $!";
+}
+if ($opt_101es == 1) {
+   unlink $opt_101es_fn;
+   open F101ES, ">$opt_101es_fn" or die "can't open $opt_101es_fn: $!";
 }
 
 if ($opt_delu == 1) {
@@ -2174,16 +2301,6 @@ foreach my $f (sort { $a cmp $b } keys %pcyx) {
          }
       }
    }
-   if (length($pcy_ref->{pcyopt}) >= 3) {
-      if (substr($pcy_ref->{pcyopt},0,1) eq "Y") {
-         if (substr($pcy_ref->{pcyopt},2,1) eq "3") {
-            $advi++;$advonline[$advi] = "Workflow Policy $f correlation mode HOSTNAME which is often an error";
-            $advcode[$advi] = "DATAHEALTH1119W";
-            $advimpact[$advi] = $advcx{$advcode[$advi]};
-            $advsit[$advi] = $f;
-         }
-      }
-   }
 }
 
 
@@ -2651,6 +2768,13 @@ for ($i=0;$i<=$obji;$i++){
                $advcode[$advi] = "DATAHEALTH1101E";
                $advimpact[$advi] = $advcx{$advcode[$advi]};
                $advsit[$advi] = $objname1;
+               if (substr($objname1,0,1) ne "Z") {
+                  if (index($nodel1,":") == -1) {
+                     print F101ES "$objname1,$nodel1,\n";
+                     $h101es{$nodel1} += 1;
+                  }
+               }
+
             } else {
                $advi++;$advonline[$advi] = "TOBJACCL known Situation with a unknown system generated MSL $nodel1";
                $advcode[$advi] = "DATAHEALTH1102W";
@@ -3082,6 +3206,133 @@ if ($opt_delu == 1) {
    close(DELCMD);
    close(DELCSV);
 }
+
+# make sure situation distributions are similar to policy distributions
+
+my $idisterr = 0;
+for (my $s=0;$s<=$siti;$s++) {
+   my $sit1 = $sit[$s];
+   next if !defined $sitpcyx{$sit1};    # situation is not waited
+   #sit is Waited by at least one workflow policy
+   foreach my $p (keys %{$sitpcyx{$sit1}}) { # get one policy
+         my $pcy_ref = $pcyx{$p};
+         if ($pcy_ref->{autostart} ne "*YES") {
+            $idisterr += 1;                         # sit with policy but policy with no distribution
+         }
+         my $ipcyopt = $pcy_ref->{pcyopt};
+         if (length($ipcyopt) > 2) {
+            if (substr($ipcyopt,0,1) ne "Y") {
+               $idisterr += 1;                         # sit with policy but policy with no distribution
+            } elsif (substr($ipcyopt,2,1) ne "1") {
+               $idisterr += 1;                         # sit with policy but policy with no distribution
+            }
+         }
+      if (!defined defined $pcydistx{$p}) {
+         $idisterr += 1;                         # sit with policy but policy with no distribution
+         next;
+      }
+#?      my %ipcydist = %{$pcydistx{$p}};
+      my $pcydist_ct =  scalar keys %{$pcydistx{$p}};
+      if ($pcydist_ct == 0) {
+         $idisterr += 1;                         # sit with policy but policy with empty distribution
+         next;
+      }
+
+      # compare the two distributions
+      foreach my $u (keys %{$sitdistx{$sit1}}){
+         next if defined $pcydistx{$p}{$u};
+         $idisterr += 1;                         # sit with distribution but policy missing that distribution
+         next;
+      }
+      foreach my $u (keys %{$pcydistx{$p}}) {
+         next if defined $sitdistx{$sit1}{$u};
+         $idisterr += 1;                         # policy with distribution but situation missing that distribution
+         next;
+      }
+   }
+}
+
+if ($idisterr > 0) {
+   $rptkey = "DATAREPORT026";$advrptx{$rptkey} = 1;         # record report key
+   $cnt++;$oline[$cnt]="\n";
+   $cnt++;$oline[$cnt]="$rptkey: Workflow Policy and Situatin distribution conflicts,\n";
+   $cnt++;$oline[$cnt]="Policy, Situation, Distribution, Conflict,\n";
+   for (my $s=0;$s<=$siti;$s++) {
+      my $sit1 = $sit[$s];
+      next if !defined $sitpcyx{$sit1};    # situation is not waited
+      #sit1 is Waited by at least one workflow policy
+      foreach my $p (keys %{$sitpcyx{$sit1}}) { # get one policy
+         my $pcy_ref = $pcyx{$p};
+         if ($pcy_ref->{autostart} ne "*YES") {
+            $oneline = $p . ",";
+            $oneline .= $sit1 . ",";
+            $oneline .= "Policy Does not autostart" . ",";
+            $cnt++;$oline[$cnt]="$oneline\n";
+            next;
+         }
+         my $ipcyopt = $pcy_ref->{pcyopt};
+         if (length($ipcyopt) > 2) {
+            if (substr($ipcyopt,0,1) ne "Y") {
+               $oneline = $p . ",";
+               $oneline .= $sit1 . ",";
+               $oneline .= "Policy Does not correlate" . ",";
+               $cnt++;$oline[$cnt]="$oneline\n";
+            } elsif (substr($ipcyopt,2,1) ne "1") {
+               my $icorrname = "";
+               $icorrname = "ManagedSystem" if substr($pcy_ref->{pcyopt},2,1) eq "1";
+               $icorrname = "HostAddr" if substr($pcy_ref->{pcyopt},2,1) eq "2";
+               $icorrname = "HostName" if substr($pcy_ref->{pcyopt},2,1) eq "3";
+               $icorrname = "MSL" if substr($pcy_ref->{pcyopt},2,1) eq "4";
+               $oneline = $p . ",";
+               $oneline .= $sit1 . ",";
+               $oneline .= "Policy Correlates with [$icorrname] and should usually be ManagedSystem" . ",";
+               $cnt++;$oline[$cnt]="$oneline\n";
+            }
+         }
+         if (!defined defined $pcydistx{$p}) {
+            $oneline = $p . ",";
+            $oneline .= $sit1 . ",";
+            $oneline .= "Policy Distribution missing" . ",";
+            $cnt++;$oline[$cnt]="$oneline\n";
+            next;
+         }
+         my %ipcydist = %{$pcydistx{$p}};
+         my $pcydist_ct = scalar keys %ipcydist;
+         if ($pcydist_ct == 0) {
+            $oneline = $p . ",";
+            $oneline .= $sit1 . ",";
+            $oneline .= "Policy Distribution empty" . ",";
+            $cnt++;$oline[$cnt]="$oneline\n";
+            next;
+         }
+
+         # compare the two distributions
+         foreach my $u (keys %{$sitdistx{$sit1}}){
+            next if defined $ipcydist{$u};
+            $oneline = $p . ",";
+            $oneline .= $sit1 . ",";
+            $oneline .= $u . ",";
+            $oneline .= "Situation Distribution missing in Policy Distribution" . ",";
+            $cnt++;$oline[$cnt]="$oneline\n";
+            next;
+         }
+         foreach my $u (keys %ipcydist){
+            next if defined $sitdistx{$sit1}{$u};
+            $oneline = $p . ",";
+            $oneline .= $sit1 . ",";
+            $oneline .= $u . ",";
+            $oneline .= "Policy Distribution missing in Situation Distribution" . ",";
+            $cnt++;$oline[$cnt]="$oneline\n";
+            next;
+         }
+      }
+   }
+   $advi++;$advonline[$advi] = "Workflow Policy and Situations have $idisterr conflicts - see report DATAREPORT026";
+   $advcode[$advi] = "DATAHEALTH1121W";
+   $advimpact[$advi] = $advcx{$advcode[$advi]};
+   $advsit[$advi] = "TEMS";
+}
+
 
 
    my $remote_limit = 1500;
@@ -4373,6 +4624,18 @@ if ($opt_vndx == 1) {
 if ($opt_mndx == 1) {
    close(MDX);
 }
+if ($opt_101es == 1) {
+   close(F101ES);
+   my $h101es_ct = scalar keys %h101es;
+   if ($h101es_ct > 0) {
+      unlink "f101esh.txt";
+      open F101ESH, ">f101esh.txt" or die "can't open f101esh.txt: $!";
+      foreach my $f (keys %h101es) {
+         print F101ESH "$f\n";
+      }
+      close F101ESH;
+   }
+}
 if ($opt_miss == 1) {
    foreach my $f (keys %miss) {
      $f =~ /(.*) (.*)/;
@@ -4509,6 +4772,7 @@ sub new_tactypcy {
    } else {
       if ($itypestr eq "*WAIT_ON_SITUATION") {
          $pcyx{$ipcyname}->{sit}{$iactinfo} = 1;
+         $sitpcyx{$iactinfo}{$ipcyname} = 1;
       } elsif ($itypestr eq "Evaluate_Situation") {
          $pcyx{$ipcyname}->{eval}{$iactinfo} = 1;
       } elsif ($itypestr eq "Wait_For_Sit_Reset") {
@@ -4688,6 +4952,11 @@ sub new_tobjaccl {
         $sit_tarx{$iobjname} = \%sit_tarref;
      }
      $sit_tar_ref->{targets}{$inodel} = 1;
+  }
+  if ($iobjclass == 5140) {      # Situation Distribution
+     $sitdistx{$iobjname}{$inodel} += 1;
+  } elsif ($iobjclass == 5130) { # Policy Distribution
+     $pcydistx{$iobjname}{$inodel} += 1;
   }
 }
 
@@ -5680,7 +5949,7 @@ sub init_txt {
       $inodel =~ s/\s+$//;   #trim trailing whitespace
       $ilstdate = substr($oneline,75,16);
       $ilstdate =~ s/\s+$//;   #trim trailing whitespace
-      next if ($iobjclass != 5140) and ($iobjclass != 2010);
+      next if ($iobjclass != 5140) and ($iobjclass != 2010) and ($iobjclass != 5130);
       new_tobjaccl($iobjclass,$iobjname,$inodel,$ilstdate);
    }
 
@@ -6507,6 +6776,9 @@ sub init {
       } elsif ( $ARGV[0] eq "-debug") {
          shift(@ARGV);
          $opt_debug = 1;
+      } elsif ( $ARGV[0] eq "-101es") {
+         shift(@ARGV);
+         $opt_101es = 1;
       } elsif ( $ARGV[0] eq "-h") {
          shift(@ARGV);
          $opt_h = 1;
@@ -6587,6 +6859,8 @@ sub init {
          $opt_crit .= "\/" if substr($opt_crit,-1,1) ne "\/";
       }
    }
+
+   $opt_101es_fn = "101es.csv" if $opt_101es == 1;
 
    # ini control file must be present
 
@@ -7028,8 +7302,11 @@ sub gettime
 #          : Ignore TOBJACCL duplicate for OBJNAME starting _Z_
 #          : Add advisory for historical collections with no distribution.
 #          : Add advisory for Policies using HOSTNAME correlation
-# Following is the embedded "DATA" file used to explain
+# 1.81000  : Prepare for System Generated MSL checking
+#          : add -101es to capture missing MSL
+#          : add report and advisory on situation/policy mismatch
 
+# Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
 # to be in TEMS Audit Users Guide.docx
 __END__
@@ -8993,6 +9270,17 @@ tacmd executeCommand to fail.
 Recovery plan: Involve IBM Support to repair the condition.
 --------------------------------------------------------------
 
+DATAHEALTH1121W
+Text:  Workflow Policy and Situations have $idisterr conflicts
+
+Check: TPCYDESC and TSITDESC and TOBJACCL
+
+Meaning: Situation and workflow policies are inter-related.
+This means conflicts exist. See REPORT026 for details.
+
+Recovery plan: Correct the Workflow Policy and Situation definitions.
+--------------------------------------------------------------
+
 DATAREPORT001
 Text: Summary of TEMS/TEPS/FTO etc
 
@@ -9456,4 +9744,19 @@ Meaning: There is a built in table of known products. This
 report helps refine the datahealth logic.
 
 Recovery: Information only for developer
+--------------------------------------------------------------
+
+DATAREPORT026
+Text: Workflow Policy and Situatin distribution conflicts
+
+Sample Report
+Policy, Situation, Distribution, Conflict,
+TMNA_StorageMF_Recall_Policy,KS3_HSM_Recall_Held_Critical,Policy Does not correlate using Managed System,,
+
+Meaning: Workflow policies and Situation are heavily inter-related.
+For example they should have the same distribution.
+
+This report identifies many of the common problems.
+
+Recovery: Correct distributions and other issues.
 --------------------------------------------------------------
