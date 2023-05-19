@@ -19,7 +19,7 @@
 #    # remember debug breakpoint
 # $DB::single=2;   # remember debug breakpoint
 
-my $gVersion = "1.81000";
+my $gVersion = "1.82000";
 my $gWin = (-e "C://") ? 1 : 0;    # 1=Windows, 0=Linux/Unix
 
 ## todos
@@ -2768,10 +2768,12 @@ for ($i=0;$i<=$obji;$i++){
                $advcode[$advi] = "DATAHEALTH1101E";
                $advimpact[$advi] = $advcx{$advcode[$advi]};
                $advsit[$advi] = $objname1;
-               if (substr($objname1,0,1) ne "Z") {
-                  if (index($nodel1,":") == -1) {
-                     print F101ES "$objname1,$nodel1,\n";
-                     $h101es{$nodel1} += 1;
+               if ($opt_101es == 1) {
+                  if (substr($objname1,0,1) ne "Z") {
+                     if (index($nodel1,":") == -1) {
+                        print F101ES "$objname1,$nodel1,\n";
+                        $h101es{$nodel1} += 1;
+                     }
                   }
                }
 
@@ -7305,6 +7307,7 @@ sub gettime
 # 1.81000  : Prepare for System Generated MSL checking
 #          : add -101es to capture missing MSL
 #          : add report and advisory on situation/policy mismatch
+# 1.82000  : Correct print to F101ES when not enabled
 
 # Following is the embedded "DATA" file used to explain
 # advisories the the report. It replaces text in that used
